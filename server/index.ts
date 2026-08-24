@@ -2,6 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import fs from 'fs'
 import path from 'path'
 import { plansRouter } from './routes/plans'
+import { meRouter } from './routes/me'
 
 const app = express()
 const isProduction = process.env.NODE_ENV === 'production'
@@ -14,6 +15,7 @@ app.get('/health', (_req, res) => {
 })
 
 app.use('/api', plansRouter)
+app.use('/api', meRouter)
 
 // Unmatched /api/* fails as JSON, in BOTH environments. In prod it would otherwise reach the SPA
 // fallback and return index.html with a 200 — the client then parses '<!doctype html>' and reports a

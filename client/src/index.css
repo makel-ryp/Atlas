@@ -1,3 +1,125 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Plain CSS, not @apply. The prototype visual treatment is Luke's to port (sprint plan §5), so
+   anything elaborate written here is work that gets thrown away. This is legibility only:
+   readable type, aligned values, and a clear difference between a real value and "not set". */
+@layer components {
+  body {
+    background: #0f1115;
+    color: #e8eaed;
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  }
+
+  .shell,
+  .auth-shell {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 4rem;
+  }
+  .auth-shell {
+    max-width: 22rem;
+    padding-top: 6rem;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+  h2 {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8b93a1;
+    margin-bottom: 0.6rem;
+  }
+  section {
+    margin-top: 2rem;
+    border-top: 1px solid #23262e;
+    padding-top: 1.25rem;
+  }
+
+  .row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .muted {
+    color: #8b93a1;
+  }
+  .error {
+    color: #ff8a80;
+  }
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85em;
+  }
+
+  /* Two columns so a column of labels and a column of values line up, which is what makes a
+     missing value obvious at a glance. */
+  dl {
+    display: grid;
+    grid-template-columns: 11rem 1fr;
+    gap: 0.4rem 1rem;
+  }
+  dt {
+    color: #8b93a1;
+  }
+  dd {
+    margin: 0;
+  }
+
+  ul.roles {
+    list-style: none;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  ul.roles li {
+    border: 1px solid #2c313b;
+    border-radius: 999px;
+    padding: 0.2rem 0.7rem;
+  }
+
+  form {
+    display: grid;
+    gap: 0.9rem;
+    margin-top: 1.5rem;
+  }
+  label {
+    display: grid;
+    gap: 0.3rem;
+    color: #8b93a1;
+  }
+  input {
+    background: #171a21;
+    border: 1px solid #2c313b;
+    border-radius: 6px;
+    padding: 0.55rem 0.7rem;
+    color: #e8eaed;
+    font: inherit;
+  }
+  input:focus-visible {
+    outline: 2px solid #4c8dff;
+    outline-offset: 1px;
+  }
+  button {
+    background: #2a67d4;
+    border: 0;
+    border-radius: 6px;
+    padding: 0.55rem 1rem;
+    color: #fff;
+    font: inherit;
+    font-weight: 550;
+    cursor: pointer;
+  }
+  button:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}

@@ -1,66 +1,51 @@
-import { useEffect, useState } from 'react'
+import { AuthProvider, useAuth } from './lib/authContext'
+import { Login } from './components/Login'
+import { Profile } from './components/Profile'
 
-// Mirrors the columns GET /api/plans selects. Not derived from eco's PlanRow on purpose: the
-// route returns a deliberate subset (no stripe_price_id, no internal pricing notes).
-interface Plan {
-  code: string
-  name: string
-  rank: number
-  audience: string
-  isActive: boolean
-  priceCents: number | null
-  currency: string
-  interval: string | null
-}
+function Routes() {
+  const { status, error, logout } = useAuth()
 
-// null price is meaningful, not missing data — those tiers are deliberately unpriced.
-function formatPrice(plan: Plan) {
-  if (plan.priceCents === null) return 'not priced'
-  const amount = (plan.priceCents / 100).toFixed(2)
-  return plan.interval ? `${amount} ${plan.currency}/${plan.interval}` : `${amount} ${plan.currency}`
+  switch (status) {
+    case 'loading':
+      return <main className="shell"><p className="muted">Loading…</p></main>
+
+    case 'signed_out':
+      return <Login />
+
+    case 'signed_in':
+      return <Profile />
+
+    // Authenticated, but holds no role in 'atlas'. A public.users row DOES now exist — attachUser
+    // created it before requireApp refused — so this is the entitlement gate, not a broken account.
+    // Shown as its own state because the fix is someone granting access, which no amount of
+    // retrying the login will do.
+    case 'no_atlas_access':
+      return (
+        <main className="auth-shell">
+          <h1>Almost there</h1>
+          <p>
+            Your RYP account works, but it doesn’t have Atlas access yet. Ask an administrator to
+            add you.
+          </p>
+          <button onClick={logout}>Sign out</button>
+        </main>
+      )
+
+    case 'error':
+      return (
+        <main className="auth-shell">
+          <h1>Couldn’t load your account</h1>
+          <p className="error">{error}</p>
+          <button onClick={logout}>Sign out</button>
+        </main>
+      )
+  }
 }
 
 export default function App() {
-  const [plans, setPlans] = useState<Plan[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    fetch('/api/plans')
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
-      .then(setPlans)
-      .catch((err: Error) => setError(err.message))
-  }, [])
-
-  if (error) return <p>Failed to load plans: {error}</p>
-  if (!plans) return <p>Loading…</p>
-
   return (
-    <main>
-      <h1>Atlas</h1>
-      <table>
-        <thead>
-          <tr>
-            <th>Rank</th>
-            <th>Code</th>
-            <th>Name</th>
-            <th>Audience</th>
-            <th>Price</th>
-            <th>Sellable</th>
-          </tr>
-        </thead>
-        <tbody>
-          {plans.map((plan) => (
-            <tr key={plan.code}>
-              <td>{plan.rank}</td>
-              <td>{plan.code}</td>
-              <td>{plan.name}</td>
-              <td>{plan.audience}</td>
-              <td>{formatPrice(plan)}</td>
-              <td>{plan.isActive ? 'yes' : 'no'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </main>
+    <AuthProvider>
+      <Routes />
+    </AuthProvider>
   )
 }

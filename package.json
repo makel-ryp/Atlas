@@ -8,10 +8,11 @@
     "dev:server": "NODE_ENV=development sh -c 'f=.env.local; [ -f \"$f\" ] || f=.env; exec node --env-file=\"$f\" --import tsx/esm server/index.ts'",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "start": "NODE_ENV=production node --import tsx/esm server/index.ts"
+    "start": "NODE_ENV=production node --import tsx/esm server/index.ts",
+    "seed": "sh -c 'f=.env.local; [ -f \"$f\" ] || f=.env; exec node --env-file=\"$f\" --import tsx/esm scripts/seed.ts'"
   },
   "dependencies": {
-    "@ryp/eco": "github:RYPGolf/ryp-eco#v0.6.0",
+    "@ryp/eco": "github:RYPGolf/ryp-eco#v0.7.0",
     "drizzle-orm": "^0.39.3",
     "express": "^5.0.1",
     "firebase": "^10.14.1",
