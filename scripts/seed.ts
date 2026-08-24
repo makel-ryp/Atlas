@@ -242,6 +242,38 @@ async function main() {
       console.log(
         `  ✓ coach_of: ${coach.person.displayName} -> ${firstPlayer.person.displayName} (requested, then approved by the player)`,
       )
+
+      // A SECOND edge, left PENDING on purpose. The roster then shows both states side by side —
+      // one student with their handicap trend, one whose trend the metric tier withholds — so the
+      // identity/metric boundary is visible on screen instead of only in a policy test.
+      const secondPlayer = seeded.filter((s) => s.person.role === 'user')[1]
+      if (secondPlayer) {
+        await withRls(
+          appPool,
+          { userId: coach.userId, firebaseUid: coach.firebaseUid, app: 'atlas' },
+          schema,
+          async (db) => {
+            const found = await db.query.userRelationships.findFirst({
+              where: and(
+                eq(userRelationships.actorUserId, coach.userId),
+                eq(userRelationships.subjectUserId, secondPlayer.userId),
+                eq(userRelationships.relationship, 'coach_of'),
+                eq(userRelationships.app, 'atlas'),
+              ),
+            })
+            if (found) return
+            await db.insert(userRelationships).values({
+              actorUserId: coach.userId,
+              subjectUserId: secondPlayer.userId,
+              app: 'atlas',
+              relationship: 'coach_of',
+            })
+          },
+        )
+        console.log(
+          `  ✓ coach_of: ${coach.person.displayName} -> ${secondPlayer.person.displayName} (PENDING — left unapproved deliberately)`,
+        )
+      }
     }
 
     console.log(`\nPassword for every seeded account: ${SEED_PASSWORD}`)

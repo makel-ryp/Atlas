@@ -91,6 +91,73 @@
     gap: 0.9rem;
     margin-top: 1.5rem;
   }
+  /* Two columns on the edit form so it does not become a tall single file of inputs. */
+  form.edit {
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    align-items: end;
+  }
+  form.edit .row {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  form.edit p {
+    grid-column: 1 / -1;
+    margin: 0;
+  }
+
+  select {
+    background: #171a21;
+    border: 1px solid #2c313b;
+    border-radius: 6px;
+    padding: 0.55rem 0.7rem;
+    color: #e8eaed;
+    font: inherit;
+  }
+
+  button.link {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: #7aa7ff;
+    font-weight: 500;
+  }
+
+  ul.students {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 0.75rem;
+  }
+  ul.students li {
+    border: 1px solid #23262e;
+    border-radius: 8px;
+    padding: 0.75rem 0.9rem;
+  }
+  .small {
+    font-size: 0.9em;
+    margin: 0.3rem 0 0;
+  }
+  /* Withheld is deliberately not styled as an error — nothing is wrong, the coach simply is not
+     cleared for it yet. */
+  .withheld {
+    font-style: italic;
+  }
+  .tag {
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border: 1px solid #2c5f3a;
+    color: #7fd39b;
+    border-radius: 999px;
+    padding: 0.15rem 0.55rem;
+    white-space: nowrap;
+  }
+  .tag.pending {
+    border-color: #6b5a2c;
+    color: #e0c072;
+  }
   label {
     display: grid;
     gap: 0.3rem;

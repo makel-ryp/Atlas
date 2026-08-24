@@ -20,3 +20,22 @@ export interface Me {
   roles: { app: string; role: string }[]
   profile: PlayerProfile | null
 }
+
+// The shape of GET /api/coach/students.
+export interface Student {
+  userId: string
+  displayName: string | null
+  email: string
+  status: string // 'active' | 'pending' | 'ended'
+  source: 'direct' | 'academy'
+  orgName: string | null
+  profile: {
+    userId: string
+    handicapIndex: string | null
+    driverCarryYds: number | null
+    handedness: string | null
+  } | null
+  // null and [] are different: null means the metric tier withheld it (the student has not approved
+  // this coach), [] means approved with nothing recorded yet. The UI must not render them the same.
+  handicapTrend: { handicapIndex: string; recordedAt: string }[] | null
+}
