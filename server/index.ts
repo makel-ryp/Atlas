@@ -15,6 +15,14 @@ app.get('/health', (_req, res) => {
 
 app.use('/api', plansRouter)
 
+// Unmatched /api/* fails as JSON, in BOTH environments. In prod it would otherwise reach the SPA
+// fallback and return index.html with a 200 — the client then parses '<!doctype html>' and reports a
+// JSON error instead of the 404 that happened. In dev it would hit Express's default HTML 404, so
+// the same request would behave differently per environment.
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'not_found' })
+})
+
 // Prod only — in dev the client is served by `npm run dev` (vite), which proxies /api here.
 // Mounted after the API so the SPA fallback cannot swallow /health or /api.
 if (isProduction) {
@@ -25,12 +33,6 @@ if (isProduction) {
     throw new Error(`Missing client build at ${distPath} — run npm run build first`)
   }
   app.use(express.static(distPath))
-  // Unmatched /api/* must fail as JSON. Without this it reaches the SPA fallback below and returns
-  // index.html with a 200, so a client does JSON.parse('<!doctype html>') and reports a parse error
-  // instead of the 404 that actually happened.
-  app.use('/api', (_req, res) => {
-    res.status(404).json({ error: 'not_found' })
-  })
   app.use((_req, res) => {
     res.sendFile(path.resolve(distPath, 'index.html'))
   })
