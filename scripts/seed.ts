@@ -165,17 +165,21 @@ async function main() {
       console.log(`  ✓ ${person.email.padEnd(30)} ${person.role.padEnd(6)} ${userId}`)
     }
 
-    // The coach_of edge, written AS THE COACH — user_relationships' WITH CHECK only permits
-    // actor_user_id = the caller, so this is the real path a coach would take, not a bypass.
+    // The coach_of edge, through the REAL two-step consent loop rather than one privileged write.
+    // The coach may only REQUEST (policy user_relationships_request forces status='pending' and a
+    // null approved_at); only the subject may approve it (user_relationships_subject_decides). A
+    // coach cannot approve their own request, which is what stops a coach granting themselves read
+    // access to any player whose UUID they happen to know. Seeding it any other way would leave the
+    // demo running on a path the product does not have.
     const coach = seeded.find((s) => s.person.role === 'coach')
     const firstPlayer = seeded.find((s) => s.person.role === 'user')
     if (coach && firstPlayer) {
-      await withRls(
+      const existing = await withRls(
         appPool,
         { userId: coach.userId, firebaseUid: coach.firebaseUid, app: 'atlas' },
         schema,
         async (db) => {
-          const existing = await db.query.userRelationships.findFirst({
+          const found = await db.query.userRelationships.findFirst({
             where: and(
               eq(userRelationships.actorUserId, coach.userId),
               eq(userRelationships.subjectUserId, firstPlayer.userId),
@@ -183,24 +187,40 @@ async function main() {
               eq(userRelationships.app, 'atlas'),
             ),
           })
-          if (existing) return
-          await db.insert(userRelationships).values({
-            actorUserId: coach.userId,
-            subjectUserId: firstPlayer.userId,
-            // NOT NULL. The edge is scoped to an app because "coaches you in Locker Room" and
-            // "coaches you in Atlas" are different grants, even for the same two people.
-            app: 'atlas',
-            relationship: 'coach_of',
-            // 'active' so golf_profile_coach_read actually resolves for the demo. ⚠️ That this is
-            // settable by the actor is a real gap — the schema's 'pending' default and approved_at
-            // column say the subject is meant to approve, but no policy enforces it. See
-            // SPRINT-1-PREP.md.
-            status: 'active',
-            approvedAt: new Date(),
-          })
+          if (found) return found
+          const [row] = await db
+            .insert(userRelationships)
+            .values({
+              actorUserId: coach.userId,
+              subjectUserId: firstPlayer.userId,
+              // NOT NULL. The edge is app-scoped because "coaches you in Locker Room" and
+              // "coaches you in Atlas" are different grants, even for the same two people.
+              app: 'atlas',
+              relationship: 'coach_of',
+              // status and approved_at are left at their defaults ('pending', null) — the insert
+              // policy would refuse anything else.
+            })
+            .returning()
+          return row
         },
       )
-      console.log(`  ✓ coach_of: ${coach.person.displayName} -> ${firstPlayer.person.displayName}`)
+
+      // Now as the PLAYER — the only party the policy lets set status='active'.
+      if (existing.status !== 'active') {
+        await withRls(
+          appPool,
+          { userId: firstPlayer.userId, firebaseUid: firstPlayer.firebaseUid, app: 'atlas' },
+          schema,
+          (db) =>
+            db
+              .update(userRelationships)
+              .set({ status: 'active', approvedAt: new Date() })
+              .where(eq(userRelationships.id, existing.id)),
+        )
+      }
+      console.log(
+        `  ✓ coach_of: ${coach.person.displayName} -> ${firstPlayer.person.displayName} (requested, then approved by the player)`,
+      )
     }
 
     console.log(`\nPassword for every seeded account: ${SEED_PASSWORD}`)
