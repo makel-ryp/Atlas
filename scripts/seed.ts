@@ -30,7 +30,13 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import { and, eq } from 'drizzle-orm'
 import { firebaseAuth } from '@ryp/eco/auth'
 import { withRls, withRlsBypass } from '@ryp/eco/db'
-import { users, userAppRoles, userRelationships, golfPlayerProfile } from '@ryp/eco/schema'
+import {
+  users,
+  userAppRoles,
+  userRelationships,
+  golfPlayerProfile,
+  golfHandicapHistory,
+} from '@ryp/eco/schema'
 
 const SEED_PASSWORD = process.env.SEED_PASSWORD ?? 'RypDemo!2026'
 
@@ -68,7 +74,7 @@ const PEOPLE: SeedPerson[] = [
   },
 ]
 
-const schema = { users, userAppRoles, userRelationships, golfPlayerProfile }
+const schema = { users, userAppRoles, userRelationships, golfPlayerProfile, golfHandicapHistory }
 
 function requireEnv(name: string): string {
   const value = process.env[name]
@@ -150,15 +156,30 @@ async function main() {
       )
 
       if (person.profile) {
-        await withRls(appPool, { userId, firebaseUid, app: 'atlas' }, schema, (db) =>
-          db
+        await withRls(appPool, { userId, firebaseUid, app: 'atlas' }, schema, async (db) => {
+          await db
             .insert(golfPlayerProfile)
             .values({ userId, ...person.profile! })
             .onConflictDoUpdate({
               target: golfPlayerProfile.userId,
               set: { ...person.profile!, updatedAt: new Date() },
-            }),
-        )
+            })
+          // One handicap_history row so the coach dashboard's METRIC tier has something to show —
+          // it is gated on app_private.coaches() (approved relationship) rather than
+          // coaches_or_pending(), so an empty table makes "hidden" and "no data" indistinguishable
+          // when testing that boundary. Append-only by design, hence the existence check rather
+          // than an upsert: re-running the seed must not add a second row for the same day.
+          const existing = await db.query.golfHandicapHistory.findFirst({
+            where: eq(golfHandicapHistory.userId, userId),
+          })
+          if (!existing) {
+            await db.insert(golfHandicapHistory).values({
+              userId,
+              handicapIndex: person.profile!.handicapIndex,
+              source: 'self_reported',
+            })
+          }
+        })
       }
 
       seeded.push({ person, userId, firebaseUid })
