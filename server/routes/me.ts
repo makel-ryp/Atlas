@@ -5,6 +5,7 @@ import { verifyToken, attachUser, requireApp } from '@ryp/eco/auth'
 import { withRls } from '@ryp/eco/db'
 import { users, golfPlayerProfile } from '@ryp/eco/schema'
 import { pool } from '../db'
+import { ensureAtlasAccess } from '../ensureAtlasAccess'
 
 // Only the tables this router touches. withRls wants the caller's OWN schema object so drizzle
 // types db.query.* against exactly what the route is allowed to read — a narrower object is a
@@ -12,16 +13,23 @@ import { pool } from '../db'
 const schema = { users, golfPlayerProfile }
 
 // The identity chain, in the one order that works:
-//   verifyToken  — Bearer ID token -> req.firebaseUid. The only Firebase touchpoint.
-//   attachUser   — firebase_uid -> public.users row, PROVISIONING it on first login, then loads
-//                  user_app_roles. After this, req.user.id is the identity for everything.
-//   requireApp   — 403s unless the user holds a role in 'atlas'.
+//   verifyToken       — Bearer ID token -> req.firebaseUid. The only Firebase touchpoint.
+//   attachUser        — firebase_uid -> public.users row, PROVISIONING it on first login, then
+//                       loads user_app_roles. After this, req.user.id is the identity for everything.
+//   ensureAtlasAccess — grants the free ('atlas','user') entitlement to a brand-new signup, so
+//                       signing up actually gets you in. Needs req.user.id, hence after attachUser.
+//   requireApp        — 403s unless the user holds a role in 'atlas'.
 //
-// requireApp is last on purpose: attachUser must still run for a user with no Atlas role, because
-// that is how the row gets created in the first place. A brand-new person therefore ends up with a
-// public.users row and a 403, which is correct — the entitlement is granted by billing_svc (or the
-// seed script), never by the request path that would benefit from it.
-const identityChain: RequestHandler[] = [verifyToken, attachUser(pool), requireApp('atlas')]
+// requireApp is last on purpose, and ensureAtlasAccess sits immediately before it rather than being
+// folded into it: the two answer different questions. One decides whether a NEW person is entitled;
+// the other enforces entitlement for everyone, including a person whose access was revoked — who
+// passes through ensureAtlasAccess untouched and is still refused here.
+const identityChain: RequestHandler[] = [
+  verifyToken,
+  attachUser(pool),
+  ensureAtlasAccess(pool),
+  requireApp('atlas'),
+]
 
 export const meRouter = Router()
 

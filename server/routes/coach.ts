@@ -11,6 +11,7 @@ import {
   golfHandicapHistory,
 } from '@ryp/eco/schema'
 import { pool } from '../db'
+import { ensureAtlasAccess } from '../ensureAtlasAccess'
 
 const schema = {
   users,
@@ -21,7 +22,12 @@ const schema = {
   golfHandicapHistory,
 }
 
-const identityChain: RequestHandler[] = [verifyToken, attachUser(pool), requireApp('atlas')]
+const identityChain: RequestHandler[] = [
+  verifyToken,
+  attachUser(pool),
+  ensureAtlasAccess(pool),
+  requireApp('atlas'),
+]
 
 export const coachRouter = Router()
 
