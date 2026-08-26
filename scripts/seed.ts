@@ -43,7 +43,7 @@ const SEED_PASSWORD = process.env.SEED_PASSWORD ?? 'RypDemo!2026'
 interface SeedPerson {
   email: string
   displayName: string
-  role: 'user' | 'coach'
+  role: 'user' | 'coach' | 'admin'
   profile?: {
     handicapIndex: string
     driverCarryYds: number
@@ -71,6 +71,14 @@ const PEOPLE: SeedPerson[] = [
     email: 'demo.coach@rypgolf.com',
     displayName: 'Coach Sam Ellis',
     role: 'coach',
+  },
+  // The ops account. Needed because `user_app_roles` writes are bypass-only, so the FIRST admin
+  // cannot be created by any request path — it has to come from here or from raw SQL. No golf
+  // profile: this is a role, not a golfer, and giving it one would put a fake player in the roster.
+  {
+    email: 'demo.admin@rypgolf.com',
+    displayName: 'Admin (Ops)',
+    role: 'admin',
   },
 ]
 
