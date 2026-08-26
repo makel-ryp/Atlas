@@ -25,10 +25,16 @@ import { billingPool } from '../billingDb'
 // never needs the second pool.
 const readSchema = { users, userAppRoles, orgMemberships, organizations, adminAudit }
 
-// Write side: only the tables that are bypass-only by policy, plus admin_audit. Passed to
-// withRlsBypass on billingPool — never to the normal pool, which cannot write any of these no
-// matter what schema object you hand it.
-const writeSchema = { userAppRoles, orgMemberships, organizations, adminAudit }
+// Write side, and there are TWO of them on purpose — see auditedWrite vs auditedScopedWrite below.
+//
+// bypassWriteSchema: the tables atlas_app holds no privilege on at all. Passed to withRlsBypass on
+// billingPool. Handing these to the normal pool cannot work no matter what — the grant is absent,
+// which is exactly the guard that makes academy access safe.
+const bypassWriteSchema = { orgMemberships, organizations, adminAudit }
+
+// scopedWriteSchema: user_app_roles, which atlas_app CAN write, gated per app by policy. Narrow on
+// purpose — a smaller object is a smaller blast radius, not just a smaller type.
+const scopedWriteSchema = { userAppRoles, adminAudit }
 
 // Gate, in the one order that answers "who is this" before "may they do admin things":
 //   verifyToken   — Bearer ID token -> req.firebaseUid.
@@ -56,10 +62,10 @@ async function auditedWrite<T>(
   reason: string,
   entry: { entity: string; field: string },
   fn: (
-    db: NodePgDatabase<typeof writeSchema>,
+    db: NodePgDatabase<typeof bypassWriteSchema>,
   ) => Promise<{ entityId: string; oldValue: string | null; newValue: string | null; result: T }>,
 ): Promise<T> {
-  return withRlsBypass(billingPool, reason, writeSchema, async (db) => {
+  return withRlsBypass(billingPool, reason, bypassWriteSchema, async (db) => {
     const { entityId, oldValue, newValue, result } = await fn(db)
     await db.insert(adminAudit).values({
       actorUserId,
@@ -74,11 +80,67 @@ async function auditedWrite<T>(
   })
 }
 
+/**
+ * The same audited-single-transaction discipline, but through the ORDINARY pool with NO bypass —
+ * and that difference is the whole point rather than an optimisation.
+ *
+ * `user_app_roles` carries a policy pair, `user_app_roles_app_admin_insert` / `_update`, whose check
+ * is `is_app_admin(app)` — it reads the `app` column of the row being written. So an Atlas admin
+ * writing `app='locker_room'` is refused BY THE DATABASE. Routing these writes through
+ * withRlsBypass would silence that policy completely, and the restriction would exist only in
+ * whatever `if` a future edit remembers to keep. Verified as atlas_app: granting atlas roles is
+ * allowed, granting locker_room or ryp_red is "new row violates row-level security policy".
+ *
+ * The audit row rides along in the same transaction under `admin_audit_self_insert`, which permits
+ * only `actor_user_id = current_user_id()`. That is strictly stronger than the bypass path it
+ * replaces: bypass could attribute an action to any actor, this cannot.
+ *
+ * Org writes deliberately do NOT come here — atlas_app holds no privilege on org_memberships or
+ * organizations at all, and that absence is load-bearing for academy-scoped coach access.
+ */
+async function auditedScopedWrite<T>(
+  actor: { id: string; firebaseUid: string },
+  reason: string,
+  entry: { entity: string; field: string },
+  fn: (
+    db: NodePgDatabase<typeof scopedWriteSchema>,
+  ) => Promise<{ entityId: string; oldValue: string | null; newValue: string | null; result: T }>,
+): Promise<T> {
+  return withRls(
+    pool,
+    { userId: actor.id, firebaseUid: actor.firebaseUid, app: 'atlas' },
+    scopedWriteSchema,
+    async (db) => {
+      const { entityId, oldValue, newValue, result } = await fn(db)
+      await db.insert(adminAudit).values({
+        actorUserId: actor.id,
+        entity: entry.entity,
+        entityId,
+        field: entry.field,
+        oldValue,
+        newValue,
+        reason,
+      })
+      return result
+    },
+  )
+}
+
 const reasonSchema = z
   .object({ reason: z.string().trim().min(1) })
   .strict() // an unknown key is a 400, not a silently ignored field
 
 // ─── GET /admin/users?q= ───────────────────────────────────────────────────────────────────────
+// The database is the enforcement — `user_app_roles_app_admin_insert` refuses a row whose `app` the
+// caller does not administer. This is only here so the caller gets a 403 saying WHY instead of a 500
+// carrying a raw Postgres policy-violation string, which is both a poor error and an unnecessary
+// disclosure of the schema. Never the other way round: if this check is ever the only thing standing
+// between an Atlas admin and a locker_room grant, the restriction has been lost.
+function callerAdminsApp(req: unknown, app: string): boolean {
+  const rows = (((req as any).appRoleRows as { app: string; role: string }[]) ?? [])
+  return rows.some((r) => r.app === app && r.role === 'admin')
+}
+
 adminRouter.get('/admin/users', ...adminChain, async (req, res, next) => {
   try {
     const admin = (req as any).user as typeof users.$inferSelect
@@ -180,9 +242,13 @@ adminRouter.post('/admin/users/:userId/app-roles', ...adminChain, async (req, re
       res.status(400).json({ error: 'cannot_modify_own_admin_role' })
       return
     }
+    if (!callerAdminsApp(req, app)) {
+      res.status(403).json({ error: 'not_admin_of_app', app })
+      return
+    }
 
-    const result = await auditedWrite(
-      actor.id,
+    const result = await auditedScopedWrite(
+      actor,
       reason,
       { entity: 'user_app_roles', field: 'role' },
       async (db) => {
@@ -234,9 +300,13 @@ adminRouter.delete(
         res.status(400).json({ error: 'cannot_modify_own_admin_role' })
         return
       }
+      if (!callerAdminsApp(req, app)) {
+        res.status(403).json({ error: 'not_admin_of_app', app })
+        return
+      }
 
-      const result = await auditedWrite(
-        actor.id,
+      const result = await auditedScopedWrite(
+        actor,
         reason,
         { entity: 'user_app_roles', field: 'deleted_at' },
         async (db) => {
