@@ -21,6 +21,46 @@ export interface Me {
   profile: PlayerProfile | null
 }
 
+// The shapes of the /api/admin/* routes. Hand-written, same reasoning as Me above: these mirror a
+// deliberate server-side subset, not the raw eco rows (no firebase_uid, no internal ids beyond what
+// the admin screen needs to act on).
+export interface AdminUser {
+  id: string
+  email: string
+  displayName: string | null
+  plan: string
+  createdAt: string | null
+  deletedAt: string | null
+  appRoles: { app: string; role: string; revoked: boolean }[]
+  orgs: { orgId: string; orgName: string; role: string; status: string }[]
+}
+
+export interface AdminOrg {
+  id: string
+  name: string
+  type: string
+  status: string
+  plan: string
+  license: string | null
+  createdAt: string | null
+  updatedAt: string | null
+  memberCount: number
+  coachCount: number
+}
+
+export interface AuditRow {
+  id: string
+  actorUserId: string
+  actorDisplayName: string | null
+  entity: string
+  entityId: string
+  field: string | null
+  oldValue: string | null
+  newValue: string | null
+  reason: string | null
+  createdAt: string
+}
+
 // The shape of GET /api/coach/students.
 export interface Student {
   userId: string

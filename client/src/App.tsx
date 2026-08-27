@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import { AuthProvider, useAuth } from './lib/authContext'
 import { Login } from './components/Login'
 import { Profile } from './components/Profile'
+import { Admin } from './components/Admin'
 
 function Routes() {
-  const { status, error, logout } = useAuth()
+  const { status, error, me, logout } = useAuth()
+  const [tab, setTab] = useState<'profile' | 'admin'>('profile')
 
   switch (status) {
     case 'loading':
@@ -12,8 +15,26 @@ function Routes() {
     case 'signed_out':
       return <Login />
 
-    case 'signed_in':
-      return <Profile />
+    case 'signed_in': {
+      // Gate is on the atlas row specifically, same reasoning as isCoach in Profile — a
+      // locker_room admin is not an Atlas admin and must not see this tab.
+      const isAtlasAdmin = me?.roles.some((r) => r.app === 'atlas' && r.role === 'admin') ?? false
+      return (
+        <>
+          {isAtlasAdmin && (
+            <nav className="tabs">
+              <button className={tab === 'profile' ? 'active' : ''} onClick={() => setTab('profile')}>
+                Profile
+              </button>
+              <button className={tab === 'admin' ? 'active' : ''} onClick={() => setTab('admin')}>
+                Admin
+              </button>
+            </nav>
+          )}
+          {tab === 'admin' && isAtlasAdmin ? <Admin /> : <Profile />}
+        </>
+      )
+    }
 
     // Authenticated, but holds no role in 'atlas'. A public.users row DOES now exist — attachUser
     // created it before requireApp refused — so this is the entitlement gate, not a broken account.
