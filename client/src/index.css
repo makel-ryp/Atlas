@@ -311,4 +311,46 @@
     border-bottom: 1px solid #1a1d24;
     vertical-align: top;
   }
+
+  /* Notes area on a roster card. .notes-panel sits directly under the "Notes (n)" toggle, so
+     it reads as an expansion of that card rather than a new section. */
+  .notes {
+    margin-top: 0.6rem;
+  }
+  .notes-panel {
+    margin-top: 0.5rem;
+    display: grid;
+    gap: 0.6rem;
+  }
+  ul.note-list {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+  }
+  ul.note-list li {
+    border: 1px solid #1a1d24;
+    border-radius: 6px;
+    padding: 0.5rem 0.6rem;
+  }
+  textarea {
+    background: #171a21;
+    border: 1px solid #2c313b;
+    border-radius: 6px;
+    padding: 0.55rem 0.7rem;
+    color: #e8eaed;
+    font: inherit;
+    resize: vertical;
+  }
+  textarea:focus-visible {
+    outline: 2px solid #4c8dff;
+    outline-offset: 1px;
+  }
+  .note-compose {
+    display: grid;
+    gap: 0.5rem;
+  }
+  .note-compose .row {
+    justify-content: flex-start;
+  }
 }

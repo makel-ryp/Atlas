@@ -31,6 +31,7 @@ import { and, eq } from 'drizzle-orm'
 import { firebaseAuth } from '@ryp/eco/auth'
 import { withRls, withRlsBypass } from '@ryp/eco/db'
 import {
+  coachProfiles,
   users,
   userAppRoles,
   userRelationships,
@@ -82,7 +83,14 @@ const PEOPLE: SeedPerson[] = [
   },
 ]
 
-const schema = { users, userAppRoles, userRelationships, golfPlayerProfile, golfHandicapHistory }
+const schema = {
+  users,
+  userAppRoles,
+  userRelationships,
+  coachProfiles,
+  golfPlayerProfile,
+  golfHandicapHistory,
+}
 
 function requireEnv(name: string): string {
   const value = process.env[name]
@@ -188,6 +196,24 @@ async function main() {
             })
           }
         })
+      }
+
+      // A coach gets a coach_profile, and it is not decoration: `coach_profiles_read_my_coach` lets a
+      // student read the profile of anyone coaching them or requesting to. Without a row here that
+      // policy is correct but has nothing to prove, and a student approving a request would see a
+      // name with nothing behind it.
+      if (person.role === 'coach') {
+        await withRls(appPool, { userId, firebaseUid, app: 'atlas' }, schema, (db) =>
+          db
+            .insert(coachProfiles)
+            .values({
+              userId,
+              coachType: 'independent',
+              bio: 'PGA-certified. Short game and course management.',
+              calendlyUrl: 'https://calendly.com/example/coach-sam',
+            })
+            .onConflictDoNothing(),
+        )
       }
 
       seeded.push({ person, userId, firebaseUid })

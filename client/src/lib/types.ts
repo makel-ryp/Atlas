@@ -79,3 +79,15 @@ export interface Student {
   // this coach), [] means approved with nothing recorded yet. The UI must not render them the same.
   handicapTrend: { handicapIndex: string; recordedAt: string }[] | null
 }
+
+// The shape of GET /api/coach/students/:userId/notes. Which notes come back is entirely an RLS
+// decision (see server/routes/notes.ts) — this type only describes what a visible row looks like.
+export interface CoachingNote {
+  id: string
+  subjectUserId: string
+  authorUserId: string
+  authorDisplayName: string | null
+  body: string
+  visibility: 'coaching_team' | 'private' | 'shared'
+  createdAt: string
+}
