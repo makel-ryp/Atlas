@@ -2,44 +2,94 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Plain CSS, not @apply. The prototype visual treatment is Luke's to port (sprint plan §5), so
-   anything elaborate written here is work that gets thrown away. This is legibility only:
-   readable type, aligned values, and a clear difference between a real value and "not set". */
+/**
+ * Atlas — Luke's design system, applied to the screens that actually work.
+ *
+ * Every token below is lifted from `Brand Guide.dc.html` rather than approximated: the palette hexes
+ * and the three typefaces are his. What is deliberately NOT done here is porting his SCREENS — the
+ * coach dashboard, the build ladder, the index charts all read data that has no tables yet, so
+ * building them would be fiction. This is the visual language over real records.
+ *
+ * ⚠️ One known limit, from the gap report: the Brand Guide mandates one accent and "never green",
+ * which cannot express a data-viz ramp — and his dashboard is almost entirely data visualisation.
+ * The two semantic colours below (--ok, --warn) are therefore a deliberate, minimal extension, used
+ * only for state (approved vs awaiting), never decoratively. A sanctioned ramp is a real decision
+ * still outstanding.
+ */
 @layer components {
+  :root {
+    --ink: #13110b; /* the ground — warm near-black, not grey */
+    --surface: #1a222e; /* raised cards */
+    --surface-2: #212a35; /* nested / hover */
+    --line: #2a3441;
+    --paper: #ece7db; /* primary text — warm off-white, never pure white */
+    --paper-bright: #f2ede1;
+    --muted: #8d99a8;
+    --muted-2: #aab4c2;
+    --gold: #c8a05e; /* THE accent. One. */
+    --blue: #7fa8c9;
+    --ok: #7fae8e;
+    --warn: #c8a05e;
+
+    --sans: 'Archivo', system-ui, -apple-system, sans-serif;
+    --serif: 'Newsreader', Georgia, serif;
+    --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  }
+
   body {
-    background: #0f1115;
-    color: #e8eaed;
-    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, sans-serif;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
   }
 
   .shell,
-  .auth-shell {
-    max-width: 46rem;
+  .auth-shell,
+  .admin-shell {
+    max-width: 54rem;
     margin: 0 auto;
-    padding: 2.5rem 1.5rem 4rem;
+    padding: 3rem 1.5rem 5rem;
   }
   .auth-shell {
-    max-width: 22rem;
-    padding-top: 6rem;
+    max-width: 23rem;
+    padding-top: 7rem;
   }
 
+  /* Big and heavy, the way his hero numbers are set. */
   h1 {
-    font-size: 1.5rem;
-    font-weight: 650;
-    letter-spacing: -0.01em;
+    font-family: var(--sans);
+    font-weight: 800;
+    font-size: 1.75rem;
+    letter-spacing: -0.02em;
+    color: var(--paper-bright);
+    margin: 0;
   }
+
+  /* The signature: mono, uppercase, wide tracking, muted. Every section label in his work. */
   h2 {
-    font-size: 0.75rem;
-    font-weight: 600;
+    font-family: var(--mono);
+    font-weight: 500;
+    font-size: 0.6875rem;
+    letter-spacing: 0.2em;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #8b93a1;
-    margin-bottom: 0.6rem;
+    color: var(--muted);
+    margin: 0 0 0.9rem;
   }
+
   section {
-    margin-top: 2rem;
-    border-top: 1px solid #23262e;
-    padding-top: 1.25rem;
+    margin-top: 2.25rem;
+    border-top: 1px solid var(--line);
+    padding-top: 1.4rem;
+  }
+
+  /* Prose is serif. This is most of what makes it read like his brand rather than an admin tool. */
+  p {
+    font-family: var(--serif);
+    font-size: 1rem;
+    line-height: 1.55;
+    color: var(--muted-2);
   }
 
   .row {
@@ -49,308 +99,259 @@
     gap: 1rem;
   }
   .muted {
-    color: #8b93a1;
+    color: var(--muted);
   }
   .error {
-    color: #ff8a80;
+    color: #d98b7a;
+    font-family: var(--serif);
   }
-  .mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.85em;
+  .mono,
+  .small.mono {
+    font-family: var(--mono);
+    font-size: 0.8125rem;
+    letter-spacing: 0.02em;
+  }
+  .small {
+    font-size: 0.875rem;
+    margin: 0.35rem 0 0;
+  }
+  .withheld {
+    font-style: italic;
+    color: var(--muted);
   }
 
-  /* Two columns so a column of labels and a column of values line up, which is what makes a
-     missing value obvious at a glance. */
+  /* Label in mono, value in Archivo — the pairing his player file uses throughout. */
   dl {
     display: grid;
-    grid-template-columns: 11rem 1fr;
-    gap: 0.4rem 1rem;
+    grid-template-columns: 12rem 1fr;
+    gap: 0.55rem 1.25rem;
+    align-items: baseline;
   }
   dt {
-    color: #8b93a1;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
   }
   dd {
     margin: 0;
+    font-weight: 500;
+    color: var(--paper-bright);
   }
 
-  ul.roles {
+  ul.roles,
+  .chips {
     list-style: none;
     padding: 0;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-  ul.roles li {
-    border: 1px solid #2c313b;
-    border-radius: 999px;
-    padding: 0.2rem 0.7rem;
-  }
-
-  form {
-    display: grid;
-    gap: 0.9rem;
-    margin-top: 1.5rem;
-  }
-  /* Two columns on the edit form so it does not become a tall single file of inputs. */
-  form.edit {
-    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-    align-items: end;
-  }
-  form.edit .row {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
-    align-items: center;
-    gap: 0.75rem;
-  }
-  form.edit p {
-    grid-column: 1 / -1;
+    gap: 0.45rem;
     margin: 0;
   }
-
-  select {
-    background: #171a21;
-    border: 1px solid #2c313b;
-    border-radius: 6px;
-    padding: 0.55rem 0.7rem;
-    color: #e8eaed;
-    font: inherit;
-  }
-
-  button.link {
-    background: none;
-    border: 0;
-    padding: 0;
-    color: #7aa7ff;
-    font-weight: 500;
-  }
-
-  ul.students {
-    list-style: none;
-    padding: 0;
-    display: grid;
-    gap: 0.75rem;
-  }
-  ul.students li {
-    border: 1px solid #23262e;
-    border-radius: 8px;
-    padding: 0.75rem 0.9rem;
-  }
-  .small {
-    font-size: 0.9em;
-    margin: 0.3rem 0 0;
-  }
-  /* Withheld is deliberately not styled as an error — nothing is wrong, the coach simply is not
-     cleared for it yet. */
-  .withheld {
-    font-style: italic;
-  }
-  .tag {
-    font-size: 0.75em;
+  ul.roles li,
+  .chip {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    border: 1px solid #2c5f3a;
-    color: #7fd39b;
+    border: 1px solid var(--line);
     border-radius: 999px;
-    padding: 0.15rem 0.55rem;
+    padding: 0.28rem 0.7rem;
+    color: var(--muted-2);
+  }
+  .chip.revoked {
+    text-decoration: line-through;
+    opacity: 0.5;
+  }
+  .chip.org {
+    border-color: rgba(200, 160, 94, 0.4);
+    color: var(--gold);
+  }
+
+  /* State, not decoration — the only place a second hue is allowed. */
+  .tag {
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    border: 1px solid rgba(127, 174, 142, 0.45);
+    color: var(--ok);
+    border-radius: 999px;
+    padding: 0.22rem 0.65rem;
     white-space: nowrap;
   }
   .tag.pending {
-    border-color: #6b5a2c;
-    color: #e0c072;
-  }
-  label {
-    display: grid;
-    gap: 0.3rem;
-    color: #8b93a1;
-  }
-  input {
-    background: #171a21;
-    border: 1px solid #2c313b;
-    border-radius: 6px;
-    padding: 0.55rem 0.7rem;
-    color: #e8eaed;
-    font: inherit;
-  }
-  input:focus-visible {
-    outline: 2px solid #4c8dff;
-    outline-offset: 1px;
-  }
-  button {
-    background: #2a67d4;
-    border: 0;
-    border-radius: 6px;
-    padding: 0.55rem 1rem;
-    color: #fff;
-    font: inherit;
-    font-weight: 550;
-    cursor: pointer;
-  }
-  button:disabled {
-    opacity: 0.6;
-    cursor: default;
+    border-color: rgba(200, 160, 94, 0.45);
+    color: var(--warn);
   }
 
-  /* Tab switch lives outside .shell's max-width so it reads as chrome above the page, not a
-     section of whichever page is showing. */
-  nav.tabs {
-    display: flex;
-    gap: 0.5rem;
-    max-width: 46rem;
-    margin: 2rem auto 0;
-    padding: 0 1.5rem;
-  }
-  nav.tabs button {
-    background: none;
-    color: #8b93a1;
-    border: 1px solid #2c313b;
-    border-radius: 999px;
-  }
-  nav.tabs button.active {
-    background: #2a67d4;
-    color: #fff;
-    border-color: #2a67d4;
-  }
-  .admin-shell {
-    max-width: 56rem;
-  }
-
-  /* A single-line search or create form, distinct from the stacked .edit form used elsewhere. */
-  form.inline {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 0.75rem;
-  }
-  form.inline input {
-    flex: 1;
-  }
-
+  ul.students,
   ul.admin-users,
-  ul.admin-orgs {
-    list-style: none;
-    padding: 0;
-    display: grid;
-    gap: 0.9rem;
-    margin-top: 1rem;
-  }
-  ul.admin-users li,
-  ul.admin-orgs li.org-card {
-    border: 1px solid #23262e;
-    border-radius: 8px;
-    padding: 0.85rem 1rem;
-  }
-
-  .chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    margin: 0.6rem 0;
-  }
-  .chip {
-    font-size: 0.8em;
-    border: 1px solid #2c313b;
-    border-radius: 999px;
-    padding: 0.15rem 0.6rem;
-  }
-  /* Struck through, not hidden — soft-deleted access is still access an admin should be able to
-     see happened, which is the whole point of recording a revoke instead of deleting the row. */
-  .chip.revoked {
-    text-decoration: line-through;
-    color: #8b93a1;
-  }
-  .chip.org {
-    border-color: #2c5f3a;
-    color: #7fd39b;
-  }
-
-  .grant-role,
-  .assign-member {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.6rem;
-  }
-  .grant-role input,
-  .assign-member input {
-    flex: 1;
-    min-width: 10rem;
-  }
-  .assign-member select:first-child {
-    min-width: 12rem;
-  }
-
+  ul.admin-orgs,
+  ul.note-list,
   ul.org-members {
     list-style: none;
     padding: 0;
-    margin: 0.6rem 0;
     display: grid;
-    gap: 0.3rem;
+    gap: 0.7rem;
+    margin: 0;
+  }
+  ul.students li,
+  ul.admin-users li,
+  ul.admin-orgs li,
+  ul.note-list li {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px; /* his cards are 12px */
+    padding: 0.9rem 1.05rem;
   }
   ul.org-members li {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 0.9em;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+  ul.org-members li:last-child {
+    border-bottom: 0;
+  }
+
+  form {
+    display: grid;
+    gap: 0.85rem;
+    margin-top: 1.5rem;
+  }
+  form.edit {
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    align-items: end;
+  }
+  form.edit .row,
+  form.edit p {
+    grid-column: 1 / -1;
+  }
+  form.edit .row {
+    justify-content: flex-start;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  form.inline,
+  .grant-role,
+  .assign-member,
+  .note-compose {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.7rem;
+  }
+  .note-compose {
+    align-items: flex-end;
+  }
+
+  label {
+    display: grid;
+    gap: 0.3rem;
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  input,
+  select,
+  textarea {
+    background: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.55rem 0.7rem;
+    color: var(--paper);
+    font-family: var(--sans);
+    font-size: 0.9375rem;
+  }
+  textarea {
+    font-family: var(--serif);
+    min-height: 4.5rem;
+    resize: vertical;
+    flex: 1 1 18rem;
+  }
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 1px solid var(--gold);
+    outline-offset: 1px;
+    border-color: var(--gold);
+  }
+
+  /* Gold, mono, uppercase — his primary action treatment. */
+  button {
+    background: var(--gold);
+    border: 0;
+    border-radius: 999px;
+    padding: 0.6rem 1.3rem;
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  button.link {
+    background: none;
+    padding: 0;
+    color: var(--gold);
+    letter-spacing: 0.12em;
+  }
+
+  nav.tabs {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    padding: 1.75rem 0 0;
+  }
+  nav.tabs button {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--line);
+  }
+  nav.tabs button.active {
+    background: var(--paper-bright);
+    color: var(--ink);
+    border-color: var(--paper-bright);
   }
 
   table.audit {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 1rem;
-    font-size: 0.9em;
+    font-size: 0.8125rem;
   }
   table.audit th {
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
     text-align: left;
-    color: #8b93a1;
+    padding: 0.4rem 0.6rem 0.4rem 0;
+    border-bottom: 1px solid var(--line);
     font-weight: 500;
-    border-bottom: 1px solid #2c313b;
-    padding: 0.4rem 0.6rem;
   }
   table.audit td {
-    padding: 0.4rem 0.6rem;
-    border-bottom: 1px solid #1a1d24;
+    padding: 0.5rem 0.6rem 0.5rem 0;
+    border-bottom: 1px solid rgba(42, 52, 65, 0.5);
+    color: var(--muted-2);
     vertical-align: top;
   }
 
-  /* Notes area on a roster card. .notes-panel sits directly under the "Notes (n)" toggle, so
-     it reads as an expansion of that card rather than a new section. */
-  .notes {
-    margin-top: 0.6rem;
-  }
   .notes-panel {
-    margin-top: 0.5rem;
-    display: grid;
-    gap: 0.6rem;
-  }
-  ul.note-list {
-    list-style: none;
-    padding: 0;
-    display: grid;
-    gap: 0.5rem;
-  }
-  ul.note-list li {
-    border: 1px solid #1a1d24;
-    border-radius: 6px;
-    padding: 0.5rem 0.6rem;
-  }
-  textarea {
-    background: #171a21;
-    border: 1px solid #2c313b;
-    border-radius: 6px;
-    padding: 0.55rem 0.7rem;
-    color: #e8eaed;
-    font: inherit;
-    resize: vertical;
-  }
-  textarea:focus-visible {
-    outline: 2px solid #4c8dff;
-    outline-offset: 1px;
-  }
-  .note-compose {
-    display: grid;
-    gap: 0.5rem;
-  }
-  .note-compose .row {
-    justify-content: flex-start;
+    margin-top: 0.7rem;
+    padding-top: 0.7rem;
+    border-top: 1px solid var(--line);
   }
 }
