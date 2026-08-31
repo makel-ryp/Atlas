@@ -32,6 +32,9 @@ export default defineConfig(({ mode }) => {
       // /api returns another app's 404 (or, worse, its data) instead of failing loudly.
       proxy: {
         '/api': `http://localhost:${env.PORT || '5000'}`,
+        // Luke's prototype is served BY Express (see server/routes/proto.ts), not by vite, because
+        // the injection happens server-side and the auth is a session cookie.
+        '/proto': `http://localhost:${env.PORT || '5000'}`,
       },
     },
   }

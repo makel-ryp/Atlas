@@ -4,6 +4,7 @@ import path from 'path'
 import { plansRouter } from './routes/plans'
 import { meRouter } from './routes/me'
 import { coachRouter } from './routes/coach'
+import { protoRouter } from './routes/proto'
 import { adminRouter } from './routes/admin'
 import { notesRouter } from './routes/notes'
 
@@ -20,6 +21,8 @@ app.get('/health', (_req, res) => {
 app.use('/api', plansRouter)
 app.use('/api', meRouter)
 app.use('/api', coachRouter)
+// Mounted at the ROOT, not under /api: it serves pages a browser navigates to, and /api 404s as JSON.
+app.use('/', protoRouter)
 app.use('/api', adminRouter)
 app.use('/api', notesRouter)
 
