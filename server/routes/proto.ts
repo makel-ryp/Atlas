@@ -1,7 +1,6 @@
-import express, { Router, type RequestHandler } from 'express'
+import { Router, type RequestHandler } from 'express'
 import fs from 'fs/promises'
 import path from 'path'
-import { and, asc, eq, inArray } from 'drizzle-orm'
 import {
   verifySessionCookieMiddleware,
   createSessionCookie,
@@ -10,40 +9,53 @@ import {
   attachUser,
   requireApp,
 } from '@ryp/eco/auth'
-import { withRls } from '@ryp/eco/db'
-import { users, userRelationships, orgMemberships, golfPlayerProfile } from '@ryp/eco/schema'
 import { pool } from '../db'
 import { ensureAtlasAccess } from '../ensureAtlasAccess'
+import { buildAtlasData, NoAtlasRecordError } from '../protoData'
 
 /**
  * Serves Luke's WORKING prototype with real data injected, rather than reimplementing his screens.
  *
- * The design is already built and it works — his `.dc.html` files render through `support.js`. So the
- * cheaper and more faithful move is to serve HIS file and substitute the hardcoded literals on the
- * way out, leaving the file untouched on disk. His layout stays the source of truth; we supply the
- * rows.
+ * The design is already built and it works — his `.dc.html` renders through `support.js`. So the
+ * cheaper and more faithful move is to serve HIS file and give it one declared place to read data
+ * from. His layout stays the source of truth; we supply the rows.
  *
- * ── Why this needs a session COOKIE and not a Bearer token ─────────────────────────────────────
+ * ── ONE INJECTION POINT, not string substitution ────────────────────────────────────────────────
+ * `injectRoster()` used to live here: it regex-rewrote keys inside his `ROSTER` literal in memory.
+ * It is GONE, deliberately and completely, and should not come back in any form.
+ *
+ * It failed in the way that matters. Overrides were emitted BEFORE his own keys, so on duplicate
+ * keys HIS value won, and a real student rendered carrying another player's handicap — a page that
+ * looks live and is not. It also only ever patched five of his ~20 fields, which meant real names
+ * and real handicaps sat on top of fictional shot-reads, strokes-gained series, zones and tiers,
+ * held together by nothing but a disclosure banner. Disclosed is not prevented.
+ *
+ * Now: the working copy at `proto/Dashboard.dc.html` has its literal STRIPPED to
+ * `const ROSTER = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.roster) || []`, and this route
+ * injects `window.__ATLAS_DATA__` as one <script> before his own first <script>. A field with no
+ * producer arrives EMPTY. Empty renders as empty; it never renders as somebody else's number.
+ *
+ * ── Why this needs a session COOKIE and not a Bearer token ──────────────────────────────────────
  * Every other authed route here is called by fetch(), which can set an Authorization header. A
  * browser navigating to a page cannot. eco has carried `createSessionCookie` and
- * `verifySessionCookieMiddleware` since the beginning for exactly this case and nothing had used
- * them; this is the first consumer.
- *
- * ── What is real and what is not ───────────────────────────────────────────────────────────────
- * His ROSTER row has ~20 fields. We have producers for five of them. The injection therefore MERGES:
- * identity, handicap, carry and handedness come from `ryp-core`; the shot reads, strokes-gained
- * series, zone and tier keep his sample values because Forge and Red do not write them yet.
- *
- * That mix is only acceptable because the page says so — see `injectBanner`. A screen that silently
- * blends live and sample data is the exact failure the demo plan calls its top risk.
+ * `verifySessionCookieMiddleware` since the beginning for exactly this case; this is the first
+ * consumer.
  */
-const PROTO_DIR = path.resolve(
-  process.env.HOME ?? '',
-  'Desktop/ATR/websites/atlas/handoff/Golf coaching website project',
-)
+
+/**
+ * ⚠️ The VENDORED WORKING COPY — `~/dev/ATR/atlas/proto`, in this repo, git-tracked.
+ *
+ * This used to point at `~/Desktop/ATR/websites/atlas/handoff/...`, the pristine handoff copy, whose
+ * `ROSTER` literal is NOT stripped. So the route served the unmodified sample file and the strip in
+ * the working copy was dead code that no request ever reached. That single path was the reason eight
+ * fictional students rendered for a real logged-in coach.
+ *
+ * `import.meta.dirname`, not `__dirname`: this is ESM running from source, where `__dirname` is
+ * undefined. Same reason as `server/index.ts`.
+ */
+const PROTO_DIR = path.resolve(import.meta.dirname, '..', '..', 'proto')
 
 export const protoRouter = Router()
-
 
 // Bearer-authed: the SPA calls this after Firebase sign-in to get a cookie the browser will send on
 // a plain navigation. 8 hours — long enough for a meeting, short enough not to be a standing key.
@@ -81,13 +93,41 @@ protoRouter.post('/api/session/end', (_req, res) => {
   res.json({ ok: true })
 })
 
-const schema = { users, userRelationships, orgMemberships, golfPlayerProfile }
+/**
+ * The single <script> that carries every real value into his page.
+ *
+ * Injected immediately BEFORE his first `<script>` (`<script src="./support.js">`, line 6) rather
+ * than after `<body>`: his framework and his own inline script both run from the head, and
+ * `window.__ATLAS_DATA__` has to exist before either does. After `<body>` would be too late.
+ *
+ * ⚠️ `</` is escaped. `displayName` and `email` are user-controlled strings, and a `</script>` in
+ * either would close this tag early and put the rest of the payload into the document as markup.
+ * `<` inside a JSON string literal is the same character to the JS parser and inert to the HTML
+ * tokenizer.
+ */
+function injectData(html: string, data: unknown): string {
+  const payload = JSON.stringify(data).replace(/</g, '\\u003c')
+  // `window.` explicitly: his file reads `window.__ATLAS_DATA__`, and a bare `const` in a classic
+  // script would not be found as a window property.
+  const tag = `<script>window.__ATLAS_DATA__ = ${payload};</script>\n`
+  const first = html.indexOf('<script')
+  // No first <script> means the file is not the file we think it is. Fail loudly rather than serving
+  // a page with no data and no explanation — silent-empty is indistinguishable from a real empty.
+  if (first === -1) throw new Error('proto: no <script> tag found — cannot inject __ATLAS_DATA__')
+  return html.slice(0, first) + tag + html.slice(first)
+}
 
-// A banner, injected rather than added to Luke's file, saying which numbers are live. Not optional:
-// this page mixes real records with his sample values, and an unlabelled mix is worse than either.
+/**
+ * A banner naming what is live and what is EMPTY. It no longer says "sample", because there is no
+ * longer any sample data in the served page — that is the whole point of the change above, and a
+ * banner that still claimed a sample/live mix would be the same lie in the other direction.
+ *
+ * Kept as an injection rather than added to his file: it is a statement about the data pipeline, not
+ * part of his design, and it should disappear the day nothing on the page is empty.
+ */
 function injectBanner(html: string, liveCount: number): string {
   const banner = `<div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#c8a05e;color:#13110b;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;padding:7px 14px;text-align:center;">
-Live from ryp-core: ${liveCount} student${liveCount === 1 ? '' : 's'}, names · handicaps · carry · coaching relationships &nbsp;·&nbsp; Sample: shot reads, strokes gained, zone, tier &mdash; Forge and Red do not write these yet
+Live from ryp-core: ${liveCount} student${liveCount === 1 ? '' : 's'} &mdash; name · handicap index · driver carry · handedness (where recorded) · coaching relationship &nbsp;·&nbsp; Empty, no producer app: strokes gained, strike grid, shot reads, coach notes, tier, zone, target, practice log, intake answers. Blank means not measured, not zero.
 </div><div style="height:29px"></div>`
   return html.replace(/<body([^>]*)>/i, `<body$1>${banner}`)
 }
@@ -97,115 +137,51 @@ protoRouter.get('/proto/dashboard', verifySessionCookieMiddleware, async (req, r
     const firebaseUid = (req as any).firebaseUid as string
     const file = await fs.readFile(path.join(PROTO_DIR, 'Dashboard.dc.html'), 'utf8')
 
-    const me = await withRls(
-      pool,
-      { userId: '00000000-0000-0000-0000-000000000000', firebaseUid, app: 'atlas' },
-      schema,
-      (db) => db.query.users.findFirst({ where: eq(users.firebaseUid, firebaseUid) }),
-    ).catch(() => null)
-    if (!me) {
-      res.status(403).send('No Atlas record for this account.')
-      return
+    let data
+    try {
+      data = await buildAtlasData(firebaseUid)
+    } catch (err) {
+      // A Firebase account with no `public.users` row is an authorization answer, not a server
+      // fault. Left to the global error handler it would come back as a 500 JSON body in a
+      // navigated browser tab, which tells the reader nothing.
+      if (err instanceof NoAtlasRecordError) {
+        res.status(403).type('text').send('No Atlas record for this account.')
+        return
+      }
+      throw err
     }
 
-    // The coach's real students, by the same two paths the roster API uses. RLS does the filtering.
-    const rows = await withRls(
-      pool,
-      { userId: me.id, firebaseUid, app: 'atlas' },
-      schema,
-      async (db) => {
-        const edges = await db
-          .select({ subjectUserId: userRelationships.subjectUserId, status: userRelationships.status })
-          .from(userRelationships)
-          .where(
-            and(
-              eq(userRelationships.actorUserId, me.id),
-              eq(userRelationships.relationship, 'coach_of'),
-            ),
-          )
-        const ids = edges.map((e) => e.subjectUserId)
-        if (ids.length === 0) return []
-        const [people, profiles] = await Promise.all([
-          db
-            .select({ id: users.id, displayName: users.displayName, email: users.email })
-            .from(users)
-            .where(inArray(users.id, ids)),
-          db
-            .select({
-              userId: golfPlayerProfile.userId,
-              handicapIndex: golfPlayerProfile.handicapIndex,
-              driverCarryYds: golfPlayerProfile.driverCarryYds,
-              handedness: golfPlayerProfile.handedness,
-            })
-            .from(golfPlayerProfile)
-            .where(inArray(golfPlayerProfile.userId, ids))
-            .orderBy(asc(golfPlayerProfile.userId)),
-        ])
-        const profBy = new Map(profiles.map((p) => [p.userId, p]))
-        return people.map((p) => ({
-          person: p,
-          profile: profBy.get(p.id) ?? null,
-          status: edges.find((e) => e.subjectUserId === p.id)?.status ?? 'active',
-        }))
-      },
-    )
-
-    const injected = injectRoster(file, rows)
-    res.type('html').send(injectBanner(injected, rows.length))
+    res.type('html').send(injectBanner(injectData(file, data), data.roster.length))
   } catch (err) {
     next(err)
   }
 })
 
 /**
- * Rewrites the first N rows of Luke's `ROSTER` literal with real people, keeping his field shape.
+ * The ONE static asset his page pulls in: `<script src="./support.js">`, which resolves to
+ * `/proto/support.js`. Checked — that is the only local `src`/`href` in the file; everything else is
+ * a Google Fonts URL or a runtime-templated link.
  *
- * MERGE, not replace: his row carries ~20 fields and we produce five. Overwriting the whole row with
- * nulls would blank half his UI and make the design look broken rather than incomplete, so his sample
- * values stay for anything without a producer — and the banner says which is which.
+ * ⚠️ AN ALLOWLIST, NOT `express.static(PROTO_DIR)`. The static-directory version was written first
+ * and was wrong twice over, both verified against the running server rather than reasoned about:
  *
- * Operates on the text of the literal because his file is the artifact; parsing and regenerating it
- * would mean owning a copy, which is the thing this route exists to avoid.
+ *   1. A `.dc.html` → 404 filter in front of it was BYPASSABLE. Express does not percent-decode
+ *      `req.path` but `express.static` does resolve the encoded form, so `/proto/Dashboard.dc.html`
+ *      404'd while `/proto/Dashboard%2Edc%2Ehtml` returned 200 — the raw stripped file, with no
+ *      injected blob and no banner, so every screen silently empty, to anyone with the URL and no
+ *      session. Exactly the failure the filter was there to prevent.
+ *   2. It served the whole directory unauthenticated. `/proto/README.md` returned 200: internal
+ *      notes on what is and is not wired up, with absolute paths to the pipeline documents.
+ *
+ * With no directory handler, the raw file and every encoded spelling of it 404 by construction
+ * rather than by a regex someone has to keep correct. The only way in is `/proto/dashboard`.
+ *
+ * Left unauthenticated deliberately: it is Luke's framework, it carries no data, and the page tag
+ * that loads it is a plain browser fetch. Everything that carries a real number goes through
+ * `verifySessionCookieMiddleware` above.
  */
-function injectRoster(
-  html: string,
-  rows: { person: { id: string; displayName: string | null; email: string }; profile: { handicapIndex: string | null; driverCarryYds: number | null; handedness: string | null } | null; status: string }[],
-): string {
-  if (rows.length === 0) return html
-  const open = html.indexOf('const ROSTER = [')
-  if (open === -1) return html
-  const close = html.indexOf('\n];', open)
-  if (close === -1) return html
-
-  const literal = html.slice(open, close)
-  // Row boundaries are `{ id: '...'` — his shape throughout.
-  const parts = literal.split(/(?=\{ id: ')/)
-  let used = 0
-
-  const rewritten = parts
-    .map((part) => {
-      if (used >= rows.length || !part.startsWith("{ id: '")) return part
-      const r = rows[used++]!
-      const name = (r.person.displayName ?? r.person.email).replace(/'/g, "\\'")
-      const hcp = r.profile?.handicapIndex ? Number(r.profile.handicapIndex) : null
-      const carry = r.profile?.driverCarryYds
-      const hand = r.profile?.handedness === 'left' ? 'Left-handed' : 'Right-handed'
-
-      // ⚠️ REPLACE each key IN PLACE. An earlier version appended overrides after `n:` and relied on
-      // "later duplicate keys win" — but his `hcp` comes AFTER the name, so HIS value won and the
-      // page showed a real student carrying a sample handicap. A real name beside a fake number is
-      // worse than no injection at all: it looks live and is not.
-      let out = part.replace(/n: '[^']*'/, `n: '${name}'`)
-      if (hcp !== null) out = out.replace(/\bhcp: -?[\d.]+/, `hcp: ${hcp}`)
-      if (carry) out = out.replace(/carry: '[^']*'/, `carry: '${carry} yd driver carry'`)
-      out = out.replace(/hand: '[^']*'/, `hand: '${hand}'`)
-      out = out.replace(
-        /intake: '[^']*'/,
-        `intake: '${r.status === 'active' ? 'Live from ryp-core — approved' : 'Live from ryp-core — awaiting approval'}'`,
-      )
-      return out
-    })
-    .join('')
-
-  return html.slice(0, open) + rewritten + html.slice(close)
-}
+protoRouter.get('/proto/support.js', (_req, res, next) => {
+  res.type('application/javascript').sendFile(path.join(PROTO_DIR, 'support.js'), (err) => {
+    if (err) next(err)
+  })
+})

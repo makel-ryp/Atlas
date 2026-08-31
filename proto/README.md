@@ -32,3 +32,89 @@ original}`. A screen with no data should look empty, because the alternative is 
 live and isn't — and that is the failure mode this whole approach exists to avoid.
 
 `support.js` is his framework, unmodified and not ours to change.
+
+---
+
+## State as of 2026-08-31 — ROSTER is live, and nothing else is
+
+`ROSTER` is the only literal stripped so far. It is fed end to end: `/proto/dashboard` reads the
+signed-in coach's students through `withRls` on the ordinary pool (no bypass) and injects them.
+
+**Live in the served page** — name, handicap index, driver carry, handedness *where recorded*, and
+the coaching-relationship status line. That is five fields of his ~20-field roster row.
+
+**Empty, because no producing app exists** — `sg`, `grid`, `read`, `note`, `tone`, `leak` (Forge, not
+shipped); `tier`, `zone`, `target`, `days`, `answer`, `est`, `file.*` (no table); `hist` (the table
+exists, but nothing has ever written a historical row). 44 of the 81 metrics these screens display
+are Forge's. **Most of this page going quiet is the correct outcome, not a regression.**
+
+Two things were also fixed here and are worth knowing about:
+
+- `data-props`' `playerName` default was a sample name, and `support.js` hydrates `this.props` from
+  that JSON default — so the inline `?? 'sample'` fallback was dead code and the sample name was
+  *always* what a served page showed. It now reads `__ATLAS_DATA__.me.name`.
+- The Intake form pre-filled a new player's six handicap-lookback fields from `ROSTER[0]` — an
+  arbitrary *other real student* — and persisted all six into that player's own state on the first
+  edit. Same cross-player contamination the rule above is about, already in the code. Now `{}`.
+
+## Empty-value guards, and why they were unavoidable
+
+His render calls `.toFixed(1)` and `.split()` on roster fields unconditionally, and `rosterVals()`,
+`profileVals()` and `intakeVals()` are all spread into the single `vals()` return on **every** render
+regardless of the current view. So a single field arriving empty threw a `TypeError` and blanked the
+entire document on every screen. Empty was not a survivable state.
+
+The choice was: fabricate a value (`sg: [0,0,0,0,0]` renders "+0.0 · flat across five reads" — a
+strokes-gained claim about reads that do not exist), or guard. Guarding strips no literal and adds no
+data. Every guard renders `'—'` or drops the phrase; **none substitutes a number.** They carry
+`GUARDED:` comments so `git log -p proto/` still reads as the full account.
+
+The worst of the un-guarded outcomes, for the record: `target: null` reached
+`t <= 0 ? ... '+' + Math.abs(t)`, and `null <= 0` is `true` in JS with `Math.abs(null) === 0` — so a
+real student's target handicap printed as **`+0`**, a fabricated plus-handicap of scratch,
+indistinguishable from a real figure. Not a crash, which is why it needed looking for.
+
+Also honest now: `pfTestStatus` was hardcoded to "Ten shots filmed · read complete" for every
+non-self player, so opening any real student asserted a coaching read that does not exist. It now
+asks whether `read` has anything in it, which switches on the empty state his own code already had.
+
+## Known, unfixed, and deliberately so
+
+- **The `self` / own-file branch is unreachable.** `profileVals` decides "is this me?" with
+  `who.id === 'hale'`, a sample slug no real uuid can match, and `profileOf` defaults to it. A coach
+  opening the profile screen therefore lands on `ROSTER[0]` — real data under the right name, but an
+  arbitrary student. Wiring this needs a product decision about what "self" means here (see
+  `~/Desktop/ATR/pipeline/05-contract-roster.md` §4); guessing is how the wrong player becomes "you".
+- **The `self` branches still contain sample literals** (`'265 yd driver carry'`, `11.4`,
+  `'Day 41 of 90'`). Unreachable today, per the above. They must go when `self` becomes reachable.
+- **`grid: []` renders zero strike-map cells**, so the 3×3 box collapses rather than showing nine
+  visibly-empty cells. Empty, not wrong — a layout gap, not a data lie.
+- **`/proto/support.js` is an allowlisted single route, not `express.static(PROTO_DIR)`.** Do not
+  turn it back into a directory mount. Measured against the running server: a `.dc.html` → 404 filter
+  in front of a static mount is bypassable — Express does not percent-decode `req.path` but
+  `express.static` resolves the decoded form, so `/proto/Dashboard%2Edc%2Ehtml` returned **200**, the
+  raw stripped file with no blob and no banner, to anyone with the URL and no session. The mount also
+  served this README (200) to the public internet. `support.js` is the only local asset his page
+  loads, so an allowlist costs nothing and makes both holes unreachable by construction.
+
+## Two more guards, added after the above
+
+- **Roster row `tier · zone` line.** The markup joined `p.tier` and `p.zone` with a literal `' · '`;
+  a student with no tier or no zone assigned yet showed bare punctuation (`' · '`, or `'Zone '` with
+  nothing after it). `rosterRows` now pre-joins into a single `meta` field
+  (`[p.tier, p.zone ? 'Zone ' + p.zone : ''].filter(Boolean).join(' · ')`), same idiom as `pfMeta`
+  above it, and the markup binds to that one field instead of two.
+- **Intake NA toggle conflated "never answered" with "marked not playing."** `inHist` computed one
+  `na` boolean from `v === null || v === undefined`, so a brand-new player's untouched form opened
+  already asserting `naLabel: 'Not playing'` for all six lookback periods — the toggle-button text
+  claimed a decision the player hadn't made. `null` (set only by clicking the toggle) and
+  `undefined` (nothing typed yet) are now distinguished: `naLabel` reads `'Not playing'` only for
+  the explicit `null`, `'Mark NA'` (an invitation, not a claim) for the untouched blank.
+
+## Verifying it
+
+Sign in as the demo coach, POST `/api/session`, GET `/proto/dashboard` with the cookie. Grep alone is
+not enough — it passes while the page throws on first paint. Extract the injected blob and run his
+*actual* inline script against it (`class Component` in a `vm` context with `DCLogic` stubbed), then
+call `rosterVals()`, `profileVals()` and `intakeVals()`, and assert no output string contains
+`undefined`, `NaN`, `nulld` or `+0`. Repeat with `{ roster: [] }` for the coach-with-no-students case.

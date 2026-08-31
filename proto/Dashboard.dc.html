@@ -497,7 +497,10 @@
                 <span style="font-family:'Newsreader',serif; font-size:19px; color:#ece7db;">{{ p.name }}</span>
                 <span style="display: {{ p.flagShow }}; font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.16em; text-transform:uppercase; color:#d9885e; border:1px solid rgba(217,136,94,0.4); padding:3px 8px; border-radius:999px;">Call</span>
               </span>
-              <span style="display:block; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f; margin-top:4px;">{{ p.tier }} · {{ p.zone }}</span>
+              <!-- GUARDED: was two bindings joined by a literal ' · '; an empty tier or zone (no
+              plan/zone assigned yet) rendered as bare punctuation with nothing on one side. p.meta
+              is pre-joined below, dropping whichever half is absent. -->
+              <span style="display:block; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f; margin-top:4px;">{{ p.meta }}</span>
             </span>
             <span style="flex:0 0 76px;">
               <span style="display:block; font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f; margin-bottom:4px;">Hcp</span>
@@ -2138,7 +2141,7 @@
 </div>
 
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;playerName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Marcus Hale&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;playerName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
 const GOLD = '#c8a05e', BLUE = '#7fa8c9', GREEN = BLUE, CREAM = '#ece7db';
 // The session is four domains, each holding its own drills. Putting carries two
 // because make rate and stroke quality are separate questions.
@@ -2530,152 +2533,42 @@ const DONE = ['1-1a', '1-1b', '1-2', '1-3', '2-F1', '2-F2', '2-F3', '2-P1', '2-P
 // The roster is the coach's whole book. Each player carries their own intake
 // file, so the profile page is one player's row opened up rather than a
 // separate document. `sg` is the last five composite reads, oldest first.
-const ROSTER = [
-  { id: 'hale', n: 'Marcus Hale', tier: 'Builder', zone: '01', hcp: 11.4, target: 5, days: 0, leak: 'Approach',
-    hand: 'Right-handed', carry: '265 yd driver carry', intake: 'Intake filmed 24 July 2026 · Dr. Benoit',
-    sg: [-3.4, -2.9, -2.2, -1.6, -1.2],
-    hist: { m3: 11.4, m6: 12.1, y1: 13.6, y3: 16.2, y5: 19.0, y10: null },
-    read: { path: '4.2° in-to-out', face: '1.1° closed to path', contact: 'Toe-high bias', lowpoint: '1.5 in behind' },
-    note: { path: 'Consistent, but right of neutral', face: 'Matched — the draw is real, not a hook', contact: '7 of 10 outside the centre box', lowpoint: 'Fat pattern on the longer clubs' },
-    tone: { path: 'warn', face: 'good', contact: 'bad', lowpoint: 'bad' },
-    answer: { path: 3, face: 2, contact: 4, lowpoint: 1 },
-    est: { path: 3, face: 2, contact: 2, lowpoint: 2 },
-    grid: [0,1,4, 0,3,2, 0,0,0],
-    file: {
-      sport: 'Baseball to 19 — right-handed pitcher. Rowing at university.',
-      years: '14 years. Two of them coached, both over a decade ago.',
-      best: '74 at Pine Hill, blue tees. Worst was 96 the following month.',
-      limits: 'L4/L5 disc, 2019 — no loaded rotation under fatigue. Limited left ankle dorsiflexion.',
-      time: 'Four to five hours, mostly weekday evenings. One round on Saturday.',
-      goal: 'I want to break 80 at my own club, in front of people I know.'
-    } },
-  { id: 'okoro', n: 'Diane Okoro', tier: 'Contender', zone: '03', hcp: 2.1, target: 0, days: 2, leak: 'Putting',
-    hand: 'Right-handed', carry: '248 yd driver carry', intake: 'Intake filmed 09 March 2026 · Dr. Benoit',
-    sg: [0.4, 0.9, 1.1, 1.5, 1.8],
-    hist: { m3: 2.1, m6: 2.6, y1: 3.4, y3: 5.8, y5: 8.1, y10: 14.7 },
-    read: { path: '0.8° in-to-out', face: '0.4° open to path', contact: 'Centre', lowpoint: '2.1 in ahead' },
-    note: { path: 'Neutral and repeatable', face: 'Square — nothing to fix here', contact: '8 of 10 in the centre box', lowpoint: 'Compression is excellent' },
-    tone: { path: 'good', face: 'good', contact: 'good', lowpoint: 'good' },
-    answer: { path: 2, face: 2, contact: 2, lowpoint: 4 },
-    est: { path: 2, face: 2, contact: 2, lowpoint: 4 },
-    grid: [0,0,1, 0,8,1, 0,0,0],
-    file: {
-      sport: 'Competitive swimming to national age-group level. No rotational sport.',
-      years: '19 years. Coached continuously since 14.',
-      best: '68 at Kestrel Links, championship tees. Worst 79 the same season.',
-      limits: 'Hypermobile shoulders — no end-range loading, no long-lever stretching.',
-      time: 'Twelve to fifteen hours. Two rounds most weeks.',
-      goal: 'Mid-am qualifying. The putter is the only thing between me and it.'
-    } },
-  { id: 'menon', n: 'Ravi Menon', tier: 'Builder', zone: '02', hcp: 12.6, target: 6, days: 9, leak: 'Driving',
-    hand: 'Right-handed', carry: '281 yd driver carry', intake: 'Intake filmed 02 May 2026 · Dr. Benoit',
-    sg: [-1.8, -1.1, -0.6, -0.9, -0.4],
-    hist: { m3: 12.6, m6: 13.0, y1: 14.9, y3: 21.4, y5: null, y10: null },
-    read: { path: '6.8° out-to-in', face: '3.9° open to path', contact: 'Heel', lowpoint: 'At the ball' },
-    note: { path: 'Steep and across it', face: 'Open face is the slice, not the path', contact: '6 of 10 in the heel', lowpoint: 'Low point is the one clean number' },
-    tone: { path: 'bad', face: 'bad', contact: 'bad', lowpoint: 'good' },
-    answer: { path: 0, face: 0, contact: 0, lowpoint: 2 },
-    est: { path: 4, face: 2, contact: 2, lowpoint: 2 },
-    grid: [4,2,0, 2,1,0, 1,0,0],
-    file: {
-      sport: 'Cricket — fast bowler, twelve years. Squash socially.',
-      years: 'Six years. Never formally coached before this.',
-      best: '84 at Cedar Run. Worst 108 in wind.',
-      limits: 'Right shoulder impingement from bowling. No overhead loading.',
-      time: 'Two to three hours, weekends only. Travel makes it uneven.',
-      goal: 'Stop losing two balls a round off the tee.'
-    } },
-  { id: 'lindqvist', n: 'Sofia Lindqvist', tier: 'Contender', zone: '04', hcp: 0.8, target: -2, days: 1, leak: 'Chipping',
-    hand: 'Left-handed', carry: '262 yd driver carry', intake: 'Intake filmed 18 January 2026 · Dr. Benoit',
-    sg: [1.4, 1.7, 2.0, 2.1, 2.4],
-    hist: { m3: 0.8, m6: 1.0, y1: 1.4, y3: 2.2, y5: 3.9, y10: 9.5 },
-    read: { path: '1.4° in-to-out', face: '0.6° closed to path', contact: 'Slight toe', lowpoint: '1.8 in ahead' },
-    note: { path: 'Tour-standard consistency', face: 'A working draw, held on purpose', contact: 'Toe bias, but tightly grouped', lowpoint: 'Ball first, every time' },
-    tone: { path: 'good', face: 'good', contact: 'warn', lowpoint: 'good' },
-    answer: { path: 3, face: 3, contact: 3, lowpoint: 3 },
-    est: { path: 3, face: 3, contact: 3, lowpoint: 3 },
-    grid: [0,0,0, 0,4,5, 0,1,0],
-    file: {
-      sport: 'Cross-country skiing at junior national level. Handball to 17.',
-      years: '21 years. Played collegiately in the United States.',
-      best: '66 at Salt Marsh. Worst 76 in a medal round.',
-      limits: 'None current. Left wrist fracture in 2014, fully resolved.',
-      time: 'Fifteen hours plus. This is the job.',
-      goal: 'Turn professional inside two years. The wedges are the gap.'
-    } },
-  { id: 'bassett', n: 'Tom Bassett', tier: 'Foundation', zone: '01', hcp: 18.2, target: 12, days: 14, leak: 'Chipping',
-    hand: 'Right-handed', carry: '212 yd driver carry', intake: 'Intake filmed 11 June 2026 · Dr. Benoit',
-    sg: [-3.1, -3.4, -3.0, -3.2, -2.9],
-    hist: { m3: 18.2, m6: 18.0, y1: 19.5, y3: null, y5: null, y10: null },
-    read: { path: '2.9° out-to-in', face: '5.4° open to path', contact: 'Slight heel', lowpoint: '3.2 in behind' },
-    note: { path: 'Mildly across it', face: 'Wide open — this is the whole slice', contact: 'Scattered, no pattern yet', lowpoint: 'Heavy on almost every strike' },
-    tone: { path: 'warn', face: 'bad', contact: 'warn', lowpoint: 'bad' },
-    answer: { path: 1, face: 0, contact: 1, lowpoint: 0 },
-    est: { path: 2, face: 2, contact: 2, lowpoint: 2 },
-    grid: [2,2,1, 1,2,1, 1,0,0],
-    file: {
-      sport: 'None. Desk career, first sport at 46.',
-      years: 'Three years. Group clinics only.',
-      best: '92 at Harbor Point. Worst 118 the first month.',
-      limits: 'Knee replacement, 2022. No deep squat, no kneeling.',
-      time: 'Ninety minutes if the week is kind. Often nothing.',
-      goal: 'Break 90 once so my group stops giving me shots.'
-    } },
-  { id: 'raman', n: 'Priya Raman', tier: 'Builder', zone: '02', hcp: 9.9, target: 4, days: 3, leak: 'Approach',
-    hand: 'Right-handed', carry: '234 yd driver carry', intake: 'Intake filmed 27 April 2026 · Dr. Benoit',
-    sg: [-0.9, -0.4, 0.1, 0.3, 0.6],
-    hist: { m3: 9.9, m6: 10.4, y1: 12.0, y3: 15.1, y5: 18.8, y10: 24.2 },
-    read: { path: '1.9° in-to-out', face: '2.2° closed to path', contact: 'Centre', lowpoint: '0.6 in behind' },
-    note: { path: 'Slightly right of neutral', face: 'Closing too hard through impact', contact: '7 of 10 centred', lowpoint: 'Marginal — fine off a tee, thin off turf' },
-    tone: { path: 'good', face: 'warn', contact: 'good', lowpoint: 'warn' },
-    answer: { path: 3, face: 3, contact: 2, lowpoint: 1 },
-    est: { path: 3, face: 4, contact: 2, lowpoint: 1 },
-    grid: [0,1,1, 0,7,1, 0,0,0],
-    file: {
-      sport: 'Field hockey to university level. Yoga daily for a decade.',
-      years: 'Eight years, coached for the last two.',
-      best: '79 at Ashcombe Park. Worst 94 away.',
-      limits: 'None. Screened clean in June.',
-      time: 'Six hours across four evenings. One round a fortnight.',
-      goal: 'Single figures before I turn forty. Ten months left.'
-    } },
-  { id: 'wolf', n: 'Andreas Wolf', tier: 'Contender', zone: '03', hcp: 3.5, target: 1, days: 6, leak: 'Driving',
-    hand: 'Right-handed', carry: '294 yd driver carry', intake: 'Intake filmed 05 February 2026 · Dr. Benoit',
-    sg: [-0.2, -0.5, -0.3, -0.6, -0.8],
-    hist: { m3: 3.5, m6: 3.2, y1: 3.0, y3: 3.8, y5: 5.4, y10: 11.2 },
-    read: { path: '3.1° in-to-out', face: '2.8° closed to path', contact: 'Slight toe', lowpoint: '2.4 in ahead' },
-    note: { path: 'Right of neutral under speed', face: 'The hook shows up above 118 mph', contact: 'Toe bias grows with driver only', lowpoint: 'Aggressive, and it holds' },
-    tone: { path: 'warn', face: 'warn', contact: 'warn', lowpoint: 'good' },
-    answer: { path: 3, face: 3, contact: 3, lowpoint: 4 },
-    est: { path: 2, face: 4, contact: 3, lowpoint: 4 },
-    grid: [0,0,2, 0,3,4, 0,1,0],
-    file: {
-      sport: 'Tennis to national junior ranking. Olympic lifting since 24.',
-      years: 'Seventeen years. Coached in three countries.',
-      best: '67 at Lockridge National. Worst 78 in competition.',
-      limits: 'Chronic low-back stiffness on waking. Needs a long warm-up.',
-      time: 'Ten hours, structured. Gym four times a week.',
-      goal: 'Amateur championship. My driver is the only club that costs me.'
-    } },
-  { id: 'whitmore', n: 'Grace Whitmore', tier: 'Foundation', zone: '01', hcp: 22.0, target: 15, days: 21, leak: 'Putting',
-    hand: 'Right-handed', carry: '186 yd driver carry', intake: 'Intake filmed 30 May 2026 · Dr. Benoit',
-    sg: [-3.9, -3.8, -3.4, -3.7, -3.6],
-    hist: { m3: 22.0, m6: 22.4, y1: 24.9, y3: null, y5: null, y10: null },
-    read: { path: '4.6° out-to-in', face: '6.1° open to path', contact: 'Heel', lowpoint: '2.8 in behind' },
-    note: { path: 'Steep, over the top from the first move', face: 'Face never closes', contact: '5 of 10 off the heel', lowpoint: 'Heavy, and inconsistent with it' },
-    tone: { path: 'bad', face: 'bad', contact: 'bad', lowpoint: 'bad' },
-    answer: { path: 0, face: 0, contact: 0, lowpoint: 1 },
-    est: { path: 2, face: 2, contact: 2, lowpoint: 2 },
-    grid: [3,2,0, 2,2,0, 1,0,0],
-    file: {
-      sport: 'Ballet to 18. Nothing since.',
-      years: 'Two years. Started after retiring.',
-      best: '98 at Cedar Run. Worst 121.',
-      limits: 'Osteopenia diagnosed 2023. No impact loading, no ground-force work.',
-      time: 'Three hours most weeks, all of it social.',
-      goal: 'Play eighteen with my husband without holding anyone up.'
-    } }
-];
+// ─── STRIPPED 2026-08-28 — was 8 hardcoded players, ~5.9K of sample data ───────────────────
+// The roster now comes from ryp-core, injected as __ATLAS_DATA__ by server/routes/proto.ts before
+// this script runs. See proto/README.md; `git log -p proto/Dashboard.dc.html` is the reference for
+// what the sample data used to be.
+//
+// ⚠️ `?? []` and NEVER a fallback to the old literal. An empty roster must render as empty. Falling
+// back to sample data is how a screen ends up looking live while showing someone else's numbers —
+// which already happened once here, when a real student rendered carrying another player's handicap.
+const ROSTER = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.roster) || [];
+
+// The signed-in account, from the same blob. `|| {}` — never a sample identity.
+const ATLAS_ME = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.me) || {};
+
+// ─── EMPTY-VALUE GUARDS — added 2026-08-31 with the ROSTER strip ────────────────────────────────
+// These are not polish; without them the page is blank. His render calls `.toFixed(1)` and
+// `.split()` on roster fields unconditionally, and `rosterVals()`, `profileVals()` and
+// `intakeVals()` are ALL spread into the single `vals()` return on EVERY render regardless of the
+// current view — so one student with no strokes-gained history threw a TypeError and took the whole
+// document down, on every screen. 44 of the 81 metrics these screens display are Forge outputs and
+// Forge has not shipped, so "empty" is the ordinary case here, not an edge case.
+//
+// THE RULE THEY OBEY: a missing number renders as '—'. Never 0, never a sample value. `'+0'` was a
+// real outcome of the un-guarded code — `target: null` passed `t <= 0` and printed a plus-handicap
+// of scratch under a real student's name, which reads as data rather than as an error.
+const DASH = '—';
+const isNum = v => typeof v === 'number' && isFinite(v);
+const fx1 = v => isNum(v) ? v.toFixed(1) : DASH;
+
+// A fully-shaped row with nothing in it. `profileVals` did `ROSTER.filter(...)[0] || ROSTER[0]` and
+// then dereferenced the result, so an empty roster — a coach with no students yet, or a player who
+// opened the page — was `undefined.id`. Every key his render touches is present and empty.
+const EMPTY_PLAYER = {
+  id: '', n: '', tier: '', zone: '', hcp: null, target: null, days: null, leak: '',
+  hand: '', carry: '', intake: '', sg: [], hist: {}, read: {}, note: {}, tone: {},
+  answer: {}, est: {}, grid: [], file: {}
+};
 
 // One sentence of mechanism per drill. Players who know why a drill exists do
 // it properly; players who don't, don't. Keyed by drill name.
@@ -3788,11 +3681,21 @@ class Component extends DCLogic {
   // printed on paper rather than screen-dark so it never reads as live data.
   profileVals() {
     const s = this.state;
-    const who = ROSTER.filter(p => p.id === (s.profileOf || 'hale'))[0] || ROSTER[0];
+    // GUARDED with EMPTY_PLAYER: `|| ROSTER[0]` is `undefined` on an empty roster and the next line
+    // threw. `'hale'` is a sample id that no real row can ever carry, so `self` is always false for
+    // real data — the self/own-file branch of this screen is unreachable until something marks one
+    // row as the signed-in player. Left alone deliberately: wiring it needs a product decision
+    // (see the ROSTER contract, §4), and guessing here is how the wrong player becomes "you".
+    const who = ROSTER.filter(p => p.id === (s.profileOf || 'hale'))[0] || ROSTER[0] || EMPTY_PLAYER;
     const self = who.id === 'hale';
     // The player's own file reads live state; a coach opening someone else's
     // file reads that player's stored intake.
-    const ob = s.onboarding || {}, done = self ? !!ob.submitted : true;
+    // GUARDED: `done` was hardcoded `true` for every non-self player, so opening ANY real student
+    // printed 'Ten shots filmed · read complete' with blank read text underneath — the page
+    // asserting a coaching read that does not exist. `read` is Forge's and arrives as `{}`, so ask
+    // it. This turns on the honest empty state his own code already carries below.
+    const ob = s.onboarding || {};
+    const done = self ? !!ob.submitted : Object.keys(who.read || {}).length > 0;
     const est = self ? (ob.est || {}) : who.est;
     const P = self ? (s.profile || {}) : who.file;
     const CATS = ['path', 'face', 'contact', 'lowpoint'].map(k => ({
@@ -3832,10 +3735,21 @@ class Component extends DCLogic {
     return {
       pfName: who.n,
       pfInitials: who.n.split(' ').map(w => w[0]).join(''),
-      pfMeta: who.tier + ' · Zone ' + who.zone + (self ? ' · Day 41 of 90' : ' · ' + (who.days === 0 ? 'logged today' : 'last logged ' + who.days + 'd ago')),
+      // GUARDED: was string concatenation, so a missing tier/zone/days rendered the literal text
+      // 'undefined · Zone undefined · last logged undefinedd ago'. Absent parts are now dropped
+      // rather than printed; nothing here is substituted.
+      pfMeta: [
+        who.tier,
+        who.zone ? 'Zone ' + who.zone : '',
+        self ? 'Day 41 of 90' : who.days === 0 ? 'logged today' : isNum(who.days) ? 'last logged ' + who.days + 'd ago' : 'no practice log'
+      ].filter(Boolean).join(' · '),
       pfIntake: who.intake,
-      pfHandicapReal: (self ? (s.realHcp === undefined ? 11.4 : s.realHcp) : who.hcp).toFixed(1),
-      pfHandicapTarget: t <= 0 ? (t === 0 ? 'Scratch' : '+' + Math.abs(t)) : String(t),
+      pfHandicapReal: fx1(self ? (s.realHcp === undefined ? 11.4 : s.realHcp) : who.hcp),
+      // GUARDED, and this one was the worst of them: `t` is `who.target`, and no
+      // `target_handicap_index` COLUMN exists to read. `null <= 0` is TRUE in JS, so the old
+      // expression fell into the plus-handicap branch and printed '+0' — Math.abs(null) is 0. A
+      // fabricated scratch target under a real student's name, indistinguishable from a real one.
+      pfHandicapTarget: !isNum(t) ? DASH : t <= 0 ? (t === 0 ? 'Scratch' : '+' + Math.abs(t)) : String(t),
       pfHand: self ? (s.hand === 'L' ? 'Left-handed' : 'Right-handed') : who.hand,
       pfCarry: self ? '265 yd driver carry' : who.carry,
       // Handicap history is a series, not a sentence — six marks back to ten
@@ -3881,7 +3795,12 @@ class Component extends DCLogic {
       })(),
       pfInterviewIntro: self
         ? 'Answered at intake, editable whenever the truth changes. Your coach reads this before every block is written — an old injury or the sport your body learned first changes which pivot you are given.'
-        : 'Answered by ' + who.n.split(' ')[0] + ' at intake, in their words. Read it before you write the next block — ' + (who.file.limits.split(/[.,—]/)[0].trim().toLowerCase()) + ' decides which pivot they can be given. Edits are theirs to make, not yours.',
+        // GUARDED: `who.file.limits.split(...)` was unconditional, and `file` arrives as `{}` —
+        // there is no intake table to fill it. This threw for every real student a coach opened.
+        // Two sentences, because the second one is only true when an answer exists.
+        : (who.file && typeof who.file.limits === 'string' && who.file.limits.trim()
+            ? 'Answered by ' + (who.n || 'this player').split(' ')[0] + ' at intake, in their words. Read it before you write the next block — ' + who.file.limits.split(/[.,—]/)[0].trim().toLowerCase() + ' decides which pivot they can be given. Edits are theirs to make, not yours.'
+            : 'No intake answers on record for this player. The intake form is not yet wired to a table, so nothing has been collected — read nothing into the blanks below.'),
       pfBackShow: self ? 'none' : 'inline-flex',
       pfBack: () => this.setState({ view: 'roster', profileOf: null }),
       pfEditable: self,
@@ -3942,7 +3861,15 @@ class Component extends DCLogic {
   // The intake document. Everything the file is built from is asked here once,
   // before the first session — same paper stock as the file it becomes.
   intakeVals() {
-    const s = this.state, P = s.profile || {}, H = s.hist || ROSTER[0].hist;
+    // ⚠️ GUARDED, and this is the change to look at hardest in this diff.
+    // This form is a BRAND-NEW PLAYER'S OWN onboarding questionnaire, and all four `ROSTER[0]`
+    // references below read an ARBITRARY OTHER REAL STUDENT — whichever row the coach's query
+    // happened to return first (no ORDER BY). It pre-filled this player's six handicap-lookback
+    // fields from that person, and the onChange/toggleNa handlers then spread all six of that
+    // person's values into this player's own `state.hist` the moment they edited one of them.
+    // That is the same cross-player contamination the ROSTER strip exists to prevent, already in
+    // the code rather than in the injector. `{}` — the form starts empty, which is the truth.
+    const s = this.state, P = s.profile || {}, H = s.hist || {};
     const ob = s.onboarding || {}, est = ob.est || {};
     const STEPS = [
       { k: 'm3', label: '3 months ago' }, { k: 'm6', label: '6 months ago' },
@@ -3971,27 +3898,34 @@ class Component extends DCLogic {
       this.setState(st => ({ profile: Object.assign({}, st.profile, { [k]: v }) }));
     };
     const answered = CATS.filter(c => est[c.k] !== undefined).length;
-    const filled = FIELDS.filter(f => (P[f.k] === undefined ? ROSTER[0].file[f.k] : P[f.k])).length;
+    // GUARDED: counted another student's intake answers as this player's completion progress.
+    const filled = FIELDS.filter(f => P[f.k]).length;
     const histDone = STEPS.filter(x => H[x.k] !== undefined).length;
     const pct = Math.round((answered / 4 * 0.4 + filled / FIELDS.length * 0.4 + (histDone ? 1 : 0) * 0.2) * 100);
     return {
       inHist: STEPS.map(x => {
         const v = H[x.k];
-        const na = v === null || v === undefined;
+        // GUARDED: `na` used to cover both "player explicitly marked this period NA" (v === null,
+        // an assertion made via the toggle below) and "nothing typed here yet" (v === undefined,
+        // absence). Collapsing them made every brand-new player's blank form open already
+        // asserting 'Not playing' for all six periods. Only the explicit null is a claim; blank
+        // stays an invitation to answer.
+        const blank = v === null || v === undefined;
+        const notPlaying = v === null;
         return {
           label: x.label,
-          value: na ? '' : String(v),
-          na: na,
-          naLabel: na ? 'Not playing' : 'Mark NA',
-          naColor: na ? '#8a6a2f' : '#8f8778',
-          naBorder: na ? 'rgba(138,106,47,0.5)' : 'rgba(20,25,31,0.16)',
+          value: blank ? '' : String(v),
+          na: notPlaying,
+          naLabel: notPlaying ? 'Not playing' : 'Mark NA',
+          naColor: notPlaying ? '#8a6a2f' : '#8f8778',
+          naBorder: notPlaying ? 'rgba(138,106,47,0.5)' : 'rgba(20,25,31,0.16)',
           onChange: ev => {
             const raw = ev.target.value;
             const num = raw === '' ? undefined : parseFloat(raw);
-            this.setState(st => ({ hist: Object.assign({}, st.hist || ROSTER[0].hist, { [x.k]: isNaN(num) ? undefined : num }) }));
+            this.setState(st => ({ hist: Object.assign({}, st.hist || {}, { [x.k]: isNaN(num) ? undefined : num }) }));
           },
           toggleNa: () => this.setState(st => {
-            const cur = Object.assign({}, st.hist || ROSTER[0].hist);
+            const cur = Object.assign({}, st.hist || {});
             cur[x.k] = cur[x.k] === null ? undefined : null;
             return { hist: cur };
           })
@@ -4065,26 +3999,43 @@ class Component extends DCLogic {
         initials: p.n.split(' ').map(w => w[0]).join(''),
         tier: p.tier,
         zone: 'Zone ' + p.zone,
-        hcp: p.hcp.toFixed(1),
-        sg: fmtSG(p.now),
+        // GUARDED: markup used to join `p.tier` and `p.zone` with a literal ' · ', so a player
+        // with no tier or no zone assigned yet showed bare punctuation ('Zone ' alone, or ' · ').
+        // Pre-join here and drop whichever half is absent.
+        meta: [p.tier, p.zone ? 'Zone ' + p.zone : ''].filter(Boolean).join(' · '),
+        hcp: fx1(p.hcp),
+        // GUARDED: `fmtSG(undefined)` threw. With `sg: []` (Forge, not shipped) `p.now` is
+        // `p.sg[-1]` — undefined — and one such row broke the entire roster screen inside this map.
+        sg: isNum(p.now) ? fmtSG(p.now) : DASH,
         sgColor: p.now >= 0 ? '#7fb08a' : '#d9885e',
         spark: p.sg.map((v, i) => ({
           h: Math.max(8, Math.round((v - lo) / span * 100)) + '%',
           bg: i === p.sg.length - 1 ? (p.delta > 0.2 ? '#7fb08a' : p.delta < -0.2 ? '#d9885e' : '#c8a05e') : 'rgba(255,255,255,0.17)'
         })),
-        delta: (p.delta > 0 ? '+' : '') + p.delta.toFixed(1),
+        // GUARDED: with `sg: []`, `now - was` is NaN and this printed the string 'NaN'.
+        delta: isNum(p.delta) ? (p.delta > 0 ? '+' : '') + p.delta.toFixed(1) : DASH,
         deltaColor: p.delta > 0.2 ? '#7fb08a' : p.delta < -0.2 ? '#d9885e' : '#8d99a8',
-        deltaNote: p.delta > 0.2 ? 'moving' : p.delta < -0.2 ? 'sliding' : 'flat',
+        // GUARDED: 'flat' is a claim about five reads. With no reads there is nothing to be flat.
+        deltaNote: !isNum(p.delta) ? 'no reads yet' : p.delta > 0.2 ? 'moving' : p.delta < -0.2 ? 'sliding' : 'flat',
         leak: p.leak,
-        last: p.days === 0 ? 'Today' : p.days + 'd ago',
+        // GUARDED: `p.days` has no producer, so this printed 'nulld ago' / 'undefinedd ago'.
+        last: p.days === 0 ? 'Today' : isNum(p.days) ? p.days + 'd ago' : 'never logged',
         lastColor: p.days > 7 ? '#d9885e' : p.days > 3 ? '#c8a05e' : '#66717f',
         flagShow: p.flag ? 'inline-block' : 'none',
         border: p.flag ? 'rgba(217,136,94,0.34)' : 'rgba(255,255,255,0.08)',
         open: () => this.setState({ view: 'profile', profileOf: p.id, railOpen: false })
       })),
-      rosterFlagged: rows.filter(p => p.flag).length + ' need a call',
+      // GUARDED, both counts. `flag: p.days > 7` is `false` for `days: null`, so an un-guarded
+      // '0 need a call' told the coach every never-logged student was fine — a reassurance drawn
+      // from a practice log that does not exist. Same for 'N flat across five reads' when there are
+      // no reads. Where the input is absent the label says so instead of counting to zero.
+      rosterFlagged: rows.some(p => isNum(p.days))
+        ? rows.filter(p => p.flag).length + ' need a call'
+        : 'no practice log',
       rosterCount: rows.length + ' active',
-      rosterFlat: rows.filter(p => Math.abs(p.delta) <= 0.2).length + ' flat across five reads'
+      rosterFlat: rows.some(p => isNum(p.delta))
+        ? rows.filter(p => Math.abs(p.delta) <= 0.2).length + ' flat across five reads'
+        : 'no strokes-gained reads exist yet'
     };
   }
   pick = d => () => this.setState({ view: 'cal', sel: d });
@@ -4903,8 +4854,16 @@ class Component extends DCLogic {
     const tempoRungs = [10, 9, 8, 7, 6, 5, 4, 3, 2];
 
     return {
-      playerName: this.props.playerName ?? 'Marcus Hale',
-      initials: (this.props.playerName ?? 'Marcus Hale').split(' ').map(w => w[0]).join(''),
+      // STRIPPED 2026-08-31 with ROSTER: was `?? '<a sample player name>'` — and support.js hydrates
+      // `this.props` from the `data-props` JSON `default` above, so the sample name was ALWAYS
+      // the value in a served page; the `??` was dead. Now the signed-in account, from the blob.
+      // `|| ''` and never a name: line two calls `.split(' ')` unconditionally, and `''` is safe
+      // ('' -> [''] -> [undefined] -> ''), where `null` would throw.
+      // ⚠️ For a signed-in COACH this prints the coach's own name in a player-dashboard slot. It
+      // is their name, so it is not a lie — but the self/own-file identity of this screen is
+      // unresolved (ROSTER contract §4) and this header is where that shows.
+      playerName: this.props.playerName || ATLAS_ME.name || '',
+      initials: (this.props.playerName || ATLAS_ME.name || '').split(' ').map(w => w[0]).join(''),
 
       isToday: view === 'today', isCal: view === 'cal', isBuild: view === 'build',
       isEvidence: view === 'evidence', isThread: view === 'thread',
