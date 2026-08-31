@@ -1,0 +1,33 @@
+{
+  "name": "Atlas Golf",
+  "short_name": "Atlas",
+  "description": "Your build, your indices, your coach.",
+  "start_url": "./AtlasPlayer.dc.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0E141B",
+  "theme_color": "#0E141B",
+  "categories": [
+    "sports",
+    "health"
+  ],
+  "icons": [
+    {
+      "src": "./icons/forge-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./icons/forge-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "./icons/forge-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
