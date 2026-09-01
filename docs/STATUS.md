@@ -1,6 +1,6 @@
 # ATR — STATUS
 
-**Owner:** Makel (makel@rypgolf.com) · **Last hand-edited:** 2026-09-01 · **Demo:** 2026-09-07
+**Owner:** Makel (makel@rypgolf.com) · **Last hand-edited:** 2026-09-01 (paused) · **Demo:** 2026-09-07
 
 > ### ⛔ READ THIS BEFORE ANY OTHER LINE
 > **The real Atlas repo is `~/dev/ATR/atlas`.**
@@ -20,7 +20,7 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-01 12:37 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-01 14:50 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-01 12:37 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.18.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.18.0.tgz`
-- **Atlas HEAD:** `b1ca823 Append to handicap_history only when the handicap actually moved`
+- **Atlas HEAD:** `c111bb9 Hide sections by injected key: cut the video test, tuck the roster`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -68,6 +68,10 @@ Each line here was observed working. Do not rebuild any of it.
 | Atlas auto-grant is gated | ✅ verified | `ATLAS_SIGNUP_ALLOWLIST=@rypgolf.com`; an account outside it gets 403, inside gets 200 |
 | **No profile answer refuses an account** | ✅ verified live | 9 and 95 year olds, 38 mph, a 60 and a 108 handicap, plus handicaps and "I don't have one" all save |
 | Google sign-in on the login screen | ✅ live | domain authorised; popup path accepted |
+| **Luke's design IS the app now** | ✅ live | sign-in lands on `Dashboard.dc.html`, fed from ryp-core. Not a React rebuild |
+| Plus handicaps store and display | ✅ verified | `-2.1` stored, `+2.1` shown; was written to neither golf table before |
+| Intake trimmed to 3 sections | ✅ live | 23 answers, not 100 — Tiers 1B/2/3 cut from the flow |
+| Video/strike-map sections hidden | ✅ live | `hidden: ['intake','evidence','roster']` |
 | **Whole intake, live, in a browser** | ✅ verified | signup → quiz → result → dashboard on `atlas.ryptest.com`, 2026-09-01 |
 | `handicap_history` is a trend, not a log | ✅ verified | appends only when the index actually moved |
 | `npm run seed` resets the intake | ✅ verified | row back to `in_progress` / tier 0, confirmed in the DB |
@@ -199,6 +203,27 @@ The smoke-test harness that runs these is described in [HANDOFF.md](HANDOFF.md) 
   live quiz is anonymous, so none of that data can be attached to an Atlas account retroactively.
 - **Luke is ideation only.** He does not clone, review, or merge. There is no second developer.
 - **Pricing is frozen** until Luke approves. The $99–$799 tiers appear nowhere in the repo.
+
+## 5a. Luke's prototypes — what they are (established 2026-09-01)
+
+All three now vendored **unmodified** in `proto/`, with `proto/DESIGNS.md` recording which is wired.
+
+| File | What it is | Wired? |
+| --- | --- | --- |
+| `Dashboard.dc.html` (390 KB) | **The product.** ONE app for both audiences — 16 comment-marked sections, 14 `sc-if`-guarded. Everyone gets the player dashboard; a coach's addition is the roster tab + student dossiers | ✅ served, ROSTER fed from ryp-core |
+| `AtlasPlayer.dc.html` (174 KB) | **The Forge front-end, renamed.** Its own localStorage migrates `atlas.forge.v1/v2/v3` → `atlas.player.v*`. 45 constants, mostly strokes-gained / launch monitor / test conditions | ❌ reference only |
+| `Atlas.dc.html` (190 KB) | Main / marketing site | ❌ reference only |
+
+**Sections hide by flag, not by cutting markup.** `__ATLAS_DATA__.hidden` is a list of section keys;
+every `isX` guard ANDs against it and the nav items read the same list. Removing a key restores the
+section and its tab. Currently hidden: `intake`, `evidence` (the ten-shot video test — no capture
+pipeline, ruled unachievable) and `roster` (tucked while the coach product is not the focus).
+
+⚠️ **Still fabricated on the main page:** the sidebar's "5 HANDICAP" and "TOTAL SG −2.0" come from
+the `state.forge` literal. Avery is 4.2 and Total SG has no producer. **This is the most visible
+wrong number in the app** and is the next literal to strip. Held at Makel's instruction.
+
+⚠️ The served banner still lists "intake answers" among the empty fields; that section is now hidden.
 
 ## 5b. Demo data — the state `npm run seed` restores
 

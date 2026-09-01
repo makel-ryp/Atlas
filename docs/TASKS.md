@@ -1,5 +1,5 @@
 # ATR — TASKS
-**Last updated:** 2026-09-01 (evening) · Board for [STATUS.md](STATUS.md) · Orientation in [HANDOFF.md](HANDOFF.md)
+**Last updated:** 2026-09-01 (paused) · Board for [STATUS.md](STATUS.md) · Orientation in [HANDOFF.md](HANDOFF.md)
 
 ## How to maintain this file
 - One task = one row. **Never delete a row** — move it to §5 Done with the date.
@@ -33,7 +33,9 @@
 | T-09 | ⚪ open | Fix `contract.ts` / route field mismatch | AI | `contract.ts` declares `createdAt`; the route returns `startedAt`. |
 | T-10 | ⚪ open | Retake / lockout semantics | AI | The unique index is **not partial**, and `deleted_at` is **not** in the UPDATE grant — so a retake cannot currently be modelled either way. |
 | T-11 | ⚪ open | Version-stamp integrity | AI | `CONFIG_VERSION` / `SCORING_VERSION` / `RESULT_VERSION` are stamped once at write, but the result is recomputed by whatever code is deployed at read time. Those two facts disagree. |
-| T-12 | ⚪ open | Strip remaining prototype literals | AI | Next up: `state.forge` (sidebar), `SEED`, `DRILL_PICK`. |
+| T-12 | 🔴 next | **Strip `state.forge` — the sidebar shows a fake handicap** | AI | "5 HANDICAP" / "TOTAL SG −2.0" on the main page. Avery is 4.2; Total SG has no producer. Most visible wrong number in the app. Then `SEED`, `DRILL_PICK`. |
+| T-32 | ⚪ open | Update the served banner text | AI | Still lists "intake answers" as empty; that section is hidden now. |
+| T-33 | ⚪ open | Luke's coach dashboard prints a plus handicap as `-2.1` | AI | It renders `hcp` through his own `fx1()` and uses the number for colour thresholds, so it needs a separate display field rather than a formatted string. |
 
 ## 3. Backlog — real, unscheduled
 
@@ -80,6 +82,11 @@
 | D-19 | 2026-09-01 | Fixed 4 client/server validation mismatches | Root-caused into `shared/profile-bounds.ts`; **academy juniors could not complete the intake at all** |
 | D-20 | 2026-09-01 | Fixed quiz contrast + divider alignment | `:where(.quiz-root)` reset; registered Tailwind's missing `5.5` spacing step |
 | D-21 *(closes T-29/T-30/T-31)* | 2026-09-01 | **Google sign-in live** | Domain authorised; popup path accepted (`popup-blocked`, not `unauthorized-domain`); provider name adopted so a Google user is not shown their email as their name |
+| D-26 | 2026-09-01 | **Luke's design is the app** | Sign-in lands on `Dashboard.dc.html`; roles resolve before the intake gate |
+| D-27 | 2026-09-01 | Vendored all 3 prototypes + `DESIGNS.md` | AtlasPlayer identified as the Forge front-end from its own localStorage migration |
+| D-28 | 2026-09-01 | Intake trimmed to 3 sections | 23 answers not 100; Tiers 1B/2/3 cut from the flow, items left in the pinned instrument |
+| D-29 | 2026-09-01 | Video/strike-map + roster hidden by flag | `hidden` list; markup untouched, pristine recoverable from `27b7d4a` |
+| D-30 | 2026-09-01 | Fixed plus-handicap data loss | Was written to neither `player_profile` nor `handicap_history` |
 | D-22 | 2026-09-01 | **Removed the profile eligibility gates** | No age, speed or handicap refuses an account. 9 and 95 year olds, 38 mph, 60 and 108 handicaps all verified live |
 | D-23 *(closes T-26)* | 2026-09-01 | `handicap_history` appends only on a real change | 3 rehearsals at 17.8 append nothing; 15.2 then 16.0 each do |
 | D-24 | 2026-09-01 | **Full intake driven end to end on the LIVE site** | Sign-in → 2 volume screens → allocation → 7 profile → 12 items → review → result → "Go to my Atlas" → dashboard. `golf.player_profile` written by the quiz |
