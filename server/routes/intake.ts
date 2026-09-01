@@ -177,8 +177,17 @@ const NUMERIC_WIRE_FIELDS = new Set(['PRO_AGE'])
 // closed and the UI renders them as buttons: PRO_HAND, PRO_SHAPE, PRO_SHAPE_PREF.
 const HANDICAP_FIELDS = new Set(['PRO_HCP_NOW', 'PRO_HCP_3YR'])
 
-// '4.2', '17.8', '0', '+2.1', '54'. Two decimal places tolerated; the governing bodies publish one.
-const HANDICAP_PATTERN = /^\+?\d{1,2}(\.\d{1,2})?$/
+// Lower bounds the CLIENT applies that items.ts does not. Keep in step with ProfileStage's BOUNDS.
+const SPEED_FLOOR_OVERRIDE = new Map<string, number>([['PRO_SPEED', 40]])
+
+// Must accept exactly what the CLIENT can emit, which is not the same as what a golfer types.
+// `ProfileStage.hcpForEngine` NORMALISES a plus handicap before sending: "+2.1" is stored as the
+// string "-2.1", because the engine's arithmetic (handicap gap, three-year improvement) wants a
+// signed number. So a LEADING MINUS is the normal wire form for every better-than-scratch golfer,
+// and rejecting it 400'd exactly the players most likely to be in a coaching demo.
+// `parseHcpInput` also allows unbounded decimals (`\.\d+`), so pinning two here would reject a
+// value its own UI accepted. Range is parseHcpInput's: -10 … 54.
+const HANDICAP_PATTERN = /^[+-]?\d{1,2}(\.\d+)?$/
 
 function validateProfilePartial(input: Record<string, unknown>): string | null {
   for (const [code, value] of Object.entries(input)) {
@@ -188,6 +197,17 @@ function validateProfilePartial(input: Record<string, unknown>): string | null {
       if (typeof value !== 'number' || !Number.isFinite(value)) return `invalid_profile_value:${code}`
       if (field.min !== undefined && value < field.min) return `invalid_profile_value:${code}`
       if (field.max !== undefined && value > field.max) return `invalid_profile_value:${code}`
+    } else if (field.kind === 'number' && SPEED_FLOOR_OVERRIDE.has(code)) {
+      // PRO_SPEED's items.ts floor is 60 mph, an ADULT floor. The client deliberately lowers it to
+      // 40 (ProfileStage's BOUNDS override) because juniors exist: 60 mph is a 156-yard drive, and
+      // anything shorter left Continue disabled with nothing explaining why. The server kept the
+      // 60 and so rejected every junior the UI had just accepted. Mirror the client's floor.
+      if (typeof value !== 'string' || !/^\d+(\.\d+)?$/.test(value)) return `invalid_profile_value:${code}`
+      const n = Number(value)
+      const min = SPEED_FLOOR_OVERRIDE.get(code) ?? field.min
+      if (!Number.isFinite(n)) return `invalid_profile_value:${code}`
+      if (min !== undefined && n < min) return `invalid_profile_value:${code}`
+      if (field.max !== undefined && n > field.max) return `invalid_profile_value:${code}`
     } else if (field.kind === 'number') {
       // Numeric-but-string-typed (PRO_SPEED): a numeric string, bounds-checked as a number,
       // stored as a string.
@@ -204,6 +224,8 @@ function validateProfilePartial(input: Record<string, unknown>): string | null {
       if (field.options?.includes(v)) continue
       if (!HANDICAP_PATTERN.test(v)) return `invalid_profile_value:${code}`
       // A '+' prefix means BETTER than scratch, so it reads as a negative index.
+      // '+2.1' means 2.1 BETTER than scratch. The client already converted it, but accept the
+      // raw '+' form too so a direct API caller is not silently told a plus handicap is invalid.
       const n = v.startsWith('+') ? -Number(v.slice(1)) : Number(v)
       if (!Number.isFinite(n) || n < -10 || n > 54) return `invalid_profile_value:${code}`
     } else {

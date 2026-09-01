@@ -78,7 +78,7 @@ export function Shell({ api, onEnterAtlas }: { api: QuizApi; onEnterAtlas?: () =
   // host — so there is no "leave the quiz" destination and no config for one.
 
   return (
-    <main className="mx-auto min-h-dvh max-w-2xl px-6 py-10">
+    <main className="quiz-root mx-auto min-h-dvh max-w-2xl px-6 py-10">
       <header className="mb-10 flex items-center justify-between border-b border-ink/10 pb-4">
         <div>
           <p className="text-sm font-medium tracking-tight">

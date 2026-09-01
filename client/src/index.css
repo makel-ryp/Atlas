@@ -638,3 +638,41 @@
 .focus-visible\:outline-ink:focus-visible {
   outline-color: var(--gold);
 }
+
+/**
+ * QUIZ BUTTON RESET — why the port looked broken.
+ *
+ * Atlas styles the bare `button` ELEMENT a few hundred lines up: a gold pill, uppercase mono,
+ * `color: var(--ink)`. That is right for Atlas's own screens, where every button is a primary
+ * action. It is wrong for `client/src/quiz/**`, which was ported from tgt with a full set of
+ * Tailwind classes describing each button's own appearance — and an element rule reaches inside
+ * that subtree and repaints everything it does not explicitly override.
+ *
+ * The damage, observed 2026-09-01:
+ *   - tgt's UNSELECTED option buttons (`border-ink/15 bg-ink/15`, no colour class, inherit) got
+ *     `color: var(--ink)` — near-black text on a near-black pill. Unreadable, and the reason
+ *     "More draw" / "Less curve" appeared blank.
+ *   - tgt's tertiary buttons (`text-muted underline` — meant to read as quiet links) got the gold
+ *     pill background, so "Back" and "Dismiss" rendered as loud gold buttons with muted blue-grey
+ *     text on them.
+ *
+ * Resetting to neutral inside .quiz-root lets each button's own classes decide, and anything with
+ * no colour class inherits the body's `--paper` — light text on a dark page, which is the point.
+ *
+ * `:where()` is load-bearing, not decoration. Written as `.quiz-root button` this selector scores
+ * (0,1,1) and BEATS the single-class `.bg-ink` / `.text-paper` rules above it — so the reset also
+ * flattened the primary CONTINUE into plain text, trading one contrast bug for another. `:where()`
+ * contributes zero specificity, leaving this at (0,0,1): identical to the bare `button` rule it is
+ * cancelling, which it wins on source order alone, while losing to every utility class as it must.
+ */
+:where(.quiz-root) button {
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  color: inherit;
+  font-family: var(--sans);
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
