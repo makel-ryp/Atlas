@@ -1,5 +1,5 @@
 import { Router, type RequestHandler } from 'express'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { verifyToken, attachUser, requireApp } from '@ryp/eco/auth'
 import { withRls } from '@ryp/eco/db'
@@ -131,6 +131,13 @@ function toEnvelope(row: SubmissionRow) {
     status: row.status,
     profile: row.profile ?? {},
     answers: row.answers ?? {},
+    // The golfer's OWN saved answers for the two screens that write dedicated columns rather than
+    // into `answers`. Omitting them made every PATCH look like a silent no-op from the client's
+    // side — the write landed, the read-back never showed it — so a resumed run rendered its
+    // volume and allocation screens blank. Safe to return: this is the subject's own input, unlike
+    // quality_flag, which stays server-side. (Caught by the smoke suite 2026-09-01.)
+    volume: row.volume ?? null,
+    alloc: row.alloc ?? null,
     completedAt: row.completedAt,
     startedAt: row.startedAt,
     updatedAt: row.updatedAt,
@@ -241,30 +248,38 @@ intakeRouter.post('/intake/start', ...identityChain, async (req, res, next) => {
       { userId: me.id, firebaseUid: me.firebaseUid, app: 'atlas' },
       schema,
       async (db) => {
-        const [inserted] = await db
-          .insert(atlasIntakeSubmissions)
-          .values({
-            userId: me.id,
-            // NOT NULL, and stamped here rather than at completion on purpose: a run started under
-            // one instrument version and finished under another must record the one it was ASKED
-            // under. These are what let a stored run be re-scored after Luke redlines the items —
-            // without them the answers are just numbers.
-            configVersion: CONFIG_VERSION,
-            scoringVersion: SCORING_VERSION,
-            resultVersion: RESULT_VERSION,
-          })
-          // The unique index is (user_id, instrument), so the conflict target must name BOTH columns.
-          // Inferring on user_id alone raises Postgres 42P10 — "no unique or exclusion constraint
-          // matching the ON CONFLICT specification" — on every single call.
-          .onConflictDoNothing({
-            target: [atlasIntakeSubmissions.userId, atlasIntakeSubmissions.instrument],
-          })
-          .returning()
-        if (inserted) return inserted
-        const existing = await db.query.atlasIntakeSubmissions.findFirst({
+        // ⚠️ RAW SQL ON PURPOSE — do not "clean this up" back into db.insert(). Drizzle names
+        // EVERY column of the table in an INSERT, passing `default` for the ones you did not set:
+        //
+        //   insert into atlas.intake_submissions
+        //     ("id","user_id",...,"quality_flag","started_at",...,"deleted_at")
+        //   values (default,$1,...,default,default,...,default)
+        //
+        // `atlas_app` holds COLUMN-LEVEL insert on 15 of the 18 columns. quality_flag, started_at
+        // and deleted_at are withheld deliberately — a client must not be able to set its own
+        // quality flag, backdate a run, or soft-delete on insert. Postgres requires the INSERT
+        // privilege on every column a statement NAMES, even where the value is `DEFAULT`, so
+        // drizzle's form is refused with 42501 "permission denied for table intake_submissions",
+        // which reads exactly like an RLS failure and is not one. (Observed 2026-08-31; it is what
+        // made every call to this endpoint 403 without ever reaching the database's row check.)
+        //
+        // Naming only the four granted columns keeps the grant model as the real gate rather than
+        // widening it to make an ORM convenience work.
+        await db.execute(sql`
+          insert into atlas.intake_submissions
+            (user_id, config_version, scoring_version, result_version)
+          values
+            (${me.id}, ${CONFIG_VERSION}, ${SCORING_VERSION}, ${RESULT_VERSION})
+          on conflict (user_id, instrument) do nothing
+        `)
+        // Read back through drizzle so the caller gets the typed, camel-cased row either way — a
+        // fresh insert and a resumed run take the identical path, and the conflict case needs this
+        // select regardless. Both statements run inside the one withRls transaction, so the row is
+        // still subject to the SELECT policy: if RLS would not show it to this user, this returns
+        // undefined and the caller 500s rather than silently handing back someone else's run.
+        return await db.query.atlasIntakeSubmissions.findFirst({
           where: eq(atlasIntakeSubmissions.userId, me.id),
         })
-        return existing
       },
     )
 

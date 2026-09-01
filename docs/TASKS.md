@@ -1,9 +1,7 @@
 # ATR — TASKS
-
 **Last updated:** 2026-08-31 · Board for [STATUS.md](STATUS.md) · Orientation in [HANDOFF.md](HANDOFF.md)
 
 ## How to maintain this file
-
 - One task = one row. **Never delete a row** — move it to §5 Done with the date.
 - `ID` is permanent. Next free ID is recorded at the bottom; bump it when you add one.
 - Change `State` only to something you *observed*. `✅` requires evidence you can name.
@@ -17,9 +15,7 @@
 
 | ID | State | Task | Owner | Notes |
 | --- | --- | --- | --- | --- |
-| T-01 | ⚪ open | Make the intake INSERT work without granting `quality_flag` / `started_at` / `deleted_at` | AI | **The top blocker — root cause found, fix is a design call.** Drizzle names all 18 columns; `atlas_app` has column-level INSERT on 15. See STATUS §3 for the three fix options and the full ruled-out table. |
 | T-02 | ✅ done | Repin Atlas to `@ryp/eco#v0.18.0` | AI | Done 2026-08-31, typecheck clean. Was **not** related to T-01 (v0.18.0 is a SQL-only change). |
-| T-03 | ⚪ open | Run the 7 intake smoke assertions | AI | Written, never passed. Listed in STATUS §4. Blocked by T-01. |
 | T-04 | ⚪ open | Wire the quiz redirect gate end to end in a browser | AI | `client/src/quiz/` is lifted and wired as a redirect gate, not a tab. Never driven in a real browser. |
 | T-05 | 🔵 waiting | Forge repo from Luke | Luke | **44 of 81 metrics (54%) come from Forge.** Six Dashboard screens cannot show real numbers until it exists. Ask recorded in `operations/ASK-luke-forge-repo.md`. |
 | T-06 | ⚪ open | Rehearse `operations/DEMO-RUNBOOK-2026-09-07.md` | Makel | Four steps + break-glass table. Not yet rehearsed against the current build. |
@@ -34,7 +30,6 @@
 | T-10 | ⚪ open | Retake / lockout semantics | AI | The unique index is **not partial**, and `deleted_at` is **not** in the UPDATE grant — so a retake cannot currently be modelled either way. |
 | T-11 | ⚪ open | Version-stamp integrity | AI | `CONFIG_VERSION` / `SCORING_VERSION` / `RESULT_VERSION` are stamped once at write, but the result is recomputed by whatever code is deployed at read time. Those two facts disagree. |
 | T-12 | ⚪ open | Strip remaining prototype literals | AI | Next up: `state.forge` (sidebar), `SEED`, `DRILL_PICK`. |
-| T-23 | ⚪ open | **Audit every table for the drizzle column-grant bug** | AI | Drizzle names *all* columns in an INSERT, so column-level INSERT grants must cover *all* of them. Any table using that pattern has T-01's bug and it presents as a misleading `42501`. |
 
 ## 3. Backlog — real, unscheduled
 
@@ -71,7 +66,9 @@
 | D-09 | 2026-08-31 | Four intake blockers fixed in code | atlas `4e1dec2` (**fixed, not proven** — see T-03) |
 | D-10 | 2026-08-31 | Handoff doc set + maintenance rule | this file, STATUS.md, HANDOFF.md, CLAUDE.md ×4, moved into the Atlas repo |
 | D-11 | 2026-08-31 | Root-caused B-1 | `42501` observed directly; drizzle-names-all-columns vs column-level INSERT grants |
+| D-12 | 2026-09-01 | **Fixed B-1 — the intake works end to end** | 18/18 smoke assertions; completion verified in `golf.player_profile` + `golf.handicap_history` |
+| D-13 | 2026-09-01 | Fixed the silent-looking PATCH (B-3) | `volume`/`alloc` added to `toEnvelope`; resumed runs rehydrate |
+| D-14 | 2026-09-01 | Audited every table for the drizzle column-grant bug | `atlas.intake_submissions` was the only one; the other six hold table-level INSERT |
 
 ---
-
-_Next free ID: **T-24** / **D-12**._
+_Next free ID: **T-24** / **D-15**._

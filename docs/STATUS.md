@@ -20,13 +20,13 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-08-31 21:17 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-01 10:53 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **4 file(s)** | **1 ahead** |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **3 file(s)** | **2 ahead** |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | **1 file(s)** | **1 ahead** |
-| tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | **1 ahead** |
+| tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
 | locker-room | `~/Desktop/ATR/apps/locker-room` | makel-ryp/locker-room | feature | clean | pushed |
 | debrief | `~/Desktop/ATR/apps/debrief` | yanyanarti/debrief | master | clean | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-08-31 21:17 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.18.0`  •  **pinned in Atlas as:** `github:RYPGolf/ryp-eco#v0.18.0`
-- **Atlas HEAD:** `0f125a7 Add CLAUDE.md — repo rules and the doc-maintenance contract`
+- **Atlas HEAD:** `4bcfd89 Add the living handoff docs, and repin eco to v0.18.0`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -65,66 +65,49 @@ Each line here was observed working. Do not rebuild any of it.
 
 ## 3. What is BROKEN — top blocker
 
-### 🔴 B-1 · `POST /api/intake/start` → 403. Root cause found 2026-08-31.
+### ✅ B-1 · FIXED and VERIFIED 2026-09-01. Kept here as the record.
 
-```
-[[DIAG]] code 42501  "permission denied for table intake_submissions"
-```
+`POST /api/intake/start` returned `403` for every authenticated user. **18/18 smoke assertions now
+pass**, including completion writing through to `golf.player_profile`.
 
-**Observed, not inferred** — captured by temporarily logging `err` in the `intake.ts` catch and
-hitting the endpoint on a scratch server.
+**The cause.** Drizzle names **every column** in an INSERT, passing `default` for ones you did not
+set. `atlas_app` holds **column-level** INSERT on 15 of the 18 columns; the three withheld are
+`quality_flag`, `started_at`, `deleted_at` — deliberately, so a client cannot set its own quality
+flag, backdate a run, or soft-delete on insert. **Postgres requires the INSERT privilege on every
+column a statement NAMES, even where the value is `DEFAULT`**, so the statement was refused with
+`42501 permission denied for table intake_submissions`, which `intake.ts` translates to
+`403 forbidden`. It reads exactly like an RLS failure and is not one.
 
-**The cause.** Drizzle names **every column** in an INSERT, passing `default` for the ones you did
-not set:
+**The fix.** `/intake/start` now issues explicit-column SQL naming only the four granted columns,
+then reads the row back through drizzle for a typed result. The grant model stays the real gate
+rather than being widened to suit an ORM convenience. Marked `⚠️ RAW SQL ON PURPOSE` in the source
+so it does not get "cleaned up" back into `db.insert()`.
 
-```sql
-insert into "atlas"."intake_submissions"
-  ("id","user_id","instrument","source_app","tier_completed","profile","volume","alloc",
-   "answers","config_version","scoring_version","result_version","status",
-   "quality_flag","started_at","completed_at","updated_at","deleted_at")
-values (default,$1,default,default,default,default,default,default,default,$2,$3,$4,
-        default,default,default,default,default,default)
-```
+**Scope — audited, 2026-09-01.** `atlas.intake_submissions` is the **only** affected table. Every
+other table Atlas inserts into (`golf.player_profile`, `golf.handicap_history`,
+`atlas.coaching_notes`, `public.users`, `public.user_app_roles`, `public.user_relationships`) holds
+**table-level** INSERT and is unaffected. The rule for new tables: **if you use column-level INSERT
+grants, they must cover every column, or drizzle's insert will fail.**
 
-`atlas_app` holds **column-level** INSERT on 15 of the 18 columns. The three it does *not* hold are
-**`quality_flag`, `started_at`, `deleted_at`** — deliberately withheld, because a client must not be
-able to set its own quality flag, backdate a run, or soft-delete on insert.
-
-**Postgres requires the INSERT privilege on every column the statement NAMES — even when the value
-is `DEFAULT`.** So the statement is refused, and `intake.ts:280` translates `42501` into
-`403 forbidden`.
-
-**Ruled out, with evidence — do not re-investigate these:**
-
-| Suspect | Ruled out by |
-| --- | --- |
-| The auth chain | `GET /api/users/me` uses the *identical* `identityChain` and returns 200 |
-| `requireApp('atlas')` | it emits `{"error":"app_access_denied"}`, a different body |
-| The RLS policy | a hand-written INSERT naming only the 4 granted columns **succeeds** as `atlas_app` |
-| Missing column grants generally | all 18 columns have SELECT; 15 have INSERT |
-| A stale server process | server started 20:58:35, commit `4e1dec2` landed 20:57:06 |
-| The eco pin drift | v0.17.0 → v0.18.0 is a **SQL-only** change; the TypeScript is identical |
-
-**The fix is a design decision, not a one-liner.** Granting INSERT on those three columns defeats
-why they were withheld. The options are (a) have the route insert with explicit SQL naming only the
-granted columns, (b) insert through a `security_invoker` view that exposes only the writable
-columns, or (c) accept table-level INSERT and enforce the three columns with a `BEFORE INSERT`
-trigger or a `WITH CHECK` that pins them to their defaults. Tracked as **T-01**.
-
-> ### ⚠️ This is not an intake bug — it is an ecosystem-wide pattern
-> **Every table in this project that uses column-level INSERT grants with a drizzle insert has this
-> bug**, and it will present as a confusing `42501` that looks like RLS. Audit the others before
-> assuming intake is special.
+**Ruled out along the way — do not re-investigate:** the auth chain (`/api/users/me` uses the
+identical `identityChain` and returned 200), `requireApp` (emits `app_access_denied`), the RLS
+policy (a hand-written 4-column INSERT succeeds as `atlas_app`), a stale server process, and the
+eco pin drift (v0.17.0→v0.18.0 is SQL-only).
 
 ### 🟢 B-2 · eco pin drift — RESOLVED 2026-08-31
 
-Atlas was pinned to `@ryp/eco#v0.17.0` while eco's HEAD was v0.18.0. **Repinned and installed at
-v0.18.0**; typecheck clean. Worth knowing: v0.18.0 is a *SQL-only* revert, so this was **never** a
-candidate cause for B-1. Recorded so nobody spends an hour on it.
+Repinned and installed at v0.18.0; typecheck clean. Was never a candidate cause for B-1.
 
-## 4. What is UNVERIFIED (blocked behind B-1)
+### 🟡 B-3 · Silent-looking PATCH — FIXED 2026-09-01
 
-These assertions are written and ready to run, but have never passed:
+`toEnvelope` omitted `volume` and `alloc`, so a save returned 200 and the read-back showed nothing.
+The write had landed; the projection dropped it. A resumed run rendered those two screens blank.
+Both are now returned — they are the subject's own input, unlike `quality_flag`, which stays
+server-side.
+
+## 4. Intake smoke suite — 18/18 passing (2026-09-01)
+
+All verified against a running server and confirmed in the database, not by response code alone:
 
 1. `start` twice for one user resumes the same row (no `42P10`)
 2. ALLOC summing to 87.5 is **accepted**; a single share of 150 is **rejected**
