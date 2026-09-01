@@ -1,12 +1,58 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AuthProvider, useAuth } from './lib/authContext'
 import { Login } from './components/Login'
 import { Profile } from './components/Profile'
 import { Admin } from './components/Admin'
+import { Shell as IntakeShell } from './quiz/Shell'
+import { intakeApi } from './quiz/api'
+import { QuizApiError } from './quiz/contract'
+
+/**
+ * Does this signed-in golfer still need to take Practice DNA before they see the rest of Atlas?
+ *
+ * A REDIRECT, not a tab (see the goal doc's "your call which, but say why"): the whole point of
+ * this port is that intake IS account creation — sign up, take the quiz, the answers become the
+ * profile. A tab makes that optional, which contradicts the premise; every other Atlas screen is
+ * reading a profile this quiz is what fills in.
+ *
+ * `'unknown'` is the fail-open state: a network error, a 500, or this route lane's endpoint not
+ * existing yet (its own schema import doesn't resolve as of 2026-08-31 — see `server/routes/
+ * intake.ts`'s header) all land here, and `'unknown'` renders normal Atlas, never the quiz. A
+ * redirect gate that can trap a signed-in golfer behind a screen the backend can't serve is worse
+ * than no gate — empty/unknown must stay honest, not become a wall.
+ */
+type IntakeGate = 'checking' | 'needed' | 'satisfied' | 'unknown'
+
+function useIntakeGate(active: boolean): IntakeGate {
+  const [gate, setGate] = useState<IntakeGate>('checking')
+
+  useEffect(() => {
+    if (!active) return
+    let cancelled = false
+    intakeApi
+      .getRun()
+      .then((run) => {
+        if (!cancelled) setGate(run.status === 'completed' ? 'satisfied' : 'needed')
+      })
+      .catch((err) => {
+        if (cancelled) return
+        // `not_started` (see `api.ts`'s `toQuizApiError`) is the one rejection that DOES mean
+        // something definite — this golfer has never begun, so the quiz screen is right, and
+        // `useQuizRun` inside it auto-starts a run rather than needing one to already exist.
+        setGate(err instanceof QuizApiError && err.code === 'not_started' ? 'needed' : 'unknown')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [active])
+
+  return gate
+}
 
 function Routes() {
   const { status, error, me, logout } = useAuth()
   const [tab, setTab] = useState<'profile' | 'admin'>('profile')
+  const intakeGate = useIntakeGate(status === 'signed_in')
 
   switch (status) {
     case 'loading':
@@ -16,6 +62,16 @@ function Routes() {
       return <Login />
 
     case 'signed_in': {
+      // Checked before anything else renders — see `useIntakeGate`. `'checking'` shows the same
+      // loading shell as auth's own loading state; there is no version of this screen worth
+      // flashing between "we don't know yet" and "we know."
+      if (intakeGate === 'checking') {
+        return <main className="shell"><p className="muted">Loading…</p></main>
+      }
+      if (intakeGate === 'needed') {
+        return <IntakeShell api={intakeApi} />
+      }
+
       // Gate is on the atlas row specifically, same reasoning as isCoach in Profile — a
       // locker_room admin is not an Atlas admin and must not see this tab.
       const isAtlasAdmin = me?.roles.some((r) => r.app === 'atlas' && r.role === 'admin') ?? false

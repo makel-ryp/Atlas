@@ -501,3 +501,140 @@
     color: #4d5765;
   }
 }
+
+/**
+ * PRACTICE DNA QUIZ — tgt's Tailwind class names, reusing Luke's tokens, INVERTED.
+ *
+ * `client/src/quiz/**` was ported from tgt with its Tailwind class strings left untouched (the
+ * markup is not restyled, per this lane's own rule). Those classes reference `ink`/`paper`/
+ * `muted`/`gold`/`clay` as if they were registered Tailwind colors — they aren't (see
+ * `tailwind.config.ts`, `theme.extend` is empty, and that file is outside this lane's fence), so
+ * without the rules below every one of them compiles to nothing and the quiz renders as
+ * unstyled, invisible-text HTML.
+ *
+ * NOT a 1:1 reuse of the CSS variables' own names, and that is the one thing to understand
+ * before touching this block: tgt is a LIGHT theme (`text-ink` = body copy, `bg-paper` = the
+ * page) and Atlas is DARK (`body { background: var(--ink) }`, `--paper` is Atlas's primary TEXT
+ * colour). Mapping `text-ink → var(--ink)` literally would put near-black text on a near-black
+ * page. Every rule below inverts on purpose:
+ *   - `ink` (tgt's body-text / filled-button colour)   → `--paper` for text, `--gold` for fills
+ *     (Luke's one accent standing in for tgt's default filled/active state)
+ *   - `paper` (tgt's page/card colour)                 → `--ink` for text-on-gold, `--surface`
+ *     for cards
+ *   - `muted`, `gold`                                   → direct matches, unchanged
+ *   - `clay` (tgt's error/warning tone — not one of Luke's tokens) → `#d98b7a`, the exact colour
+ *     Atlas's own `.error` class already uses a few lines up. Reused, not invented.
+ *
+ * `color-mix()` stands in for Tailwind's opacity modifiers (`/10`, `/40`, …), which likewise
+ * don't exist without the colour being registered. Every value below was enumerated by grepping
+ * `client/src/quiz/` for exactly what's used — this is not a general-purpose ink/paper/clay
+ * utility set, it's the subset the port actually calls for.
+ *
+ * Deliberately UNLAYERED (not inside `@layer components`/`utilities`): unlayered CSS always
+ * outranks anything Tailwind emits into its own layers, so these rules can't lose a specificity
+ * fight to a real Tailwind utility that happens to share a class name.
+ */
+.text-ink {
+  color: var(--paper);
+}
+.text-ink\/60 {
+  color: color-mix(in srgb, var(--paper) 60%, transparent);
+}
+.text-ink\/70 {
+  color: color-mix(in srgb, var(--paper) 70%, transparent);
+}
+.text-ink\/80 {
+  color: color-mix(in srgb, var(--paper) 80%, transparent);
+}
+.text-muted {
+  color: var(--muted);
+}
+.text-muted\/50 {
+  color: color-mix(in srgb, var(--muted) 50%, transparent);
+}
+.text-paper {
+  color: var(--ink);
+}
+.text-clay {
+  color: #d98b7a; /* same value as .error above */
+}
+
+.bg-ink {
+  background-color: var(--gold);
+}
+.bg-ink\/5 {
+  background-color: color-mix(in srgb, var(--paper) 5%, transparent);
+}
+.bg-ink\/10 {
+  background-color: color-mix(in srgb, var(--paper) 10%, transparent);
+}
+.bg-ink\/15 {
+  background-color: color-mix(in srgb, var(--paper) 15%, transparent);
+}
+.bg-ink\/20 {
+  background-color: color-mix(in srgb, var(--paper) 20%, transparent);
+}
+.bg-paper {
+  background-color: var(--surface);
+}
+.bg-muted {
+  background-color: var(--muted);
+}
+.bg-clay\/5 {
+  background-color: color-mix(in srgb, #d98b7a 5%, transparent);
+}
+.bg-clay\/10 {
+  background-color: color-mix(in srgb, #d98b7a 10%, transparent);
+}
+
+.border-ink {
+  border-color: var(--line);
+}
+.border-ink\/10 {
+  border-color: color-mix(in srgb, var(--paper) 10%, transparent);
+}
+.border-ink\/15 {
+  border-color: color-mix(in srgb, var(--paper) 15%, transparent);
+}
+.border-ink\/40 {
+  border-color: color-mix(in srgb, var(--paper) 40%, transparent);
+}
+.border-muted {
+  border-color: var(--muted);
+}
+.border-clay\/40 {
+  border-color: color-mix(in srgb, #d98b7a 40%, transparent);
+}
+
+/* `ring-1` is a real Tailwind utility and already generates a box-shadow keyed off
+   `--tw-ring-color` — these just override that variable, so they work regardless of `ring-ink/*`
+   itself never being generated. */
+.ring-ink\/20 {
+  --tw-ring-color: color-mix(in srgb, var(--paper) 20%, transparent);
+}
+.ring-ink\/25 {
+  --tw-ring-color: color-mix(in srgb, var(--paper) 25%, transparent);
+}
+.ring-ink\/50 {
+  --tw-ring-color: color-mix(in srgb, var(--paper) 50%, transparent);
+}
+
+.accent-ink {
+  accent-color: var(--gold); /* the slider thumb/track tint (VolumeStage, QuestionControls) */
+}
+.fill-ink {
+  fill: var(--paper); /* SVG text (MessyDial's centre number) */
+}
+
+.hover\:border-ink\/40:hover {
+  border-color: color-mix(in srgb, var(--paper) 40%, transparent);
+}
+.hover\:bg-ink\/5:hover {
+  background-color: color-mix(in srgb, var(--paper) 5%, transparent);
+}
+.focus\:border-ink\/40:focus {
+  border-color: color-mix(in srgb, var(--paper) 40%, transparent);
+}
+.focus-visible\:outline-ink:focus-visible {
+  outline-color: var(--gold);
+}
