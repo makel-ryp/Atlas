@@ -22,6 +22,7 @@ import { computeVolumeBreakdown } from '../../shared/volume'
 // theirs invisibly (see zone-grades.ts) — so the route has to learn about them separately or it
 // rejects every one of them as an unknown code.
 import { ZONE_PRIOR_ITEMS } from '../../shared/zone-grades'
+import { parseHandicapIndex } from '../../shared/handicap'
 // The instrument's own version constants, stamped onto every run. Imported from the copied
 // instrument so they can never drift from the scoring that actually ran.
 import { CONFIG_VERSION, SCORING_VERSION, RESULT_VERSION } from '../../shared/practice-dna/config'
@@ -572,7 +573,13 @@ intakeRouter.post('/intake/:id/complete', ...identityChain, async (req, res, nex
         else if (hand === 'Left') profileValues.handedness = 'left'
 
         const hcpNow = profile.PRO_HCP_NOW
-        const hcpNumeric = typeof hcpNow === 'string' && /^\d+(\.\d+)?$/.test(hcpNow) ? Number(hcpNow) : null
+        // parseHandicapIndex, not a regex spelled out here: the old `/^\d+(\.\d+)?$/` did not match
+        // a leading minus, and the client sends a plus handicap AS a negative ("+2.1" -> "-2.1").
+        // So every better-than-scratch golfer had their handicap written to neither
+        // golf.player_profile nor golf.handicap_history, and the dashboard kept whatever was there
+        // before — the "+ disappears" report of 2026-09-01. Sentinels ("I don't have one") still
+        // return null, which is correct: no index is not the same as an index of zero.
+        const hcpNumeric = parseHandicapIndex(hcpNow)
         if (hcpNumeric !== null) {
           profileValues.handicapIndex = String(hcpNumeric)
         }

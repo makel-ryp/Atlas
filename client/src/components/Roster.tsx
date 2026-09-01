@@ -1,3 +1,4 @@
+import { formatHandicapIndex } from '../../../shared/handicap'
 import { useEffect, useState } from 'react'
 import { apiFetch, ApiError } from '../lib/api'
 import type { Student, CoachingNote } from '../lib/types'
@@ -91,7 +92,7 @@ function StudentRow({ student: s }: { student: Student }) {
 
       <span className="col">
         <span className="stat-label">Hcp</span>
-        <span className="stat-value">{s.profile?.handicapIndex ?? '—'}</span>
+        <span className="stat-value">{formatHandicapIndex(s.profile?.handicapIndex) ?? '—'}</span>
       </span>
 
       <span className="col">

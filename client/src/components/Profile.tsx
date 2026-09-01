@@ -1,3 +1,4 @@
+import { formatHandicapIndex } from '../../../shared/handicap'
 import { useState } from 'react'
 import { useAuth } from '../lib/authContext'
 import { ProfileForm } from './ProfileForm'
@@ -59,9 +60,11 @@ export function Profile() {
             <div className="stat-row">
               <span>
                 <span className="stat-label">Handicap index</span>
-                {/* numeric in Postgres, string over the wire — never parsed into a float just to
-                    re-render it */}
-                <span className="stat-value big gold">{profile.handicapIndex ?? '—'}</span>
+                {/* Golf convention: a better-than-scratch index is stored negative and PRINTED
+                    with a plus. formatHandicapIndex owns that flip — see shared/handicap.ts. */}
+                <span className="stat-value big gold">
+                  {formatHandicapIndex(profile.handicapIndex) ?? '—'}
+                </span>
               </span>
               <span>
                 <span className="stat-label">Driver carry</span>
