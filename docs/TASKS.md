@@ -1,5 +1,5 @@
 # ATR — TASKS
-**Last updated:** 2026-08-31 · Board for [STATUS.md](STATUS.md) · Orientation in [HANDOFF.md](HANDOFF.md)
+**Last updated:** 2026-09-01 · Board for [STATUS.md](STATUS.md) · Orientation in [HANDOFF.md](HANDOFF.md)
 
 ## How to maintain this file
 - One task = one row. **Never delete a row** — move it to §5 Done with the date.
@@ -20,7 +20,7 @@
 | T-05 | 🔵 waiting | Forge repo from Luke | Luke | **44 of 81 metrics (54%) come from Forge.** Six Dashboard screens cannot show real numbers until it exists. Ask recorded in `operations/ASK-luke-forge-repo.md`. |
 | T-06 | ⚪ open | Rehearse `operations/DEMO-RUNBOOK-2026-09-07.md` | Makel | Four steps + break-glass table. Not yet rehearsed against the current build. |
 
-## 2. Next — after the intake is proven
+## 2. Next — the intake is proven; these are what follow
 
 | ID | State | Task | Owner | Notes |
 | --- | --- | --- | --- | --- |
@@ -66,9 +66,11 @@
 | D-09 | 2026-08-31 | Four intake blockers fixed in code | atlas `4e1dec2` (**fixed, not proven** — see T-03) |
 | D-10 | 2026-08-31 | Handoff doc set + maintenance rule | this file, STATUS.md, HANDOFF.md, CLAUDE.md ×4, moved into the Atlas repo |
 | D-11 | 2026-08-31 | Root-caused B-1 | `42501` observed directly; drizzle-names-all-columns vs column-level INSERT grants |
-| D-12 | 2026-09-01 | **Fixed B-1 — the intake works end to end** | 18/18 smoke assertions; completion verified in `golf.player_profile` + `golf.handicap_history` |
+| D-12 *(closes T-01, T-03)* | 2026-09-01 | **Fixed B-1 — the intake works end to end** | 18/18 smoke assertions; completion verified in `golf.player_profile` + `golf.handicap_history` |
 | D-13 | 2026-09-01 | Fixed the silent-looking PATCH (B-3) | `volume`/`alloc` added to `toEnvelope`; resumed runs rehydrate |
-| D-14 | 2026-09-01 | Audited every table for the drizzle column-grant bug | `atlas.intake_submissions` was the only one; the other six hold table-level INSERT |
+| D-14 *(closes T-23)* | 2026-09-01 | Audited every table for the drizzle column-grant bug | `atlas.intake_submissions` was the only one; the other six hold table-level INSERT |
 
 ---
+**Retired IDs** (closed, kept so no ID is ever reused): T-01 → D-12 · T-03 → D-12 · T-23 → D-14.
+
 _Next free ID: **T-24** / **D-15**._
