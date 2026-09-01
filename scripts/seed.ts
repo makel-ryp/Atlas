@@ -37,6 +37,7 @@ import {
   userRelationships,
   golfPlayerProfile,
   golfHandicapHistory,
+  atlasIntakeSubmissions,
 } from '@ryp/eco/schema'
 
 const SEED_PASSWORD = process.env.SEED_PASSWORD ?? 'RypDemo!2026'
@@ -90,6 +91,7 @@ const schema = {
   coachProfiles,
   golfPlayerProfile,
   golfHandicapHistory,
+  atlasIntakeSubmissions,
 }
 
 function requireEnv(name: string): string {
@@ -169,6 +171,39 @@ async function main() {
               // entitlement stays invisible to attachUser and the account silently 403s.
               set: { role: person.role, deletedAt: null, updatedAt: new Date() },
             }),
+      )
+
+      // Return the Practice DNA intake to a pristine, unanswered state.
+      //
+      // The runbook promises `npm run seed` "resets all four accounts and their data", and until
+      // now that was not true of this table — a demo rehearsal that finished the quiz left the
+      // account permanently past the intake gate, so the signup → quiz → home flow could only ever
+      // be shown once. (Hit for real on 2026-09-01: a smoke run completed player 1's intake and no
+      // reseed could undo it.)
+      //
+      // RESET, not DELETE, and that is forced rather than stylistic: `atlas_app` holds no DELETE
+      // privilege on this table, and withRlsBypass only flips a GUC — it does not change the
+      // Postgres role, so it cannot conjure a grant. Blanking the answer columns is equivalent for
+      // every consumer anyway, because the gate keys on `status`, and /intake/start would upsert
+      // this same row back for a user who had none.
+      //
+      // The columns set below are exactly the ones atlas_app holds column-level UPDATE on.
+      // id, user_id, instrument, source_app, quality_flag, started_at and deleted_at are withheld
+      // on purpose — adding any of them here would fail with 42501, not be silently skipped.
+      await withRls(appPool, { userId, firebaseUid, app: 'atlas' }, schema, (db) =>
+        db
+          .update(atlasIntakeSubmissions)
+          .set({
+            status: 'in_progress',
+            tierCompleted: 0,
+            profile: null,
+            volume: null,
+            alloc: null,
+            answers: {},
+            completedAt: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(atlasIntakeSubmissions.userId, userId)),
       )
 
       if (person.profile) {
