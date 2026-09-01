@@ -25,12 +25,51 @@ const schema = { userAppRoles }
  * all refused by the database, not by this file. UPDATE remains bypass-only, so the row it writes can
  * never be promoted afterwards.
  */
+/**
+ * WHO may be auto-granted Atlas on first sign-in.
+ *
+ * ⚠️ This gate exists because Atlas authenticates against `rypstick-ios` — the SAME Firebase
+ * project as the live RYP Stick iOS app, which held **28,347 real customer accounts** on
+ * 2026-09-01. That sharing is deliberate and load-bearing (one firebase_uid per human across every
+ * RYP app, see client/src/lib/firebase.ts) — but it means "authenticated" and "invited" are
+ * completely different questions, and the original version of this file conflated them. On a
+ * public URL, every one of those 28k customers could sign in and be handed an Atlas entitlement
+ * plus a row in ryp-core.
+ *
+ * Format: a comma-separated list of whole emails (`someone@example.com`) and/or domain suffixes
+ * (`@rypgolf.com`). Case-insensitive.
+ *
+ * FAILS CLOSED in production: unset means nobody is auto-granted, because the failure mode of
+ * guessing wrong here is handing the unfinished product to a paying customer. In development it is
+ * open, so a local signup still works without ceremony.
+ */
+function signupAllowlist(): string[] {
+  return (process.env.ATLAS_SIGNUP_ALLOWLIST ?? '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+function mayBeAutoGranted(email: string | null | undefined): boolean {
+  const list = signupAllowlist()
+  if (list.length === 0) return process.env.NODE_ENV !== 'production'
+  const e = (email ?? '').trim().toLowerCase()
+  if (!e) return false
+  return list.some((rule) => (rule.startsWith('@') ? e.endsWith(rule) : e === rule))
+}
+
 export function ensureAtlasAccess(pool: Pool): RequestHandler {
   return async (req, res, next) => {
-    const user = (req as any).user as { id: string; firebaseUid: string } | undefined
+    const user = (req as any).user as { id: string; firebaseUid: string; email?: string | null } | undefined
     const appRoles = ((req as any).appRoles as string[] | undefined) ?? []
     if (!user) return next() // attachUser already answered 401/403
     if (appRoles.includes('atlas')) return next() // the overwhelmingly common case: no query at all
+
+    // Already-entitled users are handled above, so this only ever gates a FIRST grant. Someone who
+    // is refused here is not signed out and not errored: they fall through with no atlas role, and
+    // requireApp('atlas') answers 403, which the client renders as the "no Atlas access yet"
+    // screen. That is a real designed state, not a dead end.
+    if (!mayBeAutoGranted(user.email)) return next()
 
     const client = await pool.connect()
     try {
