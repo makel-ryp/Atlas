@@ -3,8 +3,8 @@
 The front door of the RYP Golf ecosystem: where a golfer signs up, and the shared profile every
 other app reads from and writes to. Shared backend spine is `@ryp/eco` (`~/dev/ATR/eco`).
 
-**Full orientation:** `~/Desktop/ATR/docs/HANDOFF.md` · **State:** `~/Desktop/ATR/docs/STATUS.md` ·
-**Board:** `~/Desktop/ATR/docs/TASKS.md`
+**Full orientation:** `~/dev/ATR/atlas/docs/HANDOFF.md` · **State:** `~/dev/ATR/atlas/docs/STATUS.md` ·
+**Board:** `~/dev/ATR/atlas/docs/TASKS.md`
 
 ## Boot
 
@@ -40,11 +40,11 @@ A stale doc is worse than no doc, because the next agent trusts it.
 
 **Before you end any turn in which you changed code, schema, or config:**
 
-1. Update `~/Desktop/ATR/docs/TASKS.md` — move the row you worked, or add one. Never delete rows;
+1. Update `~/dev/ATR/atlas/docs/TASKS.md` — move the row you worked, or add one. Never delete rows;
    move finished work to §5 Done with the date and the evidence.
-2. Update `~/Desktop/ATR/docs/STATUS.md` — only if what is true changed. Mark something ✅ **only**
+2. Update `~/dev/ATR/atlas/docs/STATUS.md` — only if what is true changed. Mark something ✅ **only**
    when you observed it work and can name the evidence.
-3. Run `~/Desktop/ATR/docs/refresh-status.sh` to regenerate the repo-state block.
+3. Run `~/dev/ATR/atlas/docs/refresh-status.sh` to regenerate the repo-state block.
 
 **Never** write "done", "working", or "✅" for something you did not run. A passing typecheck is
 not evidence. "No error" is not success — an RLS-filtered UPDATE matches 0 rows silently.
