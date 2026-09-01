@@ -3,6 +3,7 @@ import { eq, and, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { verifyToken, attachUser, requireApp } from '@ryp/eco/auth'
 import { withRls } from '@ryp/eco/db'
+import { effectiveBounds } from '../../shared/profile-bounds'
 // ⚠️ SCHEMA DEPENDENCY NOT YET PUBLISHED — see the block comment below. `atlasIntakeSubmissions`
 // does not exist in @ryp/eco@0.15.0 (the version this repo is pinned to, verified by grepping the
 // installed dist for "intake": zero hits, and by `git log` in ~/dev/ATR/eco showing no commit for
@@ -177,8 +178,6 @@ const NUMERIC_WIRE_FIELDS = new Set(['PRO_AGE'])
 // closed and the UI renders them as buttons: PRO_HAND, PRO_SHAPE, PRO_SHAPE_PREF.
 const HANDICAP_FIELDS = new Set(['PRO_HCP_NOW', 'PRO_HCP_3YR'])
 
-// Lower bounds the CLIENT applies that items.ts does not. Keep in step with ProfileStage's BOUNDS.
-const SPEED_FLOOR_OVERRIDE = new Map<string, number>([['PRO_SPEED', 40]])
 
 // Must accept exactly what the CLIENT can emit, which is not the same as what a golfer types.
 // `ProfileStage.hcpForEngine` NORMALISES a plus handicap before sending: "+2.1" is stored as the
@@ -193,29 +192,22 @@ function validateProfilePartial(input: Record<string, unknown>): string | null {
   for (const [code, value] of Object.entries(input)) {
     const field = profileFieldByCode.get(code)
     if (!field) return `unknown_profile_field:${code}`
+    // Atlas widens some of the instrument's floors (juniors) — see shared/profile-bounds.ts.
+    // Read through effectiveBounds, never field.min/field.max directly, or the server refuses
+    // values its own UI accepted.
+    const bounds = effectiveBounds(code, field)
     if (field.kind === 'number' && NUMERIC_WIRE_FIELDS.has(code)) {
       if (typeof value !== 'number' || !Number.isFinite(value)) return `invalid_profile_value:${code}`
-      if (field.min !== undefined && value < field.min) return `invalid_profile_value:${code}`
-      if (field.max !== undefined && value > field.max) return `invalid_profile_value:${code}`
-    } else if (field.kind === 'number' && SPEED_FLOOR_OVERRIDE.has(code)) {
-      // PRO_SPEED's items.ts floor is 60 mph, an ADULT floor. The client deliberately lowers it to
-      // 40 (ProfileStage's BOUNDS override) because juniors exist: 60 mph is a 156-yard drive, and
-      // anything shorter left Continue disabled with nothing explaining why. The server kept the
-      // 60 and so rejected every junior the UI had just accepted. Mirror the client's floor.
-      if (typeof value !== 'string' || !/^\d+(\.\d+)?$/.test(value)) return `invalid_profile_value:${code}`
-      const n = Number(value)
-      const min = SPEED_FLOOR_OVERRIDE.get(code) ?? field.min
-      if (!Number.isFinite(n)) return `invalid_profile_value:${code}`
-      if (min !== undefined && n < min) return `invalid_profile_value:${code}`
-      if (field.max !== undefined && n > field.max) return `invalid_profile_value:${code}`
+      if (bounds.min !== undefined && value < bounds.min) return `invalid_profile_value:${code}`
+      if (bounds.max !== undefined && value > bounds.max) return `invalid_profile_value:${code}`
     } else if (field.kind === 'number') {
       // Numeric-but-string-typed (PRO_SPEED): a numeric string, bounds-checked as a number,
       // stored as a string.
       if (typeof value !== 'string' || !/^\d+(\.\d+)?$/.test(value)) return `invalid_profile_value:${code}`
       const n = Number(value)
       if (!Number.isFinite(n)) return `invalid_profile_value:${code}`
-      if (field.min !== undefined && n < field.min) return `invalid_profile_value:${code}`
-      if (field.max !== undefined && n > field.max) return `invalid_profile_value:${code}`
+      if (bounds.min !== undefined && n < bounds.min) return `invalid_profile_value:${code}`
+      if (bounds.max !== undefined && n > bounds.max) return `invalid_profile_value:${code}`
     } else if (HANDICAP_FIELDS.has(code)) {
       // A sentinel from the options list ("I don't have one", "Wasn't playing", …) OR a real
       // handicap index. See the note on HANDICAP_FIELDS above.

@@ -13,6 +13,7 @@
 
 import { useState } from 'react';
 import type { Profile } from './contract';
+import { WIDENED_BOUNDS } from '../../../shared/profile-bounds';
 import { PROFILE_FIELDS } from '../../../shared/practice-dna/items';
 
 /** Typed rather than picked from their declared options. */
@@ -44,16 +45,8 @@ const TYPED_FIELDS = new Set(['PRO_AGE', 'PRO_SPEED', 'PRO_HCP_NOW', 'PRO_HCP_3Y
  * `PROFILE_FIELDS` but only checks that numbers are finite, so this was always a client-side
  * gate and nothing downstream has to change.
  */
-const WIDENED_BOUNDS: Record<string, { min?: number; max?: number }> = {
-  PRO_AGE: { min: 13 },
-  /**
-   * The bank floors clubhead speed at 60 mph, which is an adult floor. Now that 13-year-olds can
-   * take the quiz, a junior swinging 55 could neither type their speed nor reach it through the
-   * distance box — 60 mph is a 156-yard total drive, and anything shorter left Continue disabled
-   * with nothing on screen saying why.
-   */
-  PRO_SPEED: { min: 40 },
-};
+// Moved to shared/profile-bounds.ts so the intake route enforces the SAME numbers.
+// See that file for why: the server used to refuse juniors the UI had just accepted.
 
 function boundsFor(code: string, declared: { min?: number; max?: number }) {
   const widened = WIDENED_BOUNDS[code];
