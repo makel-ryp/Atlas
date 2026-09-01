@@ -23,7 +23,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const load = useCallback(async () => {
     try {
-      setMe(await apiFetch<Me>('/api/users/me'))
+      let next = await apiFetch<Me>('/api/users/me')
+
+      // Adopt the name the identity provider already knows.
+      //
+      // eco's attachUser stores firebase_uid and email and nothing else — correct, because it is
+      // shared by every RYP app and cannot assume a provider gave a name. A password signup has
+      // none to give. Google and Apple do, and without this a golfer who signed in with Google
+      // sees their email address in the h1 where their name belongs (Profile.tsx renders
+      // `displayName ?? email`), which reads as the app not knowing who they are.
+      //
+      // Guarded so it happens once and only when there is something to adopt: the server has no
+      // name, the provider does. A user who later clears their own name is not re-stamped, because
+      // by then the provider name is no longer news — this only ever fires on a row that has never
+      // had one.
+      const fromProvider = auth.currentUser?.displayName?.trim()
+      if (!next.user.displayName && fromProvider) {
+        try {
+          await apiFetch('/api/users/me', {
+            method: 'PATCH',
+            body: JSON.stringify({ displayName: fromProvider }),
+          })
+          next = await apiFetch<Me>('/api/users/me')
+        } catch {
+          // Cosmetic. A failure here must not block sign-in — the app is perfectly usable showing
+          // an email address, and throwing would send a working session to the error screen.
+        }
+      }
+
+      setMe(next)
       setStatus('signed_in')
       setError(null)
     } catch (err) {

@@ -676,3 +676,50 @@
   letter-spacing: normal;
   text-transform: none;
 }
+
+/* ── Google sign-in on the login screen ──────────────────────────────────────────────────────
+   Secondary to the password form on purpose: RYP accounts predate this door, and most people
+   arriving here already have one. Overrides the bare `button` rule (gold pill, uppercase mono)
+   because a provider button has to read as a provider button — the wordmark colours are Google's
+   and are not ours to restyle. */
+.auth-or {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.auth-or::before,
+.auth-or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+button.btn-oauth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--paper);
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-family: var(--sans);
+  font-size: 0.9375rem;
+}
+button.btn-oauth:hover:not(:disabled) {
+  border-color: var(--muted);
+  background: var(--surface);
+}
+button.btn-oauth svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
