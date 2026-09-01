@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AuthProvider, useAuth } from './lib/authContext'
+import { apiFetch } from './lib/api'
 import { Login } from './components/Login'
 import { Profile } from './components/Profile'
 import { Admin } from './components/Admin'
@@ -53,6 +54,54 @@ function useIntakeGate(active: boolean): [IntakeGate, () => void] {
   return [gate, useCallback(() => setGate('satisfied'), [])]
 }
 
+/**
+ * Sends a coach to the served prototype.
+ *
+ * Two steps, and the first is the one that is easy to miss: a browser NAVIGATION cannot carry an
+ * Authorization header, so the Firebase ID token has to be exchanged for an httpOnly session
+ * cookie (POST /api/session) BEFORE the navigation, or `/proto/dashboard` answers 401 and the
+ * coach sees a bare error page instead of their roster.
+ *
+ * `location.replace`, not `href`: the SPA is not a place the coach chose to be, and leaving it in
+ * history means their Back button lands on a screen that immediately redirects them forward again.
+ * The way back is the "← Atlas" link injected into the page's banner (server/routes/proto.ts).
+ */
+function CoachDashboardRedirect() {
+  const [failed, setFailed] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    apiFetch('/api/session', { method: 'POST', body: JSON.stringify({}) })
+      .then(() => {
+        if (!cancelled) window.location.replace('/proto/dashboard')
+      })
+      // Do not strand them on a spinner. A coach who cannot get a session still has a real
+      // account, so fall through to the React screens rather than to nothing.
+      .catch(() => {
+        if (!cancelled) setFailed('Could not open the coach dashboard.')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (failed) {
+    return (
+      <>
+        <main className="shell">
+          <p className="error">{failed}</p>
+        </main>
+        <Profile />
+      </>
+    )
+  }
+  return (
+    <main className="shell">
+      <p className="muted">Opening your dashboard…</p>
+    </main>
+  )
+}
+
 function Routes() {
   const { status, error, me, logout } = useAuth()
   const [tab, setTab] = useState<'profile' | 'admin'>('profile')
@@ -66,19 +115,44 @@ function Routes() {
       return <Login />
 
     case 'signed_in': {
-      // Checked before anything else renders — see `useIntakeGate`. `'checking'` shows the same
-      // loading shell as auth's own loading state; there is no version of this screen worth
-      // flashing between "we don't know yet" and "we know."
-      if (intakeGate === 'checking') {
-        return <main className="shell"><p className="muted">Loading…</p></main>
-      }
-      if (intakeGate === 'needed') {
-        return <IntakeShell api={intakeApi} onEnterAtlas={satisfyIntakeGate} />
-      }
-
+      // Roles first, THEN the intake gate — the order is the point.
+      //
+      // Practice DNA is a golfer's onboarding: it asks your age, your handicap, your shot shape,
+      // how you spend your practice week. Gating on it before checking the role marched a COACH
+      // through 49 questions about their own game before they could see their students, and an
+      // admin through the same before reaching the admin panel. Neither has an intake to complete;
+      // the gate is about a player's profile being populated, and it does not describe them.
+      //
       // Gate is on the atlas row specifically, same reasoning as isCoach in Profile — a
       // locker_room admin is not an Atlas admin and must not see this tab.
       const isAtlasAdmin = me?.roles.some((r) => r.app === 'atlas' && r.role === 'admin') ?? false
+      const isCoach = me?.roles.some((r) => r.app === 'atlas' && r.role === 'coach') ?? false
+      const isPlayer = !isAtlasAdmin && !isCoach
+
+      // Checked before the player's screens render — see `useIntakeGate`. `'checking'` shows the
+      // same loading shell as auth's own loading state; there is no version of this screen worth
+      // flashing between "we don't know yet" and "we know."
+      if (isPlayer && intakeGate === 'checking') {
+        return <main className="shell"><p className="muted">Loading…</p></main>
+      }
+      if (isPlayer && intakeGate === 'needed') {
+        return <IntakeShell api={intakeApi} onEnterAtlas={satisfyIntakeGate} />
+      }
+
+      // A COACH LANDS ON LUKE'S DESIGN, not on a React rebuild of it.
+      //
+      // `proto/Dashboard.dc.html` IS the coach dashboard, and it is already fed real data by
+      // server/protoData.ts. Until now the only way to it was a "view the prototype" button buried
+      // in Profile.tsx that opened a new tab, while a coach signing in got `<Roster />` — a
+      // hand-built screen covering a fraction of the same ground. That is the reinvention this
+      // repo exists to avoid, and it is why the app "looks nothing like the HTML demo".
+      //
+      // Admins keep the SPA, because the admin panel has no prototype and the tab strip is how
+      // they reach it. A coach who is also an admin therefore stays here — the narrower role does
+      // not get to hijack the wider one's only entry point.
+      if (isCoach && !isAtlasAdmin) {
+        return <CoachDashboardRedirect />
+      }
       return (
         <>
           {isAtlasAdmin && (

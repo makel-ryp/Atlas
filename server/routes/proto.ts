@@ -126,8 +126,14 @@ function injectData(html: string, data: unknown): string {
  * part of his design, and it should disappear the day nothing on the page is empty.
  */
 function injectBanner(html: string, liveCount: number): string {
+  // ⚠️ THE WAY BACK. His file is a standalone document with no link into the SPA, so a coach who
+  // lands here has no route home but the browser's Back button — and once this is their sign-in
+  // destination rather than a new tab, Back returns them to the login screen. Injected rather than
+  // added to his markup, same reasoning as the banner it sits in: it is a statement about how
+  // Atlas hosts this page, not part of Luke's design.
+  const home = `<a href="/" style="color:#13110b;font-weight:700;text-decoration:none;border-bottom:1px solid rgba(19,17,11,0.4);margin-right:14px;">&larr; Atlas</a>`
   const banner = `<div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#c8a05e;color:#13110b;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;padding:7px 14px;text-align:center;">
-Live from ryp-core: ${liveCount} student${liveCount === 1 ? '' : 's'} &mdash; name · handicap index · driver carry · handedness (where recorded) · coaching relationship &nbsp;·&nbsp; Empty, no producer app: strokes gained, strike grid, shot reads, coach notes, tier, zone, target, practice log, intake answers. Blank means not measured, not zero.
+${home}Live from ryp-core: ${liveCount} student${liveCount === 1 ? '' : 's'} &mdash; name · handicap index · driver carry · handedness (where recorded) · coaching relationship &nbsp;·&nbsp; Empty, no producer app: strokes gained, strike grid, shot reads, coach notes, tier, zone, target, practice log, intake answers. Blank means not measured, not zero.
 </div><div style="height:29px"></div>`
   return html.replace(/<body([^>]*)>/i, `<body$1>${banner}`)
 }
