@@ -20,7 +20,7 @@
 | T-27 | ⚪ open | Publish `@ryp/eco` to a private registry | AI | It is currently vendored into Atlas as a committed `.tgz` because the GitHub SSH form breaks Railway's builder. Works, but every eco release needs a manual repack. GitHub Packages + an `NPM_TOKEN` is the real fix. |
 | T-28 | ⚪ open | Migrate `railway.json` to the new config format | AI | Railway CLI warns the old file format stops working **2026-12-01**. `railway config migrate`. |
 | T-25 | ⚪ open | Rewrite the demo runbook around the intake | AI | The runbook was written 26 Aug and has 4 steps; it predates Practice DNA and Luke's prototype entirely. Its "cold start" also still says localhost. |
-| T-26 | ⚪ open | A completed intake appends a `handicap_history` row every run | AI | Each rehearsal adds another row for the same player, so Avery's trend grows a fake point per run. `atlas_app` has no DELETE, so the seed cannot clean them. Decide: dedupe by day, or give the seed an owner connection. |
+
 | T-05 | 🔵 waiting | Forge repo from Luke | Luke | **44 of 81 metrics (54%) come from Forge.** Six Dashboard screens cannot show real numbers until it exists. Ask recorded in `operations/ASK-luke-forge-repo.md`. |
 | T-06 | ⚪ open | Rehearse `operations/DEMO-RUNBOOK-2026-09-07.md` | Makel | Four steps + break-glass table. Not yet rehearsed against the current build. |
 
@@ -81,10 +81,13 @@
 | D-20 | 2026-09-01 | Fixed quiz contrast + divider alignment | `:where(.quiz-root)` reset; registered Tailwind's missing `5.5` spacing step |
 | D-21 *(closes T-29/T-30/T-31)* | 2026-09-01 | **Google sign-in live** | Domain authorised; popup path accepted (`popup-blocked`, not `unauthorized-domain`); provider name adopted so a Google user is not shown their email as their name |
 | D-22 | 2026-09-01 | **Removed the profile eligibility gates** | No age, speed or handicap refuses an account. 9 and 95 year olds, 38 mph, 60 and 108 handicaps all verified live |
+| D-23 *(closes T-26)* | 2026-09-01 | `handicap_history` appends only on a real change | 3 rehearsals at 17.8 append nothing; 15.2 then 16.0 each do |
+| D-24 | 2026-09-01 | **Full intake driven end to end on the LIVE site** | Sign-in → 2 volume screens → allocation → 7 profile → 12 items → review → result → "Go to my Atlas" → dashboard. `golf.player_profile` written by the quiz |
+| D-25 | 2026-09-01 | Cleaned 6 test rows out of `handicap_history` | Deleted by explicit id via the Neon owner connection, after Makel confirmed; each player left with their one seeded point |
 
 ---
 **Retired IDs** (closed, kept so no ID is ever reused): T-01 → D-12 · T-03 → D-12 · T-04 → D-16 · T-23 → D-14.
 
-**Retired IDs:** T-29 → D-21 · T-30 → D-21 · T-31 → D-21.
+**Retired IDs:** T-26 → D-23 · T-29 → D-21 · T-30 → D-21 · T-31 → D-21.
 
-_Next free ID: **T-32** / **D-23**._
+_Next free ID: **T-32** / **D-26**._

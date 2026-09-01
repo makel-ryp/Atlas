@@ -20,7 +20,7 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-01 12:19 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-01 12:37 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-01 12:19 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.18.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.18.0.tgz`
-- **Atlas HEAD:** `e151c43 Stop refusing an account over an age, a speed or a handicap`
+- **Atlas HEAD:** `b1ca823 Append to handicap_history only when the handicap actually moved`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -68,6 +68,8 @@ Each line here was observed working. Do not rebuild any of it.
 | Atlas auto-grant is gated | ✅ verified | `ATLAS_SIGNUP_ALLOWLIST=@rypgolf.com`; an account outside it gets 403, inside gets 200 |
 | **No profile answer refuses an account** | ✅ verified live | 9 and 95 year olds, 38 mph, a 60 and a 108 handicap, plus handicaps and "I don't have one" all save |
 | Google sign-in on the login screen | ✅ live | domain authorised; popup path accepted |
+| **Whole intake, live, in a browser** | ✅ verified | signup → quiz → result → dashboard on `atlas.ryptest.com`, 2026-09-01 |
+| `handicap_history` is a trend, not a log | ✅ verified | appends only when the index actually moved |
 | `npm run seed` resets the intake | ✅ verified | row back to `in_progress` / tier 0, confirmed in the DB |
 
 ## 3. What is BROKEN — top blocker
@@ -197,6 +199,21 @@ The smoke-test harness that runs these is described in [HANDOFF.md](HANDOFF.md) 
   live quiz is anonymous, so none of that data can be attached to an Atlas account retroactively.
 - **Luke is ideation only.** He does not clone, review, or merge. There is no second developer.
 - **Pricing is frozen** until Luke approves. The $99–$799 tiers appear nowhere in the repo.
+
+## 5b. Demo data — the state `npm run seed` restores
+
+| | |
+| --- | --- |
+| 4 accounts | player1 (Avery, 4.2), player2 (Jordan, 17.8), coach (Sam Ellis), admin |
+| Coach edges | Avery **approved**, Jordan **pending** — runbook step 3 depends on both |
+| `handicap_history` | exactly one point each, dated 2026-08-24 |
+| Intakes | both reset to `in_progress`, so the signup flow can be rehearsed repeatedly |
+
+⚠️ One inert row remains in `public.users`: `gate.probe.delete.me@example.com`, left by the
+allowlist test. It holds **no** Atlas entitlement and its Firebase account is deleted, so nobody
+can sign in as it — but it **will appear in the admin panel's user list** during runbook step 4.
+`atlas_app` has no DELETE on `public.users` by design (identity rows are soft-deleted), so removing
+it needs the Neon owner connection.
 
 ## 6. Deferred by decision — do not raise these as blockers
 
