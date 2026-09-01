@@ -1,0 +1,5826 @@
+{
+ "AtlasPlayer.dc.html": {
+  "file": "/Users/makelmackbee/dev/ATR/atlas/proto/AtlasPlayer.dc.html",
+  "oneLineVerdict": "This is the Forge shot-capture engine renamed and absorbed into Atlas as Zones 01\u201304: a 460px offline-first PWA (line 1038 preview 460x900, service worker 1435, wake-lock 1562) that logs 80 shots across four indices plus a 30-shot short-game assessment entirely to localStorage under KEY='atlas.player.v3' (1044) while purging atlas.forge.v1/v2/v3 (1045), computes every displayed number client-side, has zero network I/O other than 'sync' being a bare setState (2571), and labels its own hero metric 'Sample data' (325) sourced 'Q3 baseline \u00b7 21 Jul' (1979) until the player logs something real \u2014 the belief that it is the Forge front-end is CONFIRMED by the migration keys plus the orphaned handler goForgeTab: this.leave('forge') (2377), which points at a tab key absent from TABS (1223-1229) and is bound nowhere in the template.",
+  "screens": [
+   {
+    "name": "App shell (persistent header + bottom nav)",
+    "purpose": "Chrome rendered around every screen: brand mark, sync dot, handicap chip that opens Profile, and the five-tab Zone nav (hidden unless state.screen is one of the TABS keys, navShow line 1024).",
+    "evidenceLine": 29,
+    "fields": [
+     {
+      "label": "Sync status dot",
+      "binding": "netDot",
+      "line": 38,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Handicap chip (header, e.g. '10.0 hcp')",
+      "binding": "hcpChip",
+      "line": 39,
+      "sourceGuess": "golf-profile"
+     },
+     {
+      "label": "Nav tab number ('01'..'04')",
+      "binding": "n.num",
+      "line": 1028,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Nav tab label (Today/Construction/Calibration/Transfer/Performance)",
+      "binding": "n.label",
+      "line": 1029,
+      "sourceGuess": "computed-in-page"
+     }
+    ]
+   },
+   {
+    "name": "intro",
+    "purpose": "Zone 00 Baseline setup \u2014 first-run onboarding. Four domain-interest checkboxes and two steppers (handicap, driver carry), then route to the short game assessment or skip. Gate onIntro line 2137.",
+    "evidenceLine": 47,
+    "fields": [
+     {
+      "label": "Domain interest label (Driving/Approach/Chipping/Putting)",
+      "binding": "i.label",
+      "line": 57,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Domain composite weight ('30% of composite')",
+      "binding": "i.weight",
+      "line": 58,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Interest checkbox tick",
+      "binding": "i.tick",
+      "line": 56,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Current handicap index (stepper, \u00b10.5, clamped -5..40)",
+      "binding": "p.value",
+      "line": 69,
+      "sourceGuess": "golf-profile"
+     },
+     {
+      "label": "Average driver carry (stepper, \u00b15 yds, clamped 120..340)",
+      "binding": "p.value",
+      "line": 69,
+      "sourceGuess": "golf-profile"
+     }
+    ]
+   },
+   {
+    "name": "transfer",
+    "purpose": "Zone 03 Transfer \u2014 the Forge session launcher plus the practice-log calendar. TWO <sc-if> blocks share the same onTransfer gate (91 and 372) and render together as one screen. Gate onTransfer line 2293.",
+    "evidenceLine": 91,
+    "fields": [
+     {
+      "label": "Primary session CTA ('Start Forge session' / 'Resume \u2014 N of 80 logged' / 'See your composite')",
+      "binding": "primaryLabel",
+      "line": 97,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Kit checklist item",
+      "binding": "k",
+      "line": 107,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Discard session label",
+      "binding": "discardLabel",
+      "line": 113,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Short game assessment state ('Not run' / 'N/30' / 'N pts')",
+      "binding": "sgaState",
+      "line": 118,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Calendar month summary ('N of 26 days' / 'Nothing logged yet')",
+      "binding": "calSummary",
+      "line": 377,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Day-of-week header",
+      "binding": "w",
+      "line": 383,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Calendar day number",
+      "binding": "c.num",
+      "line": 389,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Per-day domain dot letter (D/A/C/P)",
+      "binding": "dt.letter",
+      "line": 392,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Selected day title ('July 26 \u00b7 today')",
+      "binding": "calSelTitle",
+      "line": 401,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Clear-day confirm label",
+      "binding": "calClearLabel",
+      "line": 402,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Selected day note / logged domains",
+      "binding": "calSelNote",
+      "line": 404,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Domain toggle chip for the selected day",
+      "binding": "ch.label",
+      "line": 409,
+      "sourceGuess": "unknown"
+     }
+    ]
+   },
+   {
+    "name": "calibrate",
+    "purpose": "Zone 02 Calibration \u2014 chipping tolerance tier readout, launch-monitor CSV/TSV import with a client-side strokes-gained + bias model, and putting-model status. Gate onCalibrate line 2295.",
+    "evidenceLine": 128,
+    "fields": [
+     {
+      "label": "Chipping tolerance source ('From your assessment' / 'Default \u2014 run assessment')",
+      "binding": "chipTierSource",
+      "line": 137,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Chipping tier name (Level 1 Developing / 2 Competitive / 3 Elite)",
+      "binding": "chipTierName",
+      "line": 139,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Tier birdie tolerance",
+      "binding": "tierBirdie",
+      "line": 140,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Tier par tolerance",
+      "binding": "tierPar",
+      "line": 140,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Launch monitor club label (Wedge / 7-iron / Driver)",
+      "binding": "c.label",
+      "line": 152,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Club nominal distance ('100 yd')",
+      "binding": "c.dist",
+      "line": 153,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "File drop label ('Choose a session file' / 'Replace the file')",
+      "binding": "lmDropLabel",
+      "line": 159,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Import hint or parse error ('N shots read from FILE')",
+      "binding": "lmHint",
+      "line": 162,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Strokes gained per shot from the import",
+      "binding": "lmSg",
+      "line": 168,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Handicap the SG is measured against",
+      "binding": "lmHcp",
+      "line": 169,
+      "sourceGuess": "golf-profile"
+     },
+     {
+      "label": "Bias strokes lost",
+      "binding": "lmBias",
+      "line": 173,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Pattern read (prose diagnosis of centre vs spread)",
+      "binding": "lmRead",
+      "line": 180,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Pattern row label (Centre of pattern / Lateral spread 1 SD / Carry spread 1 SD / Average carry / Your standard)",
+      "binding": "r.label",
+      "line": 184,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Pattern row value",
+      "binding": "r.value",
+      "line": 185,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Putting model state ('Fitted from your last twenty' / 'Not yet fitted')",
+      "binding": "puttModelState",
+      "line": 197,
+      "sourceGuess": "FORGE"
+     }
+    ]
+   },
+   {
+    "name": "profile",
+    "purpose": "Player profile sheet reached from the header chip \u2014 the two identity numbers plus last-recorded test conditions and a PWA install prompt. Gate onProfile line 2072.",
+    "evidenceLine": 205,
+    "fields": [
+     {
+      "label": "Current handicap index (stepper)",
+      "binding": "p.value",
+      "line": 219,
+      "sourceGuess": "golf-profile"
+     },
+     {
+      "label": "Average driver carry (stepper)",
+      "binding": "p.value",
+      "line": 219,
+      "sourceGuess": "golf-profile"
+     },
+     {
+      "label": "Last conditions recorded (slope \u00b7 speed \u00b7 wind \u00b7 firmness)",
+      "binding": "profileConds",
+      "line": 231,
+      "sourceGuess": "FORGE"
+     }
+    ]
+   },
+   {
+    "name": "perform",
+    "purpose": "Zone 04 Performance \u2014 a pure placeholder. Renders 'In development' and a five-bullet list of what Debrief will cover; no data, no controls. Gate onPerform line 2296.",
+    "evidenceLine": 242,
+    "fields": [
+     {
+      "label": "Debrief scope bullet",
+      "binding": "d",
+      "line": 259,
+      "sourceGuess": "DEBRIEF"
+     }
+    ]
+   },
+   {
+    "name": "home (Today)",
+    "purpose": "The default landing screen (state.screen starts 'home', line 1370). Renders the 5-axis Practice DNA radar, the transfer-gap hero, four strokes-gained domain rows, and a weighted weekly practice recommendation. Gate onToday line 2293.",
+    "evidenceLine": 269,
+    "fields": [
+     {
+      "label": "Today's date",
+      "binding": "todayDate",
+      "line": 271,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Today headline",
+      "binding": "todayTitle",
+      "line": 272,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Today body copy",
+      "binding": "todayBody",
+      "line": 273,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Primary action label",
+      "binding": "todayActionLabel",
+      "line": 277,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Primary action duration meta ('20 min' / 'N/80')",
+      "binding": "todayActionMeta",
+      "line": 278,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Coach card title ('Dr. Benoit replied yesterday')",
+      "binding": "coachCardTitle",
+      "line": 285,
+      "sourceGuess": "coach-relationship"
+     },
+     {
+      "label": "Coach card note",
+      "binding": "coachCardNote",
+      "line": 286,
+      "sourceGuess": "coach-relationship"
+     },
+     {
+      "label": "Practice DNA axis label (OFF THE TEE / APPROACH / SPEED-DIST / PUTTING / AROUND GREEN)",
+      "binding": "l.label",
+      "line": 312,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Practice DNA axis value 0-100",
+      "binding": "l.value",
+      "line": 313,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Practice DNA axis verdict colour (>=62 strong, >=45 caution, else weak)",
+      "binding": "l.color",
+      "line": 313,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Practice DNA 'you' polygon",
+      "binding": "dnaYou",
+      "line": 305,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Practice DNA scratch-baseline polygon (fixed at 0.62)",
+      "binding": "dnaBase",
+      "line": 304,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "'Sample data' badge (shown while nothing real is logged)",
+      "binding": "sampleShow",
+      "line": 325,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Transfer gap value (strokes)",
+      "binding": "gapValue",
+      "line": 328,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Transfer gap unit ('strokes better in practice')",
+      "binding": "gapUnit",
+      "line": 329,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Transfer gap verdict ('Range hero' / 'Some leakage' / 'Transfers clean')",
+      "binding": "gapVerdict",
+      "line": 330,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Transfer gap body (practice-vs-card prose)",
+      "binding": "gapBody",
+      "line": 332,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Hero source label ('live \u00b7 this session' / 'Q3 baseline \u00b7 21 Jul')",
+      "binding": "heroSource",
+      "line": 333,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Domain letter (D/A/C/P)",
+      "binding": "d.letter",
+      "line": 339,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Domain label",
+      "binding": "d.label",
+      "line": 340,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Domain composite weight",
+      "binding": "d.weight",
+      "line": 341,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Domain strokes gained ('+0.12 SG')",
+      "binding": "d.sg",
+      "line": 342,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Domain contribution ('index +14.0 \u00b7 expected +14.0')",
+      "binding": "d.contrib",
+      "line": 346,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Recommendation title ('Driving is costing you strokes')",
+      "binding": "recTitle",
+      "line": 354,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Recommendation body",
+      "binding": "recBody",
+      "line": 355,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Suggested week total minutes",
+      "binding": "recTotal",
+      "line": 356,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Recommended domain row label",
+      "binding": "r.label",
+      "line": 360,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Recommended minutes for that domain",
+      "binding": "r.mins",
+      "line": 362,
+      "sourceGuess": "computed-in-page"
+     }
+    ]
+   },
+   {
+    "name": "domain",
+    "purpose": "Domain deep dive, opened by tapping a Today stat row. Shows SG vs handicap, index vs expected, last-run timer, what the index measures and a strong/weak read. Gate onDomain line 2315.",
+    "evidenceLine": 421,
+    "fields": [
+     {
+      "label": "Domain composite weight ('35% of composite')",
+      "binding": "domWeight",
+      "line": 424,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Domain name",
+      "binding": "domName",
+      "line": 427,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Strokes gained for this domain",
+      "binding": "domSg",
+      "line": 430,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "SG comparison note ('vs your 10.0 handicap')",
+      "binding": "domSgNote",
+      "line": 431,
+      "sourceGuess": "golf-profile"
+     },
+     {
+      "label": "Stat: Your index",
+      "binding": "st.value",
+      "line": 443,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Stat: Expected (SG_EXP[k] * hcp)",
+      "binding": "st.value",
+      "line": 443,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Stat: Last run (accumulated drill timer, mm:ss)",
+      "binding": "st.value",
+      "line": 443,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Stat row label",
+      "binding": "st.label",
+      "line": 442,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "What this index measures (long-form copy)",
+      "binding": "domWhat",
+      "line": 450,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Your read (strong or weak variant of the copy)",
+      "binding": "domRead",
+      "line": 455,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Test CTA label ('Test approach now' / 'Run it again')",
+      "binding": "domTestLabel",
+      "line": 458,
+      "sourceGuess": "computed-in-page"
+     }
+    ]
+   },
+   {
+    "name": "build",
+    "purpose": "Zone 01 Construction \u2014 a four-step coach-prescribed drill ladder with completion state and unlock conditions. Entirely hardcoded and suppressed until hasHistory (buildSteps line 2353). Gate onBuild line 2295.",
+    "evidenceLine": 464,
+    "fields": [
+     {
+      "label": "Whole-build progress count ('12 / 21', hardcoded)",
+      "binding": "buildCount",
+      "line": 473,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Step node marker (tick / number / dot)",
+      "binding": "b.node",
+      "line": 485,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Step title (Pivot mechanics / Freezers & the Proof Swing / Smoothies & the Tempo Ladder / Real ball transfer)",
+      "binding": "b.title",
+      "line": 487,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Step state ('Completed' / 'In progress \u00b7 day 14' / 'Locked')",
+      "binding": "b.state",
+      "line": 488,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Step drill count ('4 / 4')",
+      "binding": "b.count",
+      "line": 490,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Step unlock condition",
+      "binding": "b.cond",
+      "line": 492,
+      "sourceGuess": "unknown"
+     }
+    ]
+   },
+   {
+    "name": "coach",
+    "purpose": "Coach message thread, reached from the Today coach card. Three hardcoded messages, suppressed until hasHistory (messages line 2362). Gate onCoach line 2296.",
+    "evidenceLine": 502,
+    "fields": [
+     {
+      "label": "Message author ('Dr. Luke Benoit' / 'You' / 'Coach Phil \u00b7 Performance')",
+      "binding": "m.who",
+      "line": 519,
+      "sourceGuess": "coach-relationship"
+     },
+     {
+      "label": "Message timestamp ('Yesterday \u00b7 6:12pm')",
+      "binding": "m.when",
+      "line": 520,
+      "sourceGuess": "coach-relationship"
+     },
+     {
+      "label": "Message body",
+      "binding": "m.body",
+      "line": 522,
+      "sourceGuess": "coach-relationship"
+     }
+    ]
+   },
+   {
+    "name": "roadmap",
+    "purpose": "Live Forge session roadmap \u2014 four index cards with per-index shot count, accumulated timer and logged value, plus the session total. Gate onRoadmap line 2364.",
+    "evidenceLine": 530,
+    "fields": [
+     {
+      "label": "Session shot progress ('N of 80 shots')",
+      "binding": "shotsRead",
+      "line": 535,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Session elapsed time (sum of the four index timers)",
+      "binding": "sessionTime",
+      "line": 536,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Index step number ('01'..'04')",
+      "binding": "r.step",
+      "line": 546,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Index shot count ('20 shots' / '20 putts')",
+      "binding": "r.shots",
+      "line": 546,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Index elapsed time or '~15 min'",
+      "binding": "r.time",
+      "line": 546,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Index name (Chipping/Putting/Approach/Driving Index)",
+      "binding": "r.name",
+      "line": 547,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Index one-line note",
+      "binding": "r.note",
+      "line": 548,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Index value ('+3.0' / 'N/20' / '\u2014')",
+      "binding": "r.value",
+      "line": 551,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Index state ('Logged' / 'In progress' / 'Not started')",
+      "binding": "r.state",
+      "line": 552,
+      "sourceGuess": "FORGE"
+     }
+    ]
+   },
+   {
+    "name": "brief",
+    "purpose": "Pre-drill brief plus the mandatory conditions gate. Renders the drill rules then wind/firmness/speed/slope choosers, only those TEST_CONDS says this test is sensitive to; the Begin button stays dead until all required conditions are set. Gate onBrief line 2078.",
+    "evidenceLine": 564,
+    "fields": [
+     {
+      "label": "Drill shot count and duration ('20 shots \u00b7 ~15 min')",
+      "binding": "briefShots",
+      "line": 567,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Drill name",
+      "binding": "briefName",
+      "line": 570,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Rule number ('01'..)",
+      "binding": "r.n",
+      "line": 582,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Rule text",
+      "binding": "r.text",
+      "line": 583,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Conditions section title",
+      "binding": "condsTitle",
+      "line": 593,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Why-these-conditions blurb",
+      "binding": "condsBlurb",
+      "line": 594,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Wind chip label (Calm/Light/Moderate/Strong)",
+      "binding": "c.label",
+      "line": 601,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Wind chip note ('5\u201310 mph')",
+      "binding": "c.note",
+      "line": 602,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Green firmness chip label (Soft/Medium/Firm)",
+      "binding": "c.label",
+      "line": 613,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Green firmness chip note",
+      "binding": "c.note",
+      "line": 614,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Green speed chip label (Very slow..Very fast)",
+      "binding": "c.label",
+      "line": 625,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Green speed stimp range",
+      "binding": "c.stimp",
+      "line": 626,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Slope chip label + degrees",
+      "binding": "c.deg",
+      "line": 638,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Begin button label ('Begin chipping index' / 'Set wind and firmness to begin')",
+      "binding": "beginLabel",
+      "line": 646,
+      "sourceGuess": "computed-in-page"
+     }
+    ]
+   },
+   {
+    "name": "capture",
+    "purpose": "The shot-logging surface \u2014 one screen with four mutually exclusive domain sub-views (showChip 716, showBuckets 753, showPutt 765, showDriving 787) plus a called-shape gate (showCall 701) and a drill-video overlay (drillOpen 677). Holds a wake lock while open (1581). Gate onCapture line 2365.",
+    "evidenceLine": 651,
+    "fields": [
+     {
+      "label": "Index name in header",
+      "binding": "capName",
+      "line": 654,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Shot progress ('N of 20 logged')",
+      "binding": "capProgress",
+      "line": 658,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Live running read ('+3 thru 8' / '27 ft avg' / '5 made' / '4 fairways')",
+      "binding": "capLive",
+      "line": 660,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Index timer (mm:ss)",
+      "binding": "capTimer",
+      "line": 661,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Recorded conditions readout",
+      "binding": "condRead",
+      "line": 672,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Drill rule number",
+      "binding": "r.n",
+      "line": 690,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Drill rule text",
+      "binding": "r.text",
+      "line": 691,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Called shot shape (Draw/Fade/High and soft/Low and running, on approach shots 5/10/15/20)",
+      "binding": "callShape",
+      "line": 705,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Chipping station ('Station 7 of 20 \u00b7 left to right')",
+      "binding": "chipStation",
+      "line": 720,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Chipping shot demand ('High shot \u2014 short-sided' / 'Your shot \u2014 any trajectory')",
+      "binding": "chipShape",
+      "line": 721,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Active chipping tier name",
+      "binding": "chipTierName",
+      "line": 725,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Chipping tier source",
+      "binding": "chipTierSource",
+      "line": 726,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Yards to the flag for this station (5-25)",
+      "binding": "chipYds",
+      "line": 729,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Lie chip (Fairway / Light rough / Heavy rough / Bunker)",
+      "binding": "l.label",
+      "line": 735,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Chip outcome label (Birdie/Par/Bogey/Double)",
+      "binding": "o.label",
+      "line": 743,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Chip outcome rule (tier-dependent tolerance)",
+      "binding": "o.rule",
+      "line": 744,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Chip outcome running count",
+      "binding": "o.count",
+      "line": 745,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Approach proximity bucket label (Inside 10' .. Missed green)",
+      "binding": "b.label",
+      "line": 757,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Approach bucket count ('N logged' / '\u2014')",
+      "binding": "b.count",
+      "line": 758,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Next putt distance ('20 ft')",
+      "binding": "puttDist",
+      "line": 769,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Putt position on the rotation ('Position 7 \u00b7 left break')",
+      "binding": "puttPos",
+      "line": 770,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Putt outcome label (Made / Good speed / Poor pace)",
+      "binding": "b.label",
+      "line": 776,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Putt outcome note",
+      "binding": "b.note",
+      "line": 777,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Putt outcome stroke value (-1/0/+1)",
+      "binding": "b.val",
+      "line": 779,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Driving corridor column label (Big left/Left/Fairway/Right/Big right)",
+      "binding": "c.label",
+      "line": 792,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Driving corridor tally",
+      "binding": "c.count",
+      "line": 793,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Driving corridor penalty ('PAR' / '+1' / '+2')",
+      "binding": "c.pen",
+      "line": 794,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Sync queue status ('N sessions waiting to sync' / 'All synced' / 'Offline \u00b7 saving on device')",
+      "binding": "queueLabel",
+      "line": 806,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Wake-lock status ('Screen locked awake' / 'Screen may sleep')",
+      "binding": "wakeLabel",
+      "line": 808,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Sunlight-mode toggle label",
+      "binding": "sunLabel",
+      "line": 803,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Save button label ('Save index' / 'N shots left')",
+      "binding": "saveLabel",
+      "line": 813,
+      "sourceGuess": "computed-in-page"
+     }
+    ]
+   },
+   {
+    "name": "sga",
+    "purpose": "Short game assessment capture \u2014 six situations, five shots each, five point buttons. Does not feed the composite; it sets the chipping tolerance tier. Gate onSga line 2173.",
+    "evidenceLine": 820,
+    "fields": [
+     {
+      "label": "Assessment progress ('N of 30 logged')",
+      "binding": "sgaProgress",
+      "line": 827,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Running points total ('N pts' / 'No shots yet')",
+      "binding": "sgaRunning",
+      "line": 829,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Assessment timer",
+      "binding": "sgaTimer",
+      "line": 830,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Situation number of 6",
+      "binding": "sgaCatNum",
+      "line": 841,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Situation name (Short chip \u00b7 fairway .. Flop shot)",
+      "binding": "sgaCatName",
+      "line": 842,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Situation setup note",
+      "binding": "sgaCatNote",
+      "line": 843,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Situation points so far",
+      "binding": "sgaCatPts",
+      "line": 848,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Score button label (In the hole / Inside 3 ft / Inside 6 ft / On the green / Off the green)",
+      "binding": "b.label",
+      "line": 855,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Score button points ('+3 pts' .. '-1 pt')",
+      "binding": "b.pts",
+      "line": 856,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Advance button label ('N shots left' / 'Next situation' / 'See your result')",
+      "binding": "sgaSaveLabel",
+      "line": 873,
+      "sourceGuess": "computed-in-page"
+     }
+    ]
+   },
+   {
+    "name": "sgaResult",
+    "purpose": "Short game assessment result \u2014 total vs a handicap-derived target, per-situation breakdown, strength/weakness, and the chipping tier it just set. Gate onSgaResult line 2173.",
+    "evidenceLine": 880,
+    "fields": [
+     {
+      "label": "Assessment total points",
+      "binding": "sgaTotal",
+      "line": 884,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Target points for this handicap (sgaTarget, line 1082)",
+      "binding": "sgaTargetRead",
+      "line": 885,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Verdict ('Ahead of your handicap \u00b7 +5 pts')",
+      "binding": "sgaVerdict",
+      "line": 887,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Situation name",
+      "binding": "r.name",
+      "line": 893,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Situation points",
+      "binding": "r.pts",
+      "line": 894,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Strength situation",
+      "binding": "sgaBest",
+      "line": 902,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Weakness situation",
+      "binding": "sgaWorst",
+      "line": 903,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Newly set chipping tier name",
+      "binding": "tierName",
+      "line": 908,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Chipping tier explanation",
+      "binding": "tierBody",
+      "line": 909,
+      "sourceGuess": "FORGE"
+     }
+    ]
+   },
+   {
+    "name": "result",
+    "purpose": "Single-index result after saving 20 shots \u2014 value, verdict, per-domain stat block, and for putting a fitted make-rate curve (MLE over line dispersion k plus pace-hold rate q, lines 1312-1335, 1794-1832). showCurve (934) is a putting-only sub-view. Gate onResult line 2365.",
+    "evidenceLine": 918,
+    "fields": [
+     {
+      "label": "Index name logged",
+      "binding": "resName",
+      "line": 920,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Index value",
+      "binding": "resValue",
+      "line": 921,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Verdict ('Beating the standard' / 'At the standard' / 'Below the standard')",
+      "binding": "resVerdict",
+      "line": 922,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Verdict body copy",
+      "binding": "resBody",
+      "line": 923,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Stat label (SG vs handicap, Time on index, plus domain-specific rows from rStats 1761-1786)",
+      "binding": "st.label",
+      "line": 928,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Stat value (Birdies/Pars/Bogeys/Doubles, Average proximity, Called shapes held, Putts made, Fairways, Big misses, etc.)",
+      "binding": "st.value",
+      "line": 929,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Make-rate curve explanation",
+      "binding": "curveNote",
+      "line": 937,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Your fitted make-rate curve path",
+      "binding": "youPath",
+      "line": 947,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Tour reference curve path",
+      "binding": "tourPath",
+      "line": 945,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Curve distance tick (3'..50')",
+      "binding": "t",
+      "line": 955,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Start line dispersion ('\u00b10.42\"')",
+      "binding": "lineVal",
+      "line": 962,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Start line reference ('per foot \u00b7 tour \u00b10.30\"')",
+      "binding": "lineTag",
+      "line": 963,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Pace control percentage",
+      "binding": "paceVal",
+      "line": 967,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Pace control reference ('speed held \u00b7 tour 97%')",
+      "binding": "paceTag",
+      "line": 968,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Make-table distance ('6 feet')",
+      "binding": "m.dist",
+      "line": 975,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Your modelled make rate at that distance",
+      "binding": "m.you",
+      "line": 976,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Tour modelled make rate at that distance",
+      "binding": "m.tour",
+      "line": 977,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Small-sample caveat",
+      "binding": "curveCaveat",
+      "line": 982,
+      "sourceGuess": "FORGE"
+     }
+    ]
+   },
+   {
+    "name": "complete",
+    "purpose": "Forge complete \u2014 weighted composite across whichever indices were logged, per-index SG rows, the primary leak, and a 'Send to Atlas' button that is a bare setState with no network call (sync, line 2571). Gate onComplete line 2366.",
+    "evidenceLine": 991,
+    "fields": [
+     {
+      "label": "Composite index value",
+      "binding": "compValue",
+      "line": 995,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Composite read (prose)",
+      "binding": "compRead",
+      "line": 996,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Index label (Chipping/Putting/Approach/Driving)",
+      "binding": "c.label",
+      "line": 1002,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Index tag ('Index +3.0 \u00b7 primary leak' / 'Not logged')",
+      "binding": "c.tag",
+      "line": 1003,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Index composite weight",
+      "binding": "c.weight",
+      "line": 1005,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Index strokes gained",
+      "binding": "c.value",
+      "line": 1006,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Primary leak name",
+      "binding": "leakName",
+      "line": 1013,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Primary leak body",
+      "binding": "leakBody",
+      "line": 1014,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Sync button label ('Send to Atlas' / 'Sent to Atlas \u2713' / 'Offline \u2014 will send when connected')",
+      "binding": "syncLabel",
+      "line": 1017,
+      "sourceGuess": "computed-in-page"
+     }
+    ]
+   }
+  ],
+  "dataObjects": [
+   {
+    "name": "OLD_KEYS",
+    "line": 1045,
+    "holds": "['atlas.forge.v1','atlas.forge.v2','atlas.forge.v3','atlas.player.v1','atlas.player.v2'] \u2014 the localStorage keys purged on mount (1385) in favour of KEY='atlas.player.v3' (1044). This is the direct proof of the Forge->Player rename.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "SGA_CATS",
+    "line": 1068,
+    "holds": "6 short-game assessment situations, each with a name (Short chip \u00b7 fairway, Long pitch \u00b7 fairway, Short chip \u00b7 rough, Long pitch \u00b7 rough, Bunker, Flop shot) and a setup note.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "SGA_SCORES",
+    "line": 1076,
+    "holds": "5-outcome scoring rubric: In the hole 3, Inside 3 ft 2, Inside 6 ft 1, On the green 0, Off the green -1.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "SGA_BENCH",
+    "line": 1080,
+    "holds": "{tour:53, hcp0:40, hcp10:24, hcp20:9, hcp30:3} assessment point benchmarks. DEAD \u2014 declared and never referenced anywhere in the file; the same numbers are re-hardcoded inside sgaTarget() at 1082.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "CHIP_TIERS",
+    "line": 1089,
+    "holds": "3 chipping tolerance tiers (Developing/Competitive/Elite), each with birdie/par/bogey tolerance expressed in driver-lengths plus explanatory body copy.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "LM_CLUBS",
+    "line": 1098,
+    "holds": "3 launch-monitor clubs with nominal carry: wedge 100, 7-iron 165, driver 265 yds.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "LM_PER_YD",
+    "line": 1110,
+    "holds": "0.021 \u2014 driver strokes lost per yard of lateral miss.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "DOMAIN_META",
+    "line": 1115,
+    "holds": "The 4 domains with label, single-letter code, grey colour and composite weight: driving 30, approach 35, chipping 15, putting 20.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "BASELINE",
+    "line": 1121,
+    "holds": "{driving:14.0, approach:8.0, chipping:-3.0, putting:2.0} \u2014 the FAKE index values shown for every unlogged domain (1841). These drive the Practice DNA radar, the transfer gap, all four Today stat rows and the recommendation whenever nothing real exists. The screen labels them 'Sample data' (325) / 'Q3 baseline \u00b7 21 Jul' (1979).",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "SG_EXP",
+    "line": 1128,
+    "holds": "{driving:1.40, approach:0.90, chipping:0.20, putting:0.35} \u2014 expected index per point of handicap, per domain.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "SG_F",
+    "line": 1129,
+    "holds": "{driving:0.12, approach:0.30, chipping:0.12, putting:0.20} \u2014 index points converted to strokes per round.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "CAL_OFFSET / CAL_DAYS / CAL_TODAY",
+    "line": 1139,
+    "holds": "3 / 31 / 26 \u2014 hardcoded July 2026 calendar geometry and 'today', matched to the Atlas dashboard calendar per the comment at 1135-1137. Paired with CAL_DOWS (1138).",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "SLOPES",
+    "line": 1142,
+    "holds": "4 green slope bands with degree ranges (Flat under 1\u00b0, Gentle 1\u20132\u00b0, Moderate 2\u20133\u00b0, Severe 3\u00b0+).",
+    "owner": "FORGE"
+   },
+   {
+    "name": "TEST_CONDS",
+    "line": 1148,
+    "holds": "Which conditions each test requires: chipping [speed], putting [slope,speed], approach [wind,firm], driving [wind], sga [speed,slope].",
+    "owner": "FORGE"
+   },
+   {
+    "name": "COND_BLURB",
+    "line": 1155,
+    "holds": "Per-test prose explaining why those conditions must be recorded.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "WINDS",
+    "line": 1162,
+    "holds": "4 wind bands with mph ranges.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "FIRMS",
+    "line": 1166,
+    "holds": "3 green firmness levels with descriptive notes.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "SPEEDS",
+    "line": 1171,
+    "holds": "5 green speed levels with stimp ranges (under 7 .. 11+).",
+    "owner": "FORGE"
+   },
+   {
+    "name": "BRIEFS",
+    "line": 1176,
+    "holds": "Drill instruction library for chipping/putting/approach/driving/sga \u2014 name, shot count and duration, and 3-4 rules each.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "TABS",
+    "line": 1223,
+    "holds": "5 nav zones: home Today, 01 Construction, 02 Calibration, 03 Transfer, 04 Performance (soon). NOTE: no 'forge' key, which is what makes goForgeTab (2377) an orphan.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "BUILD_STEPS",
+    "line": 1230,
+    "holds": "4-step swing-construction ladder: Pivot mechanics 4/4 done, Freezers & the Proof Swing 6/6 done, Smoothies & the Tempo Ladder 2/6 in progress day 14, Real ball transfer 0/5 locked \u2014 each with an unlock condition. No live table backs a coach-prescribed drill ladder; the '12 / 21' and '57%' shown alongside it (2350-2351) are separately hardcoded and do not sum from these rows.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "THREAD",
+    "line": 1240,
+    "holds": "3 hardcoded coach messages with author, timestamp and body: Dr. Luke Benoit, You, Coach Phil \u00b7 Performance. Maps cleanly onto atlas.coaching_notes (author_user_id, subject_user_id, body, created_at).",
+    "owner": "ATLAS"
+   },
+   {
+    "name": "DOMAIN_DEEP",
+    "line": 1252,
+    "holds": "Per-domain long-form copy: what the index measures, plus a strong variant and a weak variant of the read.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "LIES",
+    "line": 1275,
+    "holds": "['Fairway','Light rough','Heavy rough','Bunker'] \u2014 the chipping lie picker.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "CHIP_OUT",
+    "line": 1276,
+    "holds": "4 chipping outcomes with stroke values: Birdie -1, Par 0, Bogey +1, Double +2.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "CHIP_SEQ",
+    "line": 1285,
+    "holds": "The fixed 20-station sprinkler rotation: yardage 5-25 and lie index per station, with 3 stations flagged as a demanded high shot.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "APP_B",
+    "line": 1292,
+    "holds": "6 approach proximity buckets with representative feet: Inside 10' = 7, 10\u201320' = 15, 20\u201335' = 27, 35\u201360' = 47, 60\u201390' = 75, Missed green = 110.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "CORRIDOR",
+    "line": 1296,
+    "holds": "5 driving corridor columns with penalty strokes: Big left 2, Left 1, Fairway 0, Right 1, Big right 2.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "PUTT_SEQ",
+    "line": 1300,
+    "holds": "The fixed 20-putt distance sequence in feet [6,12,20,6,30,...].",
+    "owner": "FORGE"
+   },
+   {
+    "name": "PUTT_OUT",
+    "line": 1302,
+    "holds": "3 putt outcomes with stroke values: Made -1, Good speed 0, Poor pace +1.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "CAPTURE_IN",
+    "line": 1312,
+    "holds": "1.9 \u2014 effective half-width of the hole in inches, the capture parameter of the make-rate model.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "TOUR_K / TOUR_Q",
+    "line": 1336,
+    "holds": "0.30 and 0.97 \u2014 the tour reference line-dispersion and pace-hold rate the fitted putting curve is drawn against.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "PUTT_EXP",
+    "line": 1337,
+    "holds": "{6:0.50, 12:0.25, 20:0.12, 30:0.06, 40:0.03} expected make rates by distance. DEAD \u2014 declared and never referenced.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "CALL_AT / CALL_SHAPES",
+    "line": 1338,
+    "holds": "[4,9,14,19] approach shot indices that trigger a called shape, and the 4 shapes (Draw, Fade, High and soft, Low and running).",
+    "owner": "FORGE"
+   },
+   {
+    "name": "INDICES",
+    "line": 1341,
+    "holds": "The 4 index definitions: key, step number, name, shot count, composite weight (15/20/35/30), short note and long caption.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "SETUP",
+    "line": 1356,
+    "holds": "4-item kit checklist: range with marked targets 80\u2013220 yds, short game green with multiple flags, putting green with slope, 20 balls full bag.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "puttPosList (nested in renderVals)",
+    "line": 1755,
+    "holds": "5 putt position descriptions cycled every 5 putts: top of the slope, below the hole, left break, right break, straight uphill.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "rStats (nested in renderVals)",
+    "line": 1761,
+    "holds": "Per-domain result stat definitions computed from logged shots \u2014 chipping birdie/par/bogey/double counts and bunker/high-shot tallies (1762), approach avg proximity + '34 ft' par + shapes held + greens missed (1770), putting made/good-speed/poor-pace + made inside 6ft (1776), driving fairways/playable/big misses (1782).",
+    "owner": "FORGE"
+   },
+   {
+    "name": "DOM_KEYS (nested in renderVals)",
+    "line": 1835,
+    "holds": "['driving','approach','chipping','putting'] \u2014 the domain iteration order for the dashboard.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "BUDGET (nested in renderVals)",
+    "line": 1861,
+    "holds": "180 \u2014 the weekly practice-minute budget the recommendation allocates across domains, 30 min floor per domain, rounded to 5.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "DNA (nested in renderVals)",
+    "line": 1901,
+    "holds": "The 5 Practice DNA radar axes: OFF THE TEE, APPROACH, SPEED / DIST, PUTTING, AROUND GREEN. These are NOT the Practice DNA instrument's axes \u2014 the first, second, fourth and fifth are the four Forge index scores inverted onto 0-100 by axisFrom() (1899), and SPEED / DIST is purely state.carry rescaled (1900). The 'scratch is 62' baseline (293) is a fixed 0.62 polygon (1966). Nothing here reads atlas.intake_submissions.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "interests (nested in renderVals)",
+    "line": 2138,
+    "holds": "The 4 onboarding interest options with their composite weights as display strings ('30% of composite' etc.). Selection persists to state.interest / localStorage only and is never read by any other screen.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "steppers (nested in renderVals)",
+    "line": 2158,
+    "holds": "The 2 profile steppers: 'Current handicap index' (default 10, \u00b10.5, clamp -5..40) and 'Average driver carry' (default 235, \u00b15 yds, clamp 120..340). These map exactly to golf.player_profile.handicap_index and golf.player_profile.driver_carry_yds.",
+    "owner": "ATLAS"
+   },
+   {
+    "name": "debriefItems (nested in renderVals)",
+    "line": 2307,
+    "holds": "5 bullets describing what Debrief will coach: attention over the ball, commitment, the shot after the bad one, self-talk walking off a green, one carry-forward.",
+    "owner": "DEBRIEF"
+   },
+   {
+    "name": "buildPct / buildCount (nested in renderVals)",
+    "line": 2350,
+    "holds": "'57%' and '12 / 21' \u2014 the Construction whole-build progress bar, hardcoded string literals that do not derive from BUILD_STEPS.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "transferRead (nested in renderVals)",
+    "line": 1994,
+    "holds": "'Transfer gap 2.4 \u00b7 range hero' \u2014 a fully hardcoded transfer-gap string. DEAD: bound nowhere in the template (the live screen uses gapValue/gapVerdict instead). Same dead-value class as heroValue (1977), hcpRead (1991), sgTotalRead (1980), playsLikeRead (1982), sgChip (2070), netLabel (1898), homeKicker (2374), capPace (2371) and goForgeTab (2377).",
+    "owner": "STATIC-CONTENT"
+   }
+  ],
+  "totals": {
+   "screenCount": 17,
+   "fieldCount": 181,
+   "dataObjectCount": 46
+  }
+ },
+ "Atlas.dc.html": {
+  "file": "/Users/makelmackbee/dev/ATR/atlas/proto/Atlas.dc.html",
+  "oneLineVerdict": "An 11-view static marketing brochure for Atlas Golf with NO data layer at all: all 106 unique {{ }} bindings are navigation handlers, hex colors, CSS transforms, or local demo-widget state \u2014 not one renders a value belonging to a user, a coach, or a round. There are ZERO ALL-CAPS data constants in this file (verified across the whole script block, 804\u2013930; DESIGNS.md reports 45 for AtlasPlayer.dc.html); the only three consts are function-locals holding marketing copy \u2014 phases (807), profiles (828), zones (844). The file contains exactly one <input> (a 0\u20132 range slider, 141), no <form>, no file input, only onClick/onChange handlers, and only three href attributes in the entire file (all Google Fonts, 11\u201313) \u2014 so every commercial CTA is an inert div: 'Take the Practice DNA Quiz' (236, and the site's primary closing CTA at 774 which routes to /coaching instead of any quiz), 'Get it on Amazon' (295), 'Read a free sample' (296), 'Coach directory & booking' (496), the four 'Start here' rungs (513\u2013516), and all six price-ladder buttons (594\u2013599). Its only genuine contact with the live schema is literal text: six prices ($99/$199/$299/$399/$399mo/$799mo, 594\u2013599 \u2192 public.plans.price_cents) and a set of coach names (644\u2013648, 656\u2013658 \u2192 public.coach_profiles), all five coach bios reading 'Full bio coming soon.' FIELD SELECTION RULE: rows below are data a reader SEES; ~60 pure-styling bindings (col*, t*, z*Bg/Border, c*Color/Bg/Border, prof*Color/Bg/Border, f*Display/Sign) are deliberately excluded as CSS, not data.",
+  "screens": [
+   {
+    "name": "Nav (persistent chrome)",
+    "evidenceLine": 29,
+    "purpose": "Sticky top bar on every page: wordmark, 8 in-page destinations, Log in, JOIN.",
+    "fields": [
+     {
+      "label": "Wordmark 'Atlas' + glyph",
+      "binding": "onClick={{ navHome }}",
+      "line": 31,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Destination: Map",
+      "binding": "{{ navMap }} / {{ colMap }}",
+      "line": 33,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Destination: Practice DNA",
+      "binding": "{{ navPractice }} / {{ colPractice }}",
+      "line": 34,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Destination: The Book (+ sub-link Vault)",
+      "binding": "{{ navBook }} / {{ navVault }}",
+      "line": 35,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Destination: Research (+ sub-link False Priors)",
+      "binding": "{{ navResearch }} / {{ navPriors }}",
+      "line": 36,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Destination: Coaching",
+      "binding": "{{ navCoaching }}",
+      "line": 37,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Destination: The Team",
+      "binding": "{{ navTeam }}",
+      "line": 38,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "'Log in' \u2014 INERT: no onClick, no href",
+      "binding": "literal 'Log in', color #8d99a8",
+      "line": 39,
+      "sourceGuess": "identity (public.users/firebase_uid) - dead control, no auth wiring exists"
+     },
+     {
+      "label": "'JOIN' pill \u2014 routes to the Book page, NOT signup",
+      "binding": "onClick={{ navBook }}",
+      "line": 41,
+      "sourceGuess": "identity - mis-wired CTA"
+     }
+    ]
+   },
+   {
+    "name": "Home",
+    "evidenceLine": 46,
+    "purpose": "Marketing landing: hero, the four-domain flip cards, a proof-stat band, team teaser.",
+    "fields": [
+     {
+      "label": "Byline 'Volume One - Dr. Luke Benoit, PhD - PGA'",
+      "binding": "literal text",
+      "line": 50,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Hero H1 'A method for learning ANY swing.'",
+      "binding": "literal text",
+      "line": 51,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Hero subcopy (motor learning / biomechanics / psychology)",
+      "binding": "literal text",
+      "line": 52,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "CTA 'COACHING'",
+      "binding": "onClick={{ navBook }} - mis-wired, goes to the Book page",
+      "line": 54,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "CTA 'Buy the book'",
+      "binding": "onClick={{ navPractice }} - mis-wired, goes to Practice DNA",
+      "line": 55,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Trust bullet 'Open for anyone to use, for any swing'",
+      "binding": "literal text",
+      "line": 59,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Trust bullet 'We are constantly improving...'",
+      "binding": "literal text",
+      "line": 60,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Book cover artwork",
+      "binding": "<dc-import name=\"BookCover\" hint-size=\"380px,540px\">",
+      "line": 63,
+      "sourceGuess": "unknown - external component dependency, not a datum"
+     },
+     {
+      "label": "Flip card 01 Co CONSTRUCTION + back-face definition",
+      "binding": "onClick={{ flipCo }}, transform {{ tCo }}",
+      "line": 76,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Flip card 02 Ca CALIBRATION + back-face definition",
+      "binding": "onClick={{ flipCa }}, transform {{ tCa }}",
+      "line": 77,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Flip card 03 T TRANSFER + back-face definition",
+      "binding": "onClick={{ flipT }}, transform {{ tT }}",
+      "line": 78,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Flip card 04 P PERFORMANCE + back-face definition",
+      "binding": "onClick={{ flipP }}, transform {{ tP }}",
+      "line": 79,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Proof stat '40k+' / 'Lessons taught'",
+      "binding": "literal text",
+      "line": 83,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Proof stat '12+' / 'State champions'",
+      "binding": "literal text",
+      "line": 84,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Proof stat EMPTY / 'Avg index drop / yr' \u2014 value div contains only <br>",
+      "binding": "literal <br> inside the 56px number div",
+      "line": 85,
+      "sourceGuess": "golf-profile (golf.handicap_history) - VALUE SLOT IS BLANK in the file"
+     },
+     {
+      "label": "Proof stat '96%' / 'Renew & refer'",
+      "binding": "literal text",
+      "line": 86,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Team teaser 'A complete performance team.' + 'Meet the team'",
+      "binding": "onClick={{ navTeam }}",
+      "line": 95,
+      "sourceGuess": "static-content"
+     }
+    ]
+   },
+   {
+    "name": "Map",
+    "evidenceLine": 111,
+    "purpose": "Interactive positioning model: a 2-axis map, a 3-step 'Seve' phase slider, and four zone dossiers.",
+    "fields": [
+     {
+      "label": "Eyebrow 'The Map - A positioning model'",
+      "binding": "literal text",
+      "line": 113,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "H1 'See any game as coordinates, not opinions.'",
+      "binding": "literal text",
+      "line": 114,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Disclaimer 'not a claim about anyone's actual career'",
+      "binding": "literal text",
+      "line": 115,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Map quadrant labels DANGER ZONE / COMFORT ZONE",
+      "binding": "literal text",
+      "line": 122,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Y-axis label 'INTERNAL LOAD'",
+      "binding": "literal text",
+      "line": 124,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "X-axis label 'Swing thoughts -> horizontal axis'",
+      "binding": "literal text",
+      "line": 133,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Element tiles 01 Co CONSTRUCT / 02 Ca CALIBRATE / 03 T TRANSFER / 04 P PERFORM",
+      "binding": "literal text",
+      "line": 126,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Moving marker position on the map",
+      "binding": "left:{{ markerX }} top:{{ markerY }} (from phases[].x/.y, 807)",
+      "line": 131,
+      "sourceGuess": "static-content (const phases, 807)"
+     },
+     {
+      "label": "Phase slider 0..2 \u2014 the ONLY form input in the entire file",
+      "binding": "<input type=range min=0 max=2 step=1 value={{ mapPhase }} onChange={{ onPhase }}>",
+      "line": 141,
+      "sourceGuess": "computed-in-page (local UI state, 795)"
+     },
+     {
+      "label": "Phase tag e.g. 'Seve - Act I'",
+      "binding": "{{ phaseTag }}",
+      "line": 138,
+      "sourceGuess": "static-content (const phases, 807)"
+     },
+     {
+      "label": "Phase title e.g. 'Before.' / 'The rebuild.' / 'After.'",
+      "binding": "{{ phaseTitle }}",
+      "line": 139,
+      "sourceGuess": "static-content (const phases, 807)"
+     },
+     {
+      "label": "Slider step captions 'Before / Swing change / After'",
+      "binding": "literal text",
+      "line": 140,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Phase headline",
+      "binding": "{{ phaseHeadline }}",
+      "line": 142,
+      "sourceGuess": "static-content (const phases, 807)"
+     },
+     {
+      "label": "Phase body paragraph",
+      "binding": "{{ phaseBody }}",
+      "line": 143,
+      "sourceGuess": "static-content (const phases, 807)"
+     },
+     {
+      "label": "Caption 'CH. 06 - The Map' + link 'Vault - Case Studies'",
+      "binding": "onClick={{ navVault }}",
+      "line": 145,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Figure attribution 'Figure 3.2, from the manuscript'",
+      "binding": "literal text",
+      "line": 148,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Zone dossier CONSTRUCTION: 'THE SHOP - CH. 08-13', Purpose / False prior / The trap ('The Prisoner') / Done when, archetype 'The Engineer'",
+      "binding": "literal text block",
+      "line": 162,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Zone dossier CALIBRATION: 'THE LAB - CH. 05-07', Purpose / False prior / The trap ('The Illusionist') / Done when, archetype 'The Scientist'",
+      "binding": "literal text block",
+      "line": 179,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Zone dossier TRANSFER: 'THE FIELD - CH. 14-15', Purpose / False prior / The trap ('The Ghost') / Done when, archetype 'The Warrior'",
+      "binding": "literal text block",
+      "line": 196,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Zone dossier PERFORMANCE: 'THE ARENA - CH. 16', Purpose / False prior / The trap ('Reinvestment') / Done when, archetype 'The Artist'",
+      "binding": "literal text block",
+      "line": 213,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Zone deep-links: 'Vault - Construction', 'The Perception-Action Gap', 'Vault - FORGE Library', 'Vault - Cue Library'",
+      "binding": "onClick={{ navVault }} / {{ navResearch }}",
+      "line": 170,
+      "sourceGuess": "static-content"
+     }
+    ]
+   },
+   {
+    "name": "Practice DNA",
+    "evidenceLine": 231,
+    "purpose": "Archetype explainer: a 4-axis radar toggled across three FIXED example archetypes, plus the three forces that shape practice.",
+    "fields": [
+     {
+      "label": "Eyebrow 'Practice DNA - Your fingerprint'",
+      "binding": "literal text",
+      "line": 233,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "H1 'Our priors shape us, and lead to practice blind spots.'",
+      "binding": "literal text",
+      "line": 234,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Intro copy 'profiles HOW you get better, not just how you play'",
+      "binding": "literal text",
+      "line": 235,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "CTA 'Take the Practice DNA Quiz' \u2014 INERT: no onClick, no href",
+      "binding": "literal text",
+      "line": 236,
+      "sourceGuess": "atlas-intake (atlas.intake_submissions) - dead control, the quiz is NOT reachable from this page"
+     },
+     {
+      "label": "Archetype selector: The Engineer",
+      "binding": "onClick={{ profEngineer }}",
+      "line": 241,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Archetype selector: The Artist / The Architect",
+      "binding": "onClick={{ profArtist }} / {{ profArchitect }}",
+      "line": 242,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Radar polygon \u2014 4 values per archetype (Engineer .95/.68/.42/.36, Artist .34/.60/.86/.94, Architect .90/.90/.86/.92)",
+      "binding": "points={{ radarPoints }} fill={{ radarFill }} stroke={{ radarStroke }}",
+      "line": 252,
+      "sourceGuess": "computed-in-page from const profiles (828) - fixed demo values, NOT a user result"
+     },
+     {
+      "label": "Radar axis labels CONSTRUCT / CALIBRATE / TRANSFER / PERFORM",
+      "binding": "literal text",
+      "line": 253,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Archetype name",
+      "binding": "{{ profileName }}",
+      "line": 261,
+      "sourceGuess": "static-content (const profiles, 828)"
+     },
+     {
+      "label": "Archetype headline",
+      "binding": "{{ profileHeadline }}",
+      "line": 262,
+      "sourceGuess": "static-content (const profiles, 828)"
+     },
+     {
+      "label": "Archetype body paragraph",
+      "binding": "{{ profileBody }}",
+      "line": 263,
+      "sourceGuess": "static-content (const profiles, 828)"
+     },
+     {
+      "label": "'Over-invests in' value",
+      "binding": "{{ profileOver }}",
+      "line": 265,
+      "sourceGuess": "static-content (const profiles, 828)"
+     },
+     {
+      "label": "'Prescription' value",
+      "binding": "{{ profileRx }}",
+      "line": 266,
+      "sourceGuess": "static-content (const profiles, 828)"
+     },
+     {
+      "label": "Force 01 - Personality: 'Who you are.' + expandable Big Five / slow-vs-fast layer essay",
+      "binding": "onClick={{ toggleF1 }}, display {{ f1Display }}, sign {{ f1Sign }}",
+      "line": 276,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Force 02 - Culture: 'Where you came from.' + expandable links/Spain/South Korea essay + 'Vault 0.6 - Golf Development Traditions'",
+      "binding": "onClick={{ toggleF2 }}, display {{ f2Display }}, sign {{ f2Sign }}",
+      "line": 277,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Force 03 - Coaching: 'Who taught you.' + expandable Find a Feel / Perfect Look / Infinite Scroll essay",
+      "binding": "onClick={{ toggleF3 }}, display {{ f3Display }}, sign {{ f3Sign }}",
+      "line": 278,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Caption 'Tap any force to expand - Chapter 4'",
+      "binding": "literal text",
+      "line": 280,
+      "sourceGuess": "static-content"
+     }
+    ]
+   },
+   {
+    "name": "The Book",
+    "evidenceLine": 286,
+    "purpose": "Product page for The Golf Textbook: pitch, 6-part TOC, 2 appendices, the Fosbury Flop chapter excerpt.",
+    "fields": [
+     {
+      "label": "Book cover artwork",
+      "binding": "<dc-import name=\"BookCover\" hint-size=\"380px,540px\">",
+      "line": 289,
+      "sourceGuess": "unknown - external component dependency"
+     },
+     {
+      "label": "Eyebrow 'The Book' / H1 'The reference for learning golf.'",
+      "binding": "literal text",
+      "line": 291,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Pitch: '500 pages of mechanism' + '1,000+ more pages of deep-dive in the vaults'",
+      "binding": "literal text",
+      "line": 293,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "CTA 'Get it on Amazon' \u2014 INERT: no onClick, no href",
+      "binding": "literal text",
+      "line": 295,
+      "sourceGuess": "unknown - external commerce, no URL in file"
+     },
+     {
+      "label": "CTA 'Read a free sample' \u2014 INERT: no onClick, no href",
+      "binding": "literal text",
+      "line": 296,
+      "sourceGuess": "public.content_entitlements - dead control"
+     },
+     {
+      "label": "Spec line '450+ pages - Volume One - Dr. Luke Benoit, PhD - PGA' (conflicts with '500 pages' at 293)",
+      "binding": "literal text",
+      "line": 298,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "TOC summary '6 parts - 18 chapters + the vault'",
+      "binding": "literal text",
+      "line": 306,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "TOC PART I - CH. 1-4 - 'Before the Build'",
+      "binding": "literal text",
+      "line": 309,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "TOC PART II - CH. 5-7 - 'The Scientist' - Calibration Zone",
+      "binding": "literal text",
+      "line": 310,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "TOC PART III - CH. 8-13 - 'The Engineer' - Construction Zone",
+      "binding": "literal text",
+      "line": 311,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "TOC PART IV - CH. 14-15 - 'The Warrior' - Transfer Zone",
+      "binding": "literal text",
+      "line": 312,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "TOC PART V - CH. 16 - 'The Artist' - Performance Zone",
+      "binding": "literal text",
+      "line": 313,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "TOC PART VI - CH. 17-18 - 'The Architect' - Integration, 'The 90-Day Build'",
+      "binding": "literal text",
+      "line": 314,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "APPENDIX A - 'The Grip' - Foundational Matchup + 'Read in the Vault'",
+      "binding": "literal text",
+      "line": 321,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "APPENDIX B - 'The Glossary' - Terms & Indexes + 'Read in the Vault'",
+      "binding": "literal text",
+      "line": 322,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Fosbury Flop excerpt (1968 foam pit / straddle / video feedback analogy)",
+      "binding": "literal text",
+      "line": 331,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "'The old constraint' / 'The new constraint' pair",
+      "binding": "literal text",
+      "line": 337,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Rule strip 'Camera first - Ball last - Piece by piece'",
+      "binding": "literal text",
+      "line": 339,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Figure attribution 'Figure 2.1, from the book - Ch. 2'",
+      "binding": "literal text",
+      "line": 340,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Closing block 'Open by design' - open cookbook / any coach's philosophy",
+      "binding": "literal text",
+      "line": 344,
+      "sourceGuess": "static-content"
+     }
+    ]
+   },
+   {
+    "name": "Research",
+    "evidenceLine": 351,
+    "purpose": "Evidence page: a 7-row false-prior comparison table, 4 research lines, a zone-neuroanatomy selector, 6 foundations.",
+    "fields": [
+     {
+      "label": "H1 'What fifty years of golf instruction got wrong.'",
+      "binding": "literal text",
+      "line": 358,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Table header 'What traditional instruction teaches' vs 'What the method rests on'",
+      "binding": "literal text",
+      "line": 360,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Comparison row 1 - Construction / ball-on-range -> 'The Dual-Task Trap' / CH. 02 - The Foam Pit",
+      "binding": "literal text",
+      "line": 362,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Comparison row 2 - Construction / backswing-first -> 'Reverse Chaining' / CH. 09",
+      "binding": "literal text",
+      "line": 363,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Comparison row 3 - Construction / 'Quiet feet' -> 'The Quiet-Feet Fallacy', 200% body weight vertical force / CH. 11 - Ground Force",
+      "binding": "literal text",
+      "line": 364,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Comparison row 4 - Construction / one pivot -> 'The Cannon & The Anchor' / CH. 12 - Two Pivots",
+      "binding": "literal text",
+      "line": 365,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Comparison row 5 - Calibration / flush strike -> 'The Range Mirage', the J-Curve / CH. 07",
+      "binding": "literal text",
+      "line": 366,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Comparison row 6 - Transfer / same shot same target -> 'The Blocked-Practice Illusion' / CH. 14",
+      "binding": "literal text",
+      "line": 367,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Comparison row 7 - Performance / swing cues on course -> 'On-Course Reinvestment' / CH. 16 - The Firewall",
+      "binding": "literal text",
+      "line": 368,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Link 'See all 20 false priors, with chapter citations' \u2014 INERT: no onClick",
+      "binding": "literal text",
+      "line": 370,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Research line 01 'The Perception-Action Gap'",
+      "binding": "literal text",
+      "line": 381,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Study citation 'Benoit & Herder - n=49' - Strike-location awareness at Interlachen",
+      "binding": "literal text",
+      "line": 384,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Citation 'Dissertation - L. Benoit, PhD' + editorial note 'Summary to be finalized from the manuscript.'",
+      "binding": "literal text",
+      "line": 385,
+      "sourceGuess": "static-content - UNFINISHED COPY left in the page"
+     },
+     {
+      "label": "Research line 02 'Practice design & retention'",
+      "binding": "literal text",
+      "line": 395,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Citation 'Applied - Challenge Point & desirable difficulties' (Guadagnoli) - 'The engine under FORGE.'",
+      "binding": "literal text",
+      "line": 397,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Research line 03 'Biomechanical validation'",
+      "binding": "literal text",
+      "line": 406,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Citation 'Collaboration - Rob Neal, PhD' - 3D biomechanical figures cross-validated",
+      "binding": "literal text",
+      "line": 408,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Research line 04 'Attention & performance under pressure'",
+      "binding": "literal text",
+      "line": 417,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Citation 'Collaboration - Dr. Raymond Prior' - reinvestment, external focus",
+      "binding": "literal text",
+      "line": 419,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Brain image slot 'BRAIN RENDER - DROP IMAGE HERE'",
+      "binding": "literal placeholder text",
+      "line": 431,
+      "sourceGuess": "unknown - UNFILLED ASSET PLACEHOLDER"
+     },
+     {
+      "label": "Selected zone code e.g. 'THE SHOP // COGNITIVE LOAD'",
+      "binding": "{{ zoneCode }}",
+      "line": 433,
+      "sourceGuess": "static-content (const zones, 844)"
+     },
+     {
+      "label": "Selected zone brain region e.g. 'Prefrontal cortex'",
+      "binding": "{{ zoneRegion }}",
+      "line": 434,
+      "sourceGuess": "static-content (const zones, 844)"
+     },
+     {
+      "label": "Zone card Construction / THE SHOP - prefrontal cortex description",
+      "binding": "onClick={{ zoneCo }}, border {{ zCoBorder }}",
+      "line": 438,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Zone card Calibration / THE LAB - cerebellum + parietal description",
+      "binding": "onClick={{ zoneCa }}, border {{ zCaBorder }}",
+      "line": 439,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Zone card Transfer / THE FIELD - basal ganglia description",
+      "binding": "onClick={{ zoneT }}, border {{ zTBorder }}",
+      "line": 440,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Zone card Performance / THE ARENA - motor cortex description",
+      "binding": "onClick={{ zoneP }}, border {{ zPBorder }}",
+      "line": 441,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Foundation 'Challenge Point'",
+      "binding": "literal text",
+      "line": 450,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Foundation 'Desirable Difficulties' (Bjork) - 'The engine under FORGE.'",
+      "binding": "literal text",
+      "line": 451,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Foundation 'External Focus'",
+      "binding": "literal text",
+      "line": 452,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Foundation 'Reinvestment & the Dual Task'",
+      "binding": "literal text",
+      "line": 453,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Foundation 'Results vs. Performance' (guidance hypothesis)",
+      "binding": "literal text",
+      "line": 454,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Foundation 'Strokes Gained' (Broadie) - 'How the Practice and Performance Indexes are weighted.'",
+      "binding": "literal text",
+      "line": 455,
+      "sourceGuess": "FORGE - names strokes-gained weighting as the source of the Practice/Performance Indexes; no such value is rendered here"
+     }
+    ]
+   },
+   {
+    "name": "Coaching",
+    "evidenceLine": 461,
+    "purpose": "The commercial page: service model, standards, inclusions, a 4-rung entry chooser, a FAKE dashboard preview with a click-to-plot dispersion widget, a 4-step progression, and a 6-tier price ladder.",
+    "fields": [
+     {
+      "label": "H1 'Coaching, Optimized for 2026.'",
+      "binding": "literal text",
+      "line": 464,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Model 'One director. A full team behind him.' (the medical model)",
+      "binding": "literal text",
+      "line": 468,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Director card 'Dr. Luke Benoit' - 'Directing your plan'",
+      "binding": "literal text",
+      "line": 473,
+      "sourceGuess": "coach-relationship (public.coach_profiles) - name is a literal, no id"
+     },
+     {
+      "label": "Director scope tags 'Biomechanical goals' / 'Motor-learning method'",
+      "binding": "literal text",
+      "line": 475,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "'The rest of the team' - consulting-as-needed card",
+      "binding": "literal text",
+      "line": 479,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Standard 'Fast response' - '<24h' - '95% of the time'",
+      "binding": "literal text",
+      "line": 488,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Standard 'A team, not a guru'",
+      "binding": "literal text",
+      "line": 489,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Standard 'The foam pit, in your pocket' - Parallax instant replay; '30-day free trial'; 'Students - 90-day academy pass'",
+      "binding": "literal text",
+      "line": 490,
+      "sourceGuess": "unknown - 'Parallax' is a product with no table in the live schema"
+     },
+     {
+      "label": "Standard 'Truly unlimited coaching' - no session counting",
+      "binding": "literal text",
+      "line": 491,
+      "sourceGuess": "public.coaching_credits - contradicts a credit model; nothing rendered"
+     },
+     {
+      "label": "Standard 'How we answer' - replies from Luke, Dr. Luke, and the team",
+      "binding": "literal text",
+      "line": 495,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Standard 'Virtual calls' - 'Book a live call with any coach directly through Calendly'; 'the full directory lives in your dashboard'; button 'Coach directory & booking' \u2014 INERT",
+      "binding": "literal text, no href",
+      "line": 496,
+      "sourceGuess": "coach-relationship (public.coach_profiles.calendly_url) - names Calendly but NO URL literal appears in the file"
+     },
+     {
+      "label": "Inclusion 'Consultation' - '30 minutes, your choice' - fitness consult with Phil OR performance consult with Yannick",
+      "binding": "literal text",
+      "line": 503,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Inclusion 'App access' - FORGE",
+      "binding": "literal text",
+      "line": 504,
+      "sourceGuess": "FORGE (entitlement would be public.content_entitlements)"
+     },
+     {
+      "label": "Inclusion 'App access' - DEBRIEF",
+      "binding": "literal text",
+      "line": 505,
+      "sourceGuess": "DEBRIEF (entitlement would be public.content_entitlements)"
+     },
+     {
+      "label": "Inclusion '90 days' - Parallax",
+      "binding": "literal text",
+      "line": 506,
+      "sourceGuess": "unknown - no Parallax table exists"
+     },
+     {
+      "label": "Entry rung 'Curious' - 'I just want to see it.' - free, no card - 'Start free' \u2014 INERT",
+      "binding": "literal text",
+      "line": 513,
+      "sourceGuess": "public.plans - free tier, no plan code in file"
+     },
+     {
+      "label": "Entry rung 'One fault' - 'I want to fix my slice.' - 'Fix my miss - $99' \u2014 INERT",
+      "binding": "literal text",
+      "line": 514,
+      "sourceGuess": "public.plans.price_cents (9900) - literal price, no plan code"
+     },
+     {
+      "label": "Entry rung 'Rebuild' - 'I want a new swing.' - 90 days, solo or cohort - 'See Foundations' \u2014 INERT",
+      "binding": "literal text",
+      "line": 515,
+      "sourceGuess": "public.plans - no plan code in file"
+     },
+     {
+      "label": "Entry rung 'A coach' - 'I want someone in my corner.' - 'How coaching works' \u2014 INERT",
+      "binding": "literal text",
+      "line": 516,
+      "sourceGuess": "public.plans - no plan code in file"
+     },
+     {
+      "label": "Dashboard preview header 'Every player gets a build, tracked.'",
+      "binding": "literal text",
+      "line": 520,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Widget title 'Calibration - where do you miss?' / 'STEP 00'",
+      "binding": "literal text",
+      "line": 525,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Widget instructions 'Hit five shots with each club, then drop a dot where each one finished. Toe, heel, fat, thin, low point'",
+      "binding": "literal text",
+      "line": 526,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Club pill 'Wedge'",
+      "binding": "onClick={{ clubWedge }}, {{ cwColor }}/{{ cwBg }}/{{ cwBorder }}",
+      "line": 528,
+      "sourceGuess": "computed-in-page (local UI state, 795)"
+     },
+     {
+      "label": "Club pill '7-iron' (default selected)",
+      "binding": "onClick={{ clubSeven }}, {{ c7Color }}/{{ c7Bg }}/{{ c7Border }}",
+      "line": 529,
+      "sourceGuess": "computed-in-page (local UI state, 795)"
+     },
+     {
+      "label": "Club pill 'Driver'",
+      "binding": "onClick={{ clubDriver }}, {{ cdColor }}/{{ cdBg }}/{{ cdBorder }}",
+      "line": 530,
+      "sourceGuess": "computed-in-page (local UI state, 795)"
+     },
+     {
+      "label": "Plotted miss dots \u2014 x/y as % of the plot box",
+      "binding": "<sc-for list={{ shots }} as=dot> left:{{ dot.x }} top:{{ dot.y }}",
+      "line": 537,
+      "sourceGuess": "computed-in-page - NOT FORGE: hint-placeholder-count=0, state at 795 starts all three clubs empty, and plotShot (923) fills them from mouse clicks. Nothing loads or persists this."
+     },
+     {
+      "label": "Plot hint 'CLICK TO DROP YOUR MISSES - FIVE PER CLUB' / 'N OF 5 PLOTTED'",
+      "binding": "{{ plotHint }} (logic at 921)",
+      "line": 538,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Dispersion read 'NO PATTERN YET' / 'TREND: <pct>% <LONG|SHORT|PIN-HIGH>-<LEFT|CENTER|RIGHT> MISS'",
+      "binding": "{{ dispersionRead }} (logic at 858-867: mean of dot.rx/ry, thresholds 44/56, pct=min(95,45+n*8))",
+      "line": 541,
+      "sourceGuess": "computed-in-page - the pct is a COSMETIC formula of the click count, not a statistic"
+     },
+     {
+      "label": "'Clear' control",
+      "binding": "onClick={{ clearShots }}",
+      "line": 542,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Card 'Launch monitor upload' - 'read club path, face angle, attack angle, and smash factor against your targets'",
+      "binding": "literal text",
+      "line": 549,
+      "sourceGuess": "FORGE - launch-monitor metrics named as copy only"
+     },
+     {
+      "label": "Dropzone 'Drop CSV or session photo' \u2014 NOT a real control: the file's only <input> is the range slider at 141; no <form> exists",
+      "binding": "literal placeholder text",
+      "line": 550,
+      "sourceGuess": "FORGE - non-functional placeholder"
+     },
+     {
+      "label": "Card 'Swing literacy' - call path and face angle before the answer shows",
+      "binding": "literal text",
+      "line": 554,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Swing-literacy tags 'Club path' / 'Face angle' / 'Low point'",
+      "binding": "literal text",
+      "line": 555,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Progression header 'The Construction progression' - '4 STEPS - CHECKED OFF WHEN EARNED'",
+      "binding": "literal text",
+      "line": 561,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Step 1 'Pivot mechanics' - sub-drills 1a Kickstand Explode, 1b Regular Stance Explode, 2 Shift to Explode, 3 Load, Shift, Explode",
+      "binding": "literal text",
+      "line": 566,
+      "sourceGuess": "FORGE - drill library"
+     },
+     {
+      "label": "Step 2 'Freezers & the Proof Swing' - choked SW -> full SW -> 7-iron; criteria 'Path stays at zero', 'Shaft lean looks right', 'Ground force excellent'; 'Unlocks: Proof Swing'",
+      "binding": "literal text",
+      "line": 571,
+      "sourceGuess": "FORGE - drill library + pass criteria"
+     },
+     {
+      "label": "Step 3 'Smoothies & the Tempo Ladder' - work down to a 5-second smoothie, then foam balls 10s -> 2s",
+      "binding": "literal text",
+      "line": 578,
+      "sourceGuess": "FORGE - drill library"
+     },
+     {
+      "label": "Step 4 'Real ball transfer' - re-entry protocol with the calibration loop live",
+      "binding": "literal text",
+      "line": 584,
+      "sourceGuess": "FORGE - drill library"
+     },
+     {
+      "label": "Ladder header 'Six tiers. One climb.' - each tier includes everything below it",
+      "binding": "literal text",
+      "line": 591,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "TIER 1 'One Fault, Fixed' - one Impact Opposite - $99 - 'Fix my miss' \u2014 INERT",
+      "binding": "literal text",
+      "line": 594,
+      "sourceGuess": "public.plans (name/rank/price_cents=9900) - no plan code, no stripe_price_id in file"
+     },
+     {
+      "label": "TIER 2 'Calibration, Complete' - all eight Impact Opposites - $199 - 'Get calibrated' \u2014 INERT",
+      "binding": "literal text",
+      "line": 595,
+      "sourceGuess": "public.plans (price_cents=19900)"
+     },
+     {
+      "label": "TIER 3 'The Swing Build' - plus the Five-Step Swing Build - $299 - 'Build the swing' \u2014 INERT",
+      "binding": "literal text",
+      "line": 596,
+      "sourceGuess": "public.plans (price_cents=29900) - says FIVE-step, the progression above renders FOUR"
+     },
+     {
+      "label": "TIER 4 'Foundations' - badge 'Most popular' - plus FORGE, DEBRIEF, biomechanics fundamentals - $399 \u2014 INERT",
+      "binding": "literal text",
+      "line": 597,
+      "sourceGuess": "public.plans (price_cents=39900) + public.content_entitlements for FORGE/DEBRIEF"
+     },
+     {
+      "label": "COACHING tier 'Atlas Coaching' - unlimited async video review + one 15-min live call/week - $399/mo - '3-mo commitment' \u2014 INERT",
+      "binding": "literal text",
+      "line": 598,
+      "sourceGuess": "public.plans (price_cents=39900, interval=month) + public.billing_subscriptions"
+     },
+     {
+      "label": "ELITE tier 'With Dr. Benoit' - coached directly by Luke - $799/mo - 'Apply' \u2014 INERT",
+      "binding": "literal text",
+      "line": 599,
+      "sourceGuess": "public.plans (price_cents=79900, interval=month) + public.billing_subscriptions"
+     },
+     {
+      "label": "Guarantee '15 minutes a day, six days a week. A camera-verified Mechanics-Index improvement in 90 days - or we keep coaching you, free'",
+      "binding": "literal text",
+      "line": 605,
+      "sourceGuess": "FORGE - 'Mechanics Index' is named as the guarantee's measure and has NO source anywhere"
+     }
+    ]
+   },
+   {
+    "name": "The Team",
+    "evidenceLine": 611,
+    "purpose": "Roster page: a founder 'case file', 5 coaches, 3 faculty, and a 3-row results ledger explicitly labelled fake.",
+    "fields": [
+     {
+      "label": "H1 'A complete performance team.'",
+      "binding": "literal text",
+      "line": 614,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Founder portrait slot 'PORTRAIT - DR. BENOIT'",
+      "binding": "literal placeholder text",
+      "line": 621,
+      "sourceGuess": "unknown - UNFILLED ASSET PLACEHOLDER"
+     },
+     {
+      "label": "Founder name 'Dr. Luke Benoit' + tag 'CASE FILE / 001'",
+      "binding": "literal text",
+      "line": 625,
+      "sourceGuess": "coach-relationship (public.coach_profiles) - literal, no user_id"
+     },
+     {
+      "label": "Founder title 'Founder - Director of Instruction, Interlachen CC'",
+      "binding": "literal text",
+      "line": 628,
+      "sourceGuess": "public.coach_profiles.org_name"
+     },
+     {
+      "label": "Founder bio paragraph (PhD motor learning, 40,000 lessons, dozen-plus state champions, wrote The Golf Textbook)",
+      "binding": "literal text",
+      "line": 629,
+      "sourceGuess": "public.coach_profiles.bio"
+     },
+     {
+      "label": "Credential 'Doctorate' - 'PhD, Motor Learning' - U. of Minnesota",
+      "binding": "literal text",
+      "line": 631,
+      "sourceGuess": "static-content - no credential column exists in public.coach_profiles"
+     },
+     {
+      "label": "Credential 'Track record' - '40,000+ lessons' - a dozen+ state champions",
+      "binding": "literal text",
+      "line": 632,
+      "sourceGuess": "static-content - no source"
+     },
+     {
+      "label": "Credential 'Ranking' - '8x #1 Teacher in MN' - 12x Golf Digest Best Young Teacher",
+      "binding": "literal text",
+      "line": 633,
+      "sourceGuess": "static-content - no source"
+     },
+     {
+      "label": "Credential 'Certification' - 'PGA Class A - TPI Level 2' - Interlachen CC",
+      "binding": "literal text",
+      "line": 634,
+      "sourceGuess": "static-content - no credential column exists"
+     },
+     {
+      "label": "Coach 'Dr. Raymond Prior' - Performance Psychology - 'Full bio coming soon.'",
+      "binding": "literal text",
+      "line": 644,
+      "sourceGuess": "public.coach_profiles (coach_type, bio) - BIO IS A STUB"
+     },
+     {
+      "label": "Coach 'Yannick Artigolle' - Performance Coaching - 'Full bio coming soon.'",
+      "binding": "literal text",
+      "line": 645,
+      "sourceGuess": "public.coach_profiles - BIO IS A STUB"
+     },
+     {
+      "label": "Coach 'Muzzy Donahoe' - Practice Design - 'Full bio coming soon.'",
+      "binding": "literal text",
+      "line": 646,
+      "sourceGuess": "public.coach_profiles - BIO IS A STUB"
+     },
+     {
+      "label": "Coach 'Brock Winter' - Swing Coach - 'Full bio coming soon.'",
+      "binding": "literal text",
+      "line": 647,
+      "sourceGuess": "public.coach_profiles - BIO IS A STUB"
+     },
+     {
+      "label": "Coach 'Phil Herder' - Fitness - 'Full bio coming soon.'",
+      "binding": "literal text",
+      "line": 648,
+      "sourceGuess": "public.coach_profiles - BIO IS A STUB"
+     },
+     {
+      "label": "Faculty 'Dr. Raymond Prior' - Performance Psychology - author of Golf Beneath the Surface (duplicate person; also listed under Coaches at 644)",
+      "binding": "literal text",
+      "line": 656,
+      "sourceGuess": "public.coach_profiles"
+     },
+     {
+      "label": "Faculty 'Rob Neal, PhD' - Biomechanics - 3D numbers cross-validated against his database",
+      "binding": "literal text",
+      "line": 657,
+      "sourceGuess": "public.coach_profiles"
+     },
+     {
+      "label": "Faculty 'Dr. Mark Guadagnoli' - Motor Learning - UNLV - Challenge Point Framework",
+      "binding": "literal text",
+      "line": 658,
+      "sourceGuess": "public.coach_profiles"
+     },
+     {
+      "label": "Ledger header 'The record - sample results'",
+      "binding": "literal text",
+      "line": 664,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Testimonial 1 - avatar 'EW', quote 'would survive peer review', 'Dr. Elise Warrick - Cardiothoracic Surgeon'",
+      "binding": "literal text",
+      "line": 668,
+      "sourceGuess": "static-content - FABRICATED, see the author's own disclaimer at 682"
+     },
+     {
+      "label": "Result 1 - '14 -> 6' / 'index'",
+      "binding": "literal text",
+      "line": 669,
+      "sourceGuess": "golf-profile (golf.handicap_history) - FABRICATED, see 682"
+     },
+     {
+      "label": "Testimonial 2 - avatar 'MD', quote 'showed me the evidence before asking me to believe it', 'Marcus Doyle, Esq. - Managing Partner'",
+      "binding": "literal text",
+      "line": 673,
+      "sourceGuess": "static-content - FABRICATED, see 682"
+     },
+     {
+      "label": "Result 2 - '+22 yds' / 'carry, driver'",
+      "binding": "literal text",
+      "line": 674,
+      "sourceGuess": "golf-profile (golf.player_profile.driver_carry_yds) - FABRICATED, see 682"
+     },
+     {
+      "label": "Testimonial 3 - avatar 'PN', quote 'treated my game like a project worth engineering', 'Priya Nair - Founder & CEO'",
+      "binding": "literal text",
+      "line": 678,
+      "sourceGuess": "static-content - FABRICATED, see 682"
+     },
+     {
+      "label": "Result 3 - 'First 79' / 'career low'",
+      "binding": "literal text",
+      "line": 679,
+      "sourceGuess": "RED (round score) - FABRICATED, see 682"
+     },
+     {
+      "label": "Author's own disclaimer: 'Sample testimonials - replace with verified client results'",
+      "binding": "literal text",
+      "line": 682,
+      "sourceGuess": "static-content - Luke's note to himself, still in the file"
+     }
+    ]
+   },
+   {
+    "name": "Vault",
+    "evidenceLine": 690,
+    "purpose": "Free deep-dive library index: three counters, five browse-by-zone groups, one featured study.",
+    "fields": [
+     {
+      "label": "H1 'Everything under the book.'",
+      "binding": "literal text",
+      "line": 693,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Blurb '500 pages. Beneath it sits 1,000+ more' - free, always growing",
+      "binding": "literal text",
+      "line": 694,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Counter '1,000+' / 'Pages of deep-dive'",
+      "binding": "literal text",
+      "line": 696,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Counter '41' / 'Referenced studies'",
+      "binding": "literal text",
+      "line": 697,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Counter '18' / 'Chapters mapped'",
+      "binding": "literal text",
+      "line": 698,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Zone group Construction (CH. 08-13): Foam-Pit Protocol; Reverse Chaining the downswing; Ground force: the 200% number",
+      "binding": "literal text",
+      "line": 703,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Zone group Calibration (CH. 05-07): the eight Impact Opposites; Perception-Action Gap study (raw data); The J-Curve",
+      "binding": "literal text",
+      "line": 704,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Zone group Transfer (CH. 14-15): Blocked vs. random retention studies; Desirable difficulties applied; 'The FORGE session library'",
+      "binding": "literal text",
+      "line": 705,
+      "sourceGuess": "FORGE - names the session library as a vault item"
+     },
+     {
+      "label": "Zone group Performance (CH. 16): Reinvestment & the firewall; External focus: the cue library; 'Strokes Gained, weighted for practice'",
+      "binding": "literal text",
+      "line": 706,
+      "sourceGuess": "FORGE - strokes gained"
+     },
+     {
+      "label": "Zone group Appendices: Appendix A The Grip; Appendix B The Glossary",
+      "binding": "literal text",
+      "line": 707,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Featured 'Vault - The Interlachen Study' - '49 players. One blind spot they all shared.' + 'Read the study'",
+      "binding": "onClick={{ navResearch }}",
+      "line": 714,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Figure slot 'DATA VISUAL - PLACEHOLDER'",
+      "binding": "literal placeholder text",
+      "line": 715,
+      "sourceGuess": "unknown - UNFILLED ASSET PLACEHOLDER"
+     }
+    ]
+   },
+   {
+    "name": "False Priors",
+    "evidenceLine": 722,
+    "purpose": "A claimed 20-item catalogue of false priors; only 14 are actually written, in 3 of 5 categories.",
+    "fields": [
+     {
+      "label": "H1 'Twenty assumptions golf instruction runs on. All twenty, wrong.'",
+      "binding": "literal text",
+      "line": 725,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Definition of a 'prior' + 'Every one below traces to a specific chapter and page'",
+      "binding": "literal text",
+      "line": 726,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "CTA 'Read the book'",
+      "binding": "onClick={{ navBook }}",
+      "line": 727,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Category A header - 'Zone 01 - Construction' - 'The Learning & Environment Priors'",
+      "binding": "literal text",
+      "line": 731,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Prior A1 'The Ball-Present Prior' - false prior / reality / 'Ch. 2, p. 32-34'",
+      "binding": "literal text",
+      "line": 734,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Prior A2 'The Top-Down Prior' - false prior / reality / 'Ch. 9'",
+      "binding": "literal text",
+      "line": 735,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Prior A3 'The Ball-Flight Feedback Prior' - false prior / reality / 'Ch. 3, p. 50; Ch. 8, p. 185'",
+      "binding": "literal text",
+      "line": 736,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Prior A4 'The Immediate Outcome Prior (the Range Mirage)' - false prior / reality / 'Ch. 2, p. 36-40'",
+      "binding": "literal text",
+      "line": 737,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Prior A5 'The Slow-Motion Prior' - false prior / reality / 'Ch. 8'",
+      "binding": "literal text",
+      "line": 738,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Prior A6 'The Speed-After-Mechanics Prior' - false prior / reality / 'Ch. 17'",
+      "binding": "literal text",
+      "line": 739,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Prior A7 'The Willpower Prior' (the Competence Trap) - false prior / reality / 'Ch. 4, p. 86-88; Ch. 17, p. 367-368'",
+      "binding": "literal text",
+      "line": 740,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Category B header - 'The Biomechanics & Physics Priors' (NO zone label, unlike A and C)",
+      "binding": "literal text",
+      "line": 745,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Prior B1 'The \"Quiet Feet\" Prior' - false prior / reality / 'Ch. 9, p. 207-209'",
+      "binding": "literal text",
+      "line": 748,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Prior B2 'The Flexibility Fallacy Prior' - false prior / reality / 'Ch. 10'",
+      "binding": "literal text",
+      "line": 749,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Prior B3 'The Textbook Position Prior' (motor equivalence; Furyk, Norman, Scheffler) - 'Ch. 6, p. 121-123'",
+      "binding": "literal text",
+      "line": 750,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Category C header - 'Zone 02 - Calibration' - 'The Calibration & Impact Priors'",
+      "binding": "literal text",
+      "line": 755,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Prior C1 'The \"Fix Impact With Mechanics\" Prior' - 'Ch. 3, p. 52; Ch. 7, p. 171-172'",
+      "binding": "literal text",
+      "line": 758,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Prior C2 'The Straight-Ball Prior' - 'Ch. 1, p. 11; Ch. 5, p. 110-111'",
+      "binding": "literal text",
+      "line": 759,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Prior C3 'The Stock-Shot Monoculture' - 'Ch. 7, p. 145-146; Ch. 15, p. 311-312'",
+      "binding": "literal text",
+      "line": 760,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Prior C4 'The Remedial Calibration Fallacy' - 'Ch. 7, p. 171-172'",
+      "binding": "literal text",
+      "line": 761,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Author's own gap note: 'Categories D-E are still being transcribed.' - the remaining Transfer and Performance priors",
+      "binding": "literal text",
+      "line": 764,
+      "sourceGuess": "static-content - the page promises 20 and delivers 14"
+     },
+     {
+      "label": "Link 'Go to the Vault'",
+      "binding": "onClick={{ navVault }}",
+      "line": 765,
+      "sourceGuess": "static-content"
+     }
+    ]
+   },
+   {
+    "name": "CTA + Footer",
+    "evidenceLine": 770,
+    "purpose": "Closing conversion band and footer, present on every page.",
+    "fields": [
+     {
+      "label": "CTA headline 'Find out where your game actually is and what's holding you back.'",
+      "binding": "literal text",
+      "line": 773,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "CTA button 'TAKE THE PRACTICE DNA QUIZ' - routes to the Coaching page, NOT to any quiz",
+      "binding": "onClick={{ navCoaching }}",
+      "line": 774,
+      "sourceGuess": "atlas-intake (atlas.intake_submissions) - MIS-WIRED: the site's primary conversion CTA never reaches an intake instrument"
+     },
+     {
+      "label": "Footer wordmark 'Atlas'",
+      "binding": "literal text",
+      "line": 780,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Footer nav row 1 - Map / Practice DNA / The Book",
+      "binding": "onClick={{ navMap }} / {{ navPractice }} / {{ navBook }}",
+      "line": 784,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Footer nav row 2 - Research / Coaching / The Team / Vault",
+      "binding": "onClick={{ navResearch }} / {{ navCoaching }} / {{ navTeam }} / {{ navVault }}",
+      "line": 785,
+      "sourceGuess": "static-content"
+     },
+     {
+      "label": "Footer legal 'Interlachen CC | (c) 2026 Atlas Golf - RYP'",
+      "binding": "literal text",
+      "line": 787,
+      "sourceGuess": "static-content"
+     }
+    ]
+   }
+  ],
+  "dataObjects": [
+   {
+    "name": "state (class field, not a const)",
+    "line": 795,
+    "owner": "STATIC-CONTENT",
+    "holds": "The entire app state: page:'home', mapPhase:0, profile:'engineer', flip:{}, forces:{}, zone:'co', club:'seven', shots:{wedge:[],seven:[],driver:[]}. Every value is a UI default or an empty array \u2014 no domain data is seeded, and shots starts empty for all three clubs."
+   },
+   {
+    "name": "phases",
+    "line": 807,
+    "owner": "STATIC-CONTENT",
+    "holds": "3 fixed map-narrative acts ('Seve - Act I/II/III'), each with tag, title, x/y marker coordinates ('22%','62%' etc), headline and body. Drives the Map slider. Line 115 explicitly disclaims it as 'not a claim about anyone's actual career'."
+   },
+   {
+    "name": "profiles",
+    "line": 828,
+    "owner": "STATIC-CONTENT",
+    "holds": "3 fixed Practice DNA archetypes \u2014 engineer / artist / architect \u2014 each with a 4-value radar array (axes Construct, Calibrate, Transfer, Perform), accent hex, name, headline, body, 'over' and 'rx' strings. Uses Practice DNA archetype vocabulary but these are marketing examples, NOT a user result: nothing reads atlas.intake_submissions and no scoring runs."
+   },
+   {
+    "name": "zones",
+    "line": 844,
+    "owner": "STATIC-CONTENT",
+    "holds": "4 neuroanatomy entries keyed co/ca/t/p, each with a code string ('THE SHOP // COGNITIVE LOAD') and a brain region ('Prefrontal cortex'). Drives the Research zone selector."
+   }
+  ],
+  "totals": {
+   "screenCount": 11,
+   "fieldCount": 227,
+   "dataObjectCount": 4
+  }
+ },
+ "Dashboard.dc.html": {
+  "file": "/Users/makelmackbee/dev/ATR/atlas/proto/Dashboard.dc.html",
+  "oneLineVerdict": "This is NOT a coach dashboard \u2014 it is the entire Atlas PLAYER app (12 rail-routed views at sc-if lines 125/277/357/479/538/644/834/1060/1492/1769/1899/2092 plus two phone-surface modals at 1132 and 1266) with a three-screen coach triad (Roster 479 \u2192 Player file 357 \u2192 Intake 277) grafted into the same shell; the rail carries a personal target-handicap slider (85), the signed-in player's name (117) and a hardcoded 'Day 41 of 90' guarantee bar (113\u2013114, literal width:45.5%), and renderVals() spreads profileVals/intakeVals/rosterVals into every render regardless of view (4885\u20134889), which is exactly why the empty-value guards at 2560\u20132571 exist.",
+  "screens": [
+   {
+    "name": "Rail + mobile bar (persistent chrome, all views)",
+    "purpose": "Left navigation column on desktop / drawer under 900px, plus a sticky mobile header. Carries the reference handicap and total SG on every screen, the target-handicap slider, and a per-nav-item badge.",
+    "evidenceLine": 43,
+    "fields": [
+     {
+      "label": "Current view title (mobile header)",
+      "binding": "{{ viewTitle }}",
+      "line": 33,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Total SG (mobile header)",
+      "binding": "{{ railSG }}",
+      "line": 36,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Total SG tone colour",
+      "binding": "{{ railSGColor }}",
+      "line": 36,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "vs <target handicap> (mobile header)",
+      "binding": "{{ railHcp }}",
+      "line": 37,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Every number vs \u2014 handicap",
+      "binding": "{{ railHcp }}",
+      "line": 53,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Total SG",
+      "binding": "{{ railSG }}",
+      "line": 58,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Calendar badge \u2014 days practised this week (weekDone + '/6')",
+      "binding": "{{ weekRead }}",
+      "line": 64,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Plan badge \u2014 tier name",
+      "binding": "{{ tierName }}",
+      "line": 65,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "01 Construction badge \u2014 'Step N/5'",
+      "binding": "{{ zoneBuild }}",
+      "line": 67,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "02 Calibration badge (hardcoded 'Plotted' at 4901)",
+      "binding": "{{ zoneCal }}",
+      "line": 68,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "03 Transfer badge (hardcoded 'Active' at 4902)",
+      "binding": "{{ zoneTransfer }}",
+      "line": 69,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "04 Performance badge (hardcoded 'Locked' at 4903)",
+      "binding": "{{ zonePerf }}",
+      "line": 70,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Fitness badge \u2014 'N of 5 logged'",
+      "binding": "{{ liftCompliance }}",
+      "line": 72,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Team badge \u2014 'N left' (coaching sessions)",
+      "binding": "{{ sessionsLeft }}",
+      "line": 74,
+      "sourceGuess": "coach-relationship"
+     },
+     {
+      "label": "Profile badge \u2014 awareness %",
+      "binding": "{{ pfAware }}",
+      "line": 75,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Intake form badge \u2014 % complete",
+      "binding": "{{ inPct }}",
+      "line": 76,
+      "sourceGuess": "atlas-intake"
+     },
+     {
+      "label": "Roster badge \u2014 'N need a call' / 'no practice log'",
+      "binding": "{{ rosterFlagged }}",
+      "line": 77,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Target handicap",
+      "binding": "{{ targetHcp }}",
+      "line": 83,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Target handicap slider (range -6..30, step 1)",
+      "binding": "{{ targetRaw }}",
+      "line": 85,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Target handicap note",
+      "binding": "{{ targetNote }}",
+      "line": 86,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Practice handicap (weighted composite index)",
+      "binding": "{{ practiceHcp }}",
+      "line": 90,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Real handicap (self-reported, +/- steppers)",
+      "binding": "{{ realHcp }}",
+      "line": 98,
+      "sourceGuess": "golf-profile"
+     },
+     {
+      "label": "Real handicap note ('Self-reported \u00b7 asked every Sunday')",
+      "binding": "{{ realHcpNote }}",
+      "line": 102,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Transfer gap (real minus practice)",
+      "binding": "{{ gapHcp }}",
+      "line": 106,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Transfer gap tone colour",
+      "binding": "{{ gapHcpColor }}",
+      "line": 106,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Transfer gap verdict ('Range hero' / 'Some leakage' / ...)",
+      "binding": "{{ gapHcpLabel }}",
+      "line": 108,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "The guarantee \u2014 'Day 41 of 90'",
+      "binding": "(literal text, no binding)",
+      "line": 113,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Guarantee progress bar (literal width:45.5%)",
+      "binding": "(literal style, no binding)",
+      "line": 114,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Signed-in initials",
+      "binding": "{{ initials }}",
+      "line": 116,
+      "sourceGuess": "identity"
+     },
+     {
+      "label": "Signed-in name",
+      "binding": "{{ playerName }}",
+      "line": 117,
+      "sourceGuess": "identity"
+     }
+    ]
+   },
+   {
+    "name": "Today",
+    "evidenceLine": 125,
+    "purpose": "The one prescribed thing for today: stake/week compliance bar, a running practice clock with zone chips, the current build step card with set slots, an auto-generated session from the worst facet, the tempo ladder, and a 7-day strip.",
+    "fields": [
+     {
+      "label": "Date line 'Sunday \u00b7 July 26'",
+      "binding": "(literal text, no binding)",
+      "line": 127,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Week compliance bar width",
+      "binding": "{{ weekBar }}",
+      "line": 135,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "'Completed at N of N hrs \u00b7 80%'",
+      "binding": "{{ thresholdRead }}",
+      "line": 136,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Week percentage",
+      "binding": "{{ weekPct }}",
+      "line": 138,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Week verdict ('Week completed' / 'N hrs to go')",
+      "binding": "{{ weekVerdict }}",
+      "line": 139,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "'$N at risk'",
+      "binding": "{{ atRisk }}",
+      "line": 140,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Practice clock mm:ss",
+      "binding": "{{ clockRead }}",
+      "line": 150,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "'In <zone>' current clock zone",
+      "binding": "{{ clockZoneLabel }}",
+      "line": 151,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Zone chip label (Construction/Calibration/Transfer/Speed)",
+      "binding": "{{ z.label }}",
+      "line": 158,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "90-minute overrun warning",
+      "binding": "{{ clockOverrun }}",
+      "line": 162,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Last session read ('N min logged \u00b7 Zone')",
+      "binding": "{{ lastRead }}",
+      "line": 176,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "'Step 3 \u00b7 Smoothies & the Tempo Ladder'",
+      "binding": "(literal text, no binding)",
+      "line": 183,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "'Prescribed by Dr. Benoit'",
+      "binding": "(literal text, no binding)",
+      "line": 184,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Step headline 'Work the smoothie down to five seconds.'",
+      "binding": "(literal text, no binding)",
+      "line": 186,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Constraint 'Feet together'",
+      "binding": "(literal text, no binding)",
+      "line": 190,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Volume '4 sets \u00d7 15'",
+      "binding": "(literal text, no binding)",
+      "line": 191,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Checkpoint 'Film 3 reps, DTL'",
+      "binding": "(literal text, no binding)",
+      "line": 192,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Set slot label ('Set N' / 'Set N \u2713')",
+      "binding": "{{ slot.label }}",
+      "line": 197,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "'N of 4 sets logged'",
+      "binding": "{{ setsRead }}",
+      "line": 202,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Log-today button label",
+      "binding": "{{ todayLogLabel }}",
+      "line": 204,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Auto-session headline (worst facet)",
+      "binding": "{{ autoHeadline }}",
+      "line": 212,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Auto-session rationale",
+      "binding": "{{ autoRationale }}",
+      "line": 213,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Leak facet SG value",
+      "binding": "{{ autoLeakSG }}",
+      "line": 216,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Leak facet name",
+      "binding": "{{ autoLeakName }}",
+      "line": 217,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Prescribed block zone",
+      "binding": "{{ b.zone }}",
+      "line": 225,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Prescribed block minutes",
+      "binding": "{{ b.mins }}",
+      "line": 226,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Prescribed block drill name",
+      "binding": "{{ b.name }}",
+      "line": 228,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Prescribed block rationale",
+      "binding": "{{ b.why }}",
+      "line": 229,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Accept-session button label",
+      "binding": "{{ autoAcceptLabel }}",
+      "line": 235,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "'N minutes \u00b7 regenerates every Sunday'",
+      "binding": "{{ autoStamp }}",
+      "line": 237,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "'You're holding N seconds.'",
+      "binding": "{{ tempoLabel }}",
+      "line": 244,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Tempo ladder rung label (10s..2s)",
+      "binding": "{{ rung.label }}",
+      "line": 250,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Week headline ('N of 6 days in.')",
+      "binding": "{{ weekHeadline }}",
+      "line": 258,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Week strip weekday",
+      "binding": "{{ d.dow }}",
+      "line": 263,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Week strip practice dot",
+      "binding": "{{ d.pDot }}",
+      "line": 265,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Week strip workout dot",
+      "binding": "{{ d.wDot }}",
+      "line": 266,
+      "sourceGuess": "unknown"
+     }
+    ]
+   },
+   {
+    "name": "Intake form",
+    "evidenceLine": 277,
+    "purpose": "A new player's own onboarding questionnaire on cream paper: six handicap-lookback fields, five free-text background questions, four self-estimate categories against the ten-shot video, and a completion %.",
+    "fields": [
+     {
+      "label": "Complete %",
+      "binding": "{{ inPct }}",
+      "line": 289,
+      "sourceGuess": "atlas-intake"
+     },
+     {
+      "label": "Complete progress bar",
+      "binding": "{{ inPctBar }}",
+      "line": 291,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Handicap lookback period label (3 months \u2026 10 years ago)",
+      "binding": "{{ p.label }}",
+      "line": 303,
+      "sourceGuess": "atlas-intake"
+     },
+     {
+      "label": "Handicap lookback value input",
+      "binding": "{{ p.value }}",
+      "line": 304,
+      "sourceGuess": "atlas-intake"
+     },
+     {
+      "label": "NA toggle ('Mark NA' / 'Not playing')",
+      "binding": "{{ p.naLabel }}",
+      "line": 305,
+      "sourceGuess": "atlas-intake"
+     },
+     {
+      "label": "Background field label (sport/years/limits/time/goal)",
+      "binding": "{{ f.label }}",
+      "line": 319,
+      "sourceGuess": "atlas-intake"
+     },
+     {
+      "label": "Background field hint",
+      "binding": "{{ f.hint }}",
+      "line": 320,
+      "sourceGuess": "atlas-intake"
+     },
+     {
+      "label": "Background field free-text answer",
+      "binding": "{{ f.value }}",
+      "line": 321,
+      "sourceGuess": "atlas-intake"
+     },
+     {
+      "label": "Self-estimate category label (Path/Face/Contact/Low point)",
+      "binding": "{{ c.label }}",
+      "line": 336,
+      "sourceGuess": "atlas-intake"
+     },
+     {
+      "label": "Self-estimate question text",
+      "binding": "{{ c.q }}",
+      "line": 337,
+      "sourceGuess": "atlas-intake"
+     },
+     {
+      "label": "Self-estimate option chip (5 bands per category)",
+      "binding": "{{ o.label }}",
+      "line": 341,
+      "sourceGuess": "atlas-intake"
+     },
+     {
+      "label": "Status sentence ('Complete \u2014 send it to your coach.')",
+      "binding": "{{ inStatus }}",
+      "line": 350,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Submit button label",
+      "binding": "{{ inSubmitLabel }}",
+      "line": 351,
+      "sourceGuess": "computed-in-page"
+     }
+    ]
+   },
+   {
+    "name": "Player file (Profile)",
+    "evidenceLine": 357,
+    "purpose": "One roster row opened up, printed cream-on-dark as a dossier. Coach-readable (read-only) or the player's own (editable). Header identity + handicaps, the ten-shot intake test with estimate-vs-read scoring, a strike map, six-point handicap history, and the interview answers.",
+    "fields": [
+     {
+      "label": "Back to roster ('\u2190 All players', hidden when self)",
+      "binding": "{{ pfBackShow }}",
+      "line": 364,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Player initials",
+      "binding": "{{ pfInitials }}",
+      "line": 362,
+      "sourceGuess": "identity"
+     },
+     {
+      "label": "Player name",
+      "binding": "{{ pfName }}",
+      "line": 366,
+      "sourceGuess": "identity"
+     },
+     {
+      "label": "Meta line \u2014 tier \u00b7 Zone N \u00b7 last logged Nd ago",
+      "binding": "{{ pfMeta }}",
+      "line": 367,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Real handicap",
+      "binding": "{{ pfHandicapReal }}",
+      "line": 373,
+      "sourceGuess": "golf-profile"
+     },
+     {
+      "label": "Target handicap",
+      "binding": "{{ pfHandicapTarget }}",
+      "line": 377,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Handedness ('Right-handed')",
+      "binding": "{{ pfHand }}",
+      "line": 381,
+      "sourceGuess": "golf-profile"
+     },
+     {
+      "label": "Driver carry ('265 yd driver carry')",
+      "binding": "{{ pfCarry }}",
+      "line": 382,
+      "sourceGuess": "golf-profile"
+     },
+     {
+      "label": "Ten-shot test status",
+      "binding": "{{ pfTestStatus }}",
+      "line": 390,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Read category label (Path/Face/Contact/Low point)",
+      "binding": "{{ r.label }}",
+      "line": 399,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Coach's read value ('4.2\u00b0 in-to-out')",
+      "binding": "{{ r.read }}",
+      "line": 400,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Coach's read note",
+      "binding": "{{ r.note }}",
+      "line": 401,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Player's own estimate ('You said')",
+      "binding": "{{ r.yours }}",
+      "line": 405,
+      "sourceGuess": "atlas-intake"
+     },
+     {
+      "label": "Estimate verdict (Matched / One step off / Missed)",
+      "binding": "{{ r.verdict }}",
+      "line": 406,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Strike map cell count (3\u00d73, heel\u2192toe)",
+      "binding": "{{ c.n }}",
+      "line": 416,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Awareness of contact %",
+      "binding": "{{ pfAware }}",
+      "line": 423,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "'N of 4 read correctly'",
+      "binding": "{{ pfAwareCount }}",
+      "line": 425,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Awareness bar width",
+      "binding": "{{ pfAwareBar }}",
+      "line": 427,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Awareness verdict sentence",
+      "binding": "{{ pfAwareVerdict }}",
+      "line": 428,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Handicap history note ('N strokes taken off in \u2026')",
+      "binding": "{{ pfHistNote }}",
+      "line": 437,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Handicap history bar value (or 'NA')",
+      "binding": "{{ p.value }}",
+      "line": 448,
+      "sourceGuess": "golf-profile"
+     },
+     {
+      "label": "Handicap history period label",
+      "binding": "{{ p.label }}",
+      "line": 449,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Interview intro sentence",
+      "binding": "{{ pfInterviewIntro }}",
+      "line": 458,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Interview field label",
+      "binding": "{{ f.label }}",
+      "line": 463,
+      "sourceGuess": "atlas-intake"
+     },
+     {
+      "label": "Interview field hint",
+      "binding": "{{ f.hint }}",
+      "line": 464,
+      "sourceGuess": "atlas-intake"
+     },
+     {
+      "label": "Interview field answer (textarea, readOnly when coach)",
+      "binding": "{{ f.value }}",
+      "line": 465,
+      "sourceGuess": "atlas-intake"
+     },
+     {
+      "label": "Intake stamp footer",
+      "binding": "{{ pfIntake }}",
+      "line": 471,
+      "sourceGuess": "unknown"
+     }
+    ]
+   },
+   {
+    "name": "Roster (coach view)",
+    "evidenceLine": 479,
+    "purpose": "The coach's whole book on one screen, sorted by silence / least movement / furthest behind. One row per student; clicking a row opens that player's Player file. This is the only screen whose data literal has already been stripped and wired to ryp-core.",
+    "fields": [
+     {
+      "label": "'Coach view \u00b7 N active'",
+      "binding": "{{ rosterCount }}",
+      "line": 481,
+      "sourceGuess": "coach-relationship"
+     },
+     {
+      "label": "'N flat across five reads' / 'no strokes-gained reads exist yet'",
+      "binding": "{{ rosterFlat }}",
+      "line": 483,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Sort chip label (Who to call / Least movement / Furthest behind)",
+      "binding": "{{ c.label }}",
+      "line": 487,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Player initials avatar",
+      "binding": "{{ p.initials }}",
+      "line": 494,
+      "sourceGuess": "identity"
+     },
+     {
+      "label": "Player name",
+      "binding": "{{ p.name }}",
+      "line": 497,
+      "sourceGuess": "identity"
+     },
+     {
+      "label": "'Call' flag badge (days > 7)",
+      "binding": "{{ p.flagShow }}",
+      "line": 498,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Meta line \u2014 tier \u00b7 Zone N (pre-joined, halves dropped when absent)",
+      "binding": "{{ p.meta }}",
+      "line": 503,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Handicap",
+      "binding": "{{ p.hcp }}",
+      "line": 507,
+      "sourceGuess": "golf-profile"
+     },
+     {
+      "label": "Total SG",
+      "binding": "{{ p.sg }}",
+      "line": 511,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Total SG tone colour",
+      "binding": "{{ p.sgColor }}",
+      "line": 511,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Five-reads sparkline bar height",
+      "binding": "{{ b.h }}",
+      "line": 517,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Delta across five reads",
+      "binding": "{{ p.delta }}",
+      "line": 519,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Primary leak facet",
+      "binding": "{{ p.leak }}",
+      "line": 524,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Last logged ('Today' / 'Nd ago' / 'never logged')",
+      "binding": "{{ p.last }}",
+      "line": 528,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Last-logged urgency colour",
+      "binding": "{{ p.lastColor }}",
+      "line": 528,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Delta note (moving / sliding / flat / no reads yet)",
+      "binding": "{{ p.deltaNote }}",
+      "line": 529,
+      "sourceGuess": "computed-in-page"
+     }
+    ]
+   },
+   {
+    "name": "Calendar",
+    "evidenceLine": 538,
+    "purpose": "A 31-day July grid of logged practice minutes and workouts with a ghost bar showing the plan's prescription, month totals, and a day-detail editor with assignment tick-offs and minute chips.",
+    "fields": [
+     {
+      "label": "Day-of-week header",
+      "binding": "{{ dw }}",
+      "line": 561,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Day number",
+      "binding": "{{ c.num }}",
+      "line": 569,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Day total minutes ('45m')",
+      "binding": "{{ c.mins }}",
+      "line": 570,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Day zone letter tag (C/L/T/P/S/F)",
+      "binding": "{{ tg.t }}",
+      "line": 574,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Day load bar segment width",
+      "binding": "{{ sg.w }}",
+      "line": 579,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Prescribed (ghost) bar width",
+      "binding": "{{ c.ghostW }}",
+      "line": 582,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Streak (days)",
+      "binding": "{{ streak }}",
+      "line": 588,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Practiced (N / 26)",
+      "binding": "{{ pDays }}",
+      "line": 589,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Hours total",
+      "binding": "{{ totalHrs }}",
+      "line": 590,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Workouts count",
+      "binding": "{{ wDays }}",
+      "line": 591,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Selected weekday label",
+      "binding": "{{ selWeekday }}",
+      "line": 596,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Selected day number ('July N')",
+      "binding": "{{ selDay }}",
+      "line": 597,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Selected day summary ('45 minutes \u00b7 Calibration \u00b7 Lift')",
+      "binding": "{{ selSummary }}",
+      "line": 598,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Assignment completion read ('N of M completed' / 'Rest')",
+      "binding": "{{ assignRead }}",
+      "line": 602,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Assignment tick",
+      "binding": "{{ a.tick }}",
+      "line": 607,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Assignment title ('30 minutes \u00b7 Construction')",
+      "binding": "{{ a.title }}",
+      "line": 609,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Assignment note ('Programmed by Coach Phil')",
+      "binding": "{{ a.note }}",
+      "line": 610,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Rest-day empty state",
+      "binding": "{{ restShow }}",
+      "line": 614,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Extra-minutes chip (15/30/45/60)",
+      "binding": "{{ m.label }}",
+      "line": 629,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "'Saved \u00b7 visible to your coach'",
+      "binding": "{{ savedRead }}",
+      "line": 636,
+      "sourceGuess": "unknown"
+     }
+    ]
+   },
+   {
+    "name": "01 Construction (The Build)",
+    "evidenceLine": 644,
+    "purpose": "The five-step swing-change workbook. A step ladder, per-step accordions with pivot variants and per-drill tick/verify state, an 'Impact opposites' range block, and a drill demo overlay.",
+    "fields": [
+     {
+      "label": "Step ladder step number",
+      "binding": "{{ l.n }}",
+      "line": 655,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Step ladder title",
+      "binding": "{{ l.title }}",
+      "line": 656,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Step ladder state (Completed / Locked / N / M / Not started)",
+      "binding": "{{ l.state }}",
+      "line": 657,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Whole-build progress bar %",
+      "binding": "{{ buildPct }}",
+      "line": 669,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "'N of M drills completed'",
+      "binding": "{{ buildRead }}",
+      "line": 670,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Coach-view toggle label",
+      "binding": "{{ coachLabel }}",
+      "line": 673,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Step node number",
+      "binding": "{{ s.node }}",
+      "line": 688,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Step title",
+      "binding": "{{ s.title }}",
+      "line": 690,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Step state label",
+      "binding": "{{ s.state }}",
+      "line": 691,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Step progress bar %",
+      "binding": "{{ s.pct }}",
+      "line": 694,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Step drill count",
+      "binding": "{{ s.count }}",
+      "line": 695,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Step body copy",
+      "binding": "{{ s.body }}",
+      "line": 702,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Pivot variant chip (The Cannon / The Anchor)",
+      "binding": "{{ v.label }}",
+      "line": 717,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Pivot variant blurb",
+      "binding": "{{ s.variantBlurb }}",
+      "line": 721,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Drill tick state",
+      "binding": "{{ d.tick }}",
+      "line": 729,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Drill unwatched marker",
+      "binding": "{{ d.unwatched }}",
+      "line": 732,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Drill ref ('1a','F1','P3')",
+      "binding": "{{ d.ref }}",
+      "line": 736,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Drill name",
+      "binding": "{{ d.name }}",
+      "line": 737,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Drill camera tag",
+      "binding": "{{ d.camTag }}",
+      "line": 738,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Drill mechanism sentence (WHY map)",
+      "binding": "{{ d.why }}",
+      "line": 740,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Drill standard ('Trail heel down')",
+      "binding": "{{ d.std }}",
+      "line": 743,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Coach verify action label",
+      "binding": "{{ d.coachActLabel }}",
+      "line": 744,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Condition to advance",
+      "binding": "{{ s.cond }}",
+      "line": 753,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Sign-off button label",
+      "binding": "{{ s.signLabel }}",
+      "line": 755,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Impact-opposites count ('N / 1')",
+      "binding": "{{ ioCount }}",
+      "line": 772,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Impact-opposite ref (IO1/IO2/IO3)",
+      "binding": "{{ d.ref }}",
+      "line": 783,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Impact-opposite name",
+      "binding": "{{ d.name }}",
+      "line": 784,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Impact-opposite standard",
+      "binding": "{{ d.std }}",
+      "line": 785,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Demo overlay ref badge",
+      "binding": "{{ demoRef }}",
+      "line": 802,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Demo overlay step",
+      "binding": "{{ demoStep }}",
+      "line": 808,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Demo overlay drill name",
+      "binding": "{{ demoName }}",
+      "line": 809,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Demo overlay standard",
+      "binding": "{{ demoStd }}",
+      "line": 810,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Demo overlay 'Why this drill'",
+      "binding": "{{ demoWhy }}",
+      "line": 813,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Demo overlay status",
+      "binding": "{{ demoStatus }}",
+      "line": 818,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Demo overlay tick label",
+      "binding": "{{ demoTickLabel }}",
+      "line": 822,
+      "sourceGuess": "computed-in-page"
+     }
+    ]
+   },
+   {
+    "name": "02 Calibration (Evidence)",
+    "evidenceLine": 834,
+    "purpose": "Step 00 onboarding ten-shot test (watch-then-estimate, coach read, strike map), the launch-monitor club gapping ladder plus three derived reads, and three draggable dispersion plots (sand wedge / 7-iron / driver).",
+    "fields": [
+     {
+      "label": "Onboarding test status ('Reviewed 24 Jul' / 'Not yet filmed')",
+      "binding": "{{ obStatusLabel }}",
+      "line": 849,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Upload/replace range video CTA",
+      "binding": "{{ obCtaLabel }}",
+      "line": 850,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Watch-videos gate button label",
+      "binding": "{{ obWatchLabel }}",
+      "line": 862,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Watch-videos gate note",
+      "binding": "{{ obGateNote }}",
+      "line": 863,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Category label (Path/Face/Contact/Low point)",
+      "binding": "{{ c.label }}",
+      "line": 873,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Category definition ('what')",
+      "binding": "{{ c.what }}",
+      "line": 874,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Coach's read value",
+      "binding": "{{ c.read }}",
+      "line": 877,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Coach's read note",
+      "binding": "{{ c.note }}",
+      "line": 878,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Teaching video title + runtime",
+      "binding": "{{ c.video }}",
+      "line": 887,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Teaching lesson text",
+      "binding": "{{ c.lesson }}",
+      "line": 888,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Estimate option chip",
+      "binding": "{{ o.label }}",
+      "line": 896,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Estimate verdict ('You called it' / 'You were N bands out')",
+      "binding": "{{ c.verdict }}",
+      "line": 899,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Strike map cell count",
+      "binding": "{{ q.n }}",
+      "line": 909,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "'In the centre box' count",
+      "binding": "{{ obCentreLabel }}",
+      "line": 916,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Bag span yards",
+      "binding": "{{ gapSpan }}",
+      "line": 930,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Gapping verdict ('N to fix' / 'Evenly spaced')",
+      "binding": "{{ gapWorst }}",
+      "line": 931,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Gapping row club name",
+      "binding": "{{ c.club }}",
+      "line": 952,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Gapping row carry yards",
+      "binding": "{{ c.carry }}",
+      "line": 955,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Gapping row spread (\u00b1N)",
+      "binding": "{{ c.spread }}",
+      "line": 957,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Gapping row gap to previous club",
+      "binding": "{{ c.gap }}",
+      "line": 958,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Gapping flag text (hole / stack)",
+      "binding": "{{ f.text }}",
+      "line": 965,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Launch-monitor read label (Proximity / Bias pattern / Strokes lost to bias)",
+      "binding": "{{ r.label }}",
+      "line": 976,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Launch-monitor read value",
+      "binding": "{{ r.value }}",
+      "line": 977,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Launch-monitor read note",
+      "binding": "{{ r.note }}",
+      "line": 979,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Face-strike 3\u00d73 cell count",
+      "binding": "{{ q.n }}",
+      "line": 988,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "'N% in the centre box across M recorded strikes'",
+      "binding": "{{ lmStrikeNote }}",
+      "line": 992,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Handedness chip",
+      "binding": "{{ h.label }}",
+      "line": 1003,
+      "sourceGuess": "golf-profile"
+     },
+     {
+      "label": "Dispersion plot club name",
+      "binding": "{{ p.club }}",
+      "line": 1013,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Dispersion plot carry label",
+      "binding": "{{ p.carry }}",
+      "line": 1014,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Dispersion plot shot dot x/y",
+      "binding": "{{ dot.x }} / {{ dot.y }}",
+      "line": 1028,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Dispersion plot spread read",
+      "binding": "{{ p.spread }}",
+      "line": 1038,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Dispersion plot per-club read sentence",
+      "binding": "{{ p.read }}",
+      "line": 1042,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Coach's overall bias read",
+      "binding": "{{ overallRead }}",
+      "line": 1052,
+      "sourceGuess": "computed-in-page"
+     }
+    ]
+   },
+   {
+    "name": "Fitness",
+    "evidenceLine": 1060,
+    "purpose": "This week's lift and speed programming with tick-off compliance, the four-weekly movement screen results, and a clubhead-speed bar chart.",
+    "fields": [
+     {
+      "label": "Programming row tick",
+      "binding": "{{ l.tick }}",
+      "line": 1075,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Programming row name ('Lower push \u00b7 hinge complex')",
+      "binding": "{{ l.name }}",
+      "line": 1076,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Programming row kind ('Lift' / 'Speed \u00b7 15m')",
+      "binding": "{{ l.kind }}",
+      "line": 1077,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Programming row day",
+      "binding": "{{ l.day }}",
+      "line": 1078,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Compliance this week ('N of 5 logged')",
+      "binding": "{{ liftCompliance }}",
+      "line": 1084,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Coach attribution 'COACH PHIL HERDER'",
+      "binding": "(literal text, no binding)",
+      "line": 1092,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Movement screen row name",
+      "binding": "{{ f.name }}",
+      "line": 1098,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Movement screen row value ('42\u00b0 / 45\u00b0')",
+      "binding": "{{ f.value }}",
+      "line": 1099,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Movement screen row status (Pass / Limited)",
+      "binding": "{{ f.status }}",
+      "line": 1100,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "'Last screened Jul 8 \u00b7 next Aug 5'",
+      "binding": "(literal text, no binding)",
+      "line": 1104,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "'Driver \u00b7 8 sessions'",
+      "binding": "(literal text, no binding)",
+      "line": 1110,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Speed bar mph",
+      "binding": "{{ b.mph }}",
+      "line": 1116,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Current speed",
+      "binding": "{{ speedNow }}",
+      "line": 1122,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Best speed",
+      "binding": "{{ speedBest }}",
+      "line": 1123,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Speed gain",
+      "binding": "{{ speedGain }}",
+      "line": 1124,
+      "sourceGuess": "unknown"
+     }
+    ]
+   },
+   {
+    "name": "Virtual round (phone-surface modal)",
+    "evidenceLine": 1132,
+    "purpose": "Course picker with favourites and search, then an 18-hole self-graded round played in the player's head on the range, with a ball-abacus for strokes over par, a mechanical-leak audit, and a scorecard that logs back into the sim history.",
+    "fields": [
+     {
+      "label": "Course search query",
+      "binding": "{{ vrQuery }}",
+      "line": 1146,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Favourite course name",
+      "binding": "{{ c.name }}",
+      "line": 1154,
+      "sourceGuess": "RED"
+     },
+     {
+      "label": "Favourite star toggle",
+      "binding": "{{ c.star }}",
+      "line": 1155,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Favourite course city / tee / 'Par N \u00b7 rating/slope'",
+      "binding": "{{ c.city }} {{ c.tee }} {{ c.meta }}",
+      "line": 1157,
+      "sourceGuess": "RED"
+     },
+     {
+      "label": "Course list label ('All courses' / 'N matches')",
+      "binding": "{{ vrListLabel }}",
+      "line": 1163,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Course name (full list)",
+      "binding": "{{ c.name }}",
+      "line": 1168,
+      "sourceGuess": "RED"
+     },
+     {
+      "label": "'Home course' tag",
+      "binding": "{{ c.tag }}",
+      "line": 1170,
+      "sourceGuess": "RED"
+     },
+     {
+      "label": "Selected course name",
+      "binding": "{{ vrCourseName }}",
+      "line": 1185,
+      "sourceGuess": "RED"
+     },
+     {
+      "label": "'Thru N'",
+      "binding": "{{ vrThru }}",
+      "line": 1186,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "'Hole N'",
+      "binding": "{{ vrHoleNo }}",
+      "line": 1189,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "To par",
+      "binding": "{{ vrToPar }}",
+      "line": 1190,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Hole par",
+      "binding": "{{ vrHolePar }}",
+      "line": 1193,
+      "sourceGuess": "RED"
+     },
+     {
+      "label": "Hole yardage",
+      "binding": "{{ vrHoleYds }}",
+      "line": 1193,
+      "sourceGuess": "RED"
+     },
+     {
+      "label": "Ball-abacus note ('N balls in the pocket')",
+      "binding": "{{ vrAbacusNote }}",
+      "line": 1203,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Score option label (Eagle\u2026Triple+)",
+      "binding": "{{ o.label }}",
+      "line": 1210,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Score option stroke count",
+      "binding": "{{ o.strokes }}",
+      "line": 1211,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Hole strip score",
+      "binding": "{{ h.val }}",
+      "line": 1218,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Mechanical-leak count chip (0,1,2,3,4+)",
+      "binding": "{{ l.label }}",
+      "line": 1233,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Card total strokes",
+      "binding": "{{ vrCardScore }}",
+      "line": 1245,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Card to par",
+      "binding": "{{ vrCardToPar }}",
+      "line": 1246,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Card differential ((strokes \u2212 rating) \u00d7 113 / slope)",
+      "binding": "{{ vrCardDiff }}",
+      "line": 1247,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Leak summary ('Zero mechanics' / 'N mechanical leaks')",
+      "binding": "{{ vrLeakSummary }}",
+      "line": 1256,
+      "sourceGuess": "computed-in-page"
+     }
+    ]
+   },
+   {
+    "name": "Forge capture (phone-surface modal)",
+    "evidenceLine": 1266,
+    "purpose": "The scored-session capture flow: four-domain roadmap \u2192 drill picker \u2192 drill brief (setup, level, scoring, conditions) \u2192 live tally/score entry with an abacus \u2192 a done screen reporting the index.",
+    "fields": [
+     {
+      "label": "Roadmap domain step ('01'..'04')",
+      "binding": "{{ r.step }}",
+      "line": 1283,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Roadmap domain name",
+      "binding": "{{ r.name }}",
+      "line": 1285,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Roadmap domain shot count",
+      "binding": "{{ r.shots }}",
+      "line": 1286,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Roadmap domain state (Next / Queued)",
+      "binding": "{{ r.state }}",
+      "line": 1288,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Roadmap drill name",
+      "binding": "{{ d.name }}",
+      "line": 1296,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Roadmap drill note",
+      "binding": "{{ d.note }}",
+      "line": 1297,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Roadmap drill tag",
+      "binding": "{{ d.tag }}",
+      "line": 1299,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Picker domain label",
+      "binding": "{{ pickerLabel }}",
+      "line": 1311,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Picker drill name",
+      "binding": "{{ p.name }}",
+      "line": 1318,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Picker drill kind (Index / Diagnostic)",
+      "binding": "{{ p.kind }}",
+      "line": 1319,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Picker drill shot count",
+      "binding": "{{ p.shots }}",
+      "line": 1321,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Picker drill blurb",
+      "binding": "{{ p.blurb }}",
+      "line": 1322,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Brief domain + shot count",
+      "binding": "{{ briefDomain }} {{ briefShots }}",
+      "line": 1332,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Brief drill name",
+      "binding": "{{ briefName }}",
+      "line": 1335,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Brief 'what this is' copy",
+      "binding": "{{ briefWhat }}",
+      "line": 1336,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Brief setup step text",
+      "binding": "{{ b.text }}",
+      "line": 1348,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Brief tolerance level chip label",
+      "binding": "{{ lv.label }}",
+      "line": 1359,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Brief level note",
+      "binding": "{{ briefLevelNote }}",
+      "line": 1363,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Brief scoring row label (Eagle/Birdie/Par/Bogey/Double)",
+      "binding": "{{ sc.label }}",
+      "line": 1370,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Brief scoring row note",
+      "binding": "{{ sc.note }}",
+      "line": 1371,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Brief conditions caveat",
+      "binding": "{{ briefConds }}",
+      "line": 1378,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Shot counter ('Shot N of 20')",
+      "binding": "{{ shotRead }}",
+      "line": 1389,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Called shape for this shot",
+      "binding": "{{ callRead }}",
+      "line": 1396,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Mode chip (test / challenge)",
+      "binding": "{{ m.label }}",
+      "line": 1405,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Level chip",
+      "binding": "{{ l.label }}",
+      "line": 1417,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Score entry label",
+      "binding": "{{ scoreLabel }}",
+      "line": 1423,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Score value",
+      "binding": "{{ scoreRead }}",
+      "line": 1427,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Score unit ('points across 30 shots')",
+      "binding": "{{ scoreUnit }}",
+      "line": 1428,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Score hint",
+      "binding": "{{ scoreHint }}",
+      "line": 1443,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Abacus column label (corridor buckets)",
+      "binding": "{{ a.label }}",
+      "line": 1461,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Abacus column count",
+      "binding": "{{ a.count }}",
+      "line": 1462,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Tally total",
+      "binding": "{{ tallyTotal }}",
+      "line": 1468,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Save button label",
+      "binding": "{{ saveLabel }}",
+      "line": 1472,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Resulting driving index",
+      "binding": "{{ drivingIndexRead }}",
+      "line": 1480,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Fairway/bad-miss summary line",
+      "binding": "{{ fairwayRead }}",
+      "line": 1481,
+      "sourceGuess": "FORGE"
+     }
+    ]
+   },
+   {
+    "name": "03 Transfer",
+    "evidenceLine": 1492,
+    "purpose": "The Forge quarterly session (four indices), the Challenge Ladder, a four-quarter SG trend chart, the 30-shot Short Game Assessment scored on points and converted to SG, course-simulation history, on-course index rows, and the transfer gap.",
+    "fields": [
+     {
+      "label": "'Last run' date line",
+      "binding": "(literal text, no binding)",
+      "line": 1507,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Forge drill step ('01'..'04')",
+      "binding": "{{ f.step }}",
+      "line": 1522,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Forge drill name (Chipping/Putting/Approach/Driving Index)",
+      "binding": "{{ f.name }}",
+      "line": 1524,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Forge drill shots + protocol note",
+      "binding": "{{ f.shots }} {{ f.note }}",
+      "line": 1525,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Forge drill tag ('Primary leak' / 'Logged')",
+      "binding": "{{ f.tag }}",
+      "line": 1532,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Forge drill SG value",
+      "binding": "{{ f.value }}",
+      "line": 1534,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Forge drill 'Plays to N'",
+      "binding": "{{ f.sub }}",
+      "line": 1535,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Ladder facet name + current rung",
+      "binding": "{{ l.name }} {{ l.at }}",
+      "line": 1554,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Ladder next-rung criterion",
+      "binding": "{{ l.next }}",
+      "line": 1555,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Ladder arrow target handicap",
+      "binding": "{{ l.arrowTo }}",
+      "line": 1559,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Ladder rung label (L1..L4)",
+      "binding": "{{ r.label }}",
+      "line": 1568,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Ladder rung tolerance ('One driver', '6 feet', '5%')",
+      "binding": "{{ r.note }}",
+      "line": 1569,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Ladder rung required average",
+      "binding": "{{ r.avg }}",
+      "line": 1570,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Ladder rung handicap equivalent",
+      "binding": "{{ r.hcp }}",
+      "line": 1572,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Trend facet toggle label",
+      "binding": "{{ t.label }}",
+      "line": 1591,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Trend axis high/low",
+      "binding": "{{ trendHi }} / {{ trendLo }}",
+      "line": 1600,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Trend polyline points per facet",
+      "binding": "{{ l.points }}",
+      "line": 1607,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Trend x-axis quarter labels",
+      "binding": "{{ lb }}",
+      "line": 1613,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Short-game assessment SG",
+      "binding": "{{ sgDiff }}",
+      "line": 1632,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "'vs your N handicap'",
+      "binding": "{{ sgVerdict }}",
+      "line": 1633,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "SG axis tick label (20 hcp / 10 hcp / Scratch)",
+      "binding": "{{ t.label }}",
+      "line": 1642,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Situation name ('Short chip \u00b7 fairway')",
+      "binding": "{{ g.name }}",
+      "line": 1653,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Situation note ('15\u201320 ft, low runner')",
+      "binding": "{{ g.note }}",
+      "line": 1654,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Situation SG",
+      "binding": "{{ g.hcpLabel }}",
+      "line": 1662,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Situation 'plays to N'",
+      "binding": "{{ g.gapLabel }}",
+      "line": 1664,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Situation points",
+      "binding": "{{ g.pts }}",
+      "line": 1665,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Assessment total points",
+      "binding": "{{ sgTotal }}",
+      "line": 1673,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Target points for handicap",
+      "binding": "{{ sgHcp }} {{ sgTarget }}",
+      "line": 1674,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Benchmark label + value (Tour / 0 / 10 / 20 hcp)",
+      "binding": "{{ b.label }} {{ b.value }}",
+      "line": 1679,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Strongest situation",
+      "binding": "{{ sgBest }}",
+      "line": 1687,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Weakest situation",
+      "binding": "{{ sgWorst }}",
+      "line": 1688,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "'Virtual round \u00b7 N logged'",
+      "binding": "{{ simCount }}",
+      "line": 1697,
+      "sourceGuess": "RED"
+     },
+     {
+      "label": "Simulated course name",
+      "binding": "{{ vrCourseName }}",
+      "line": 1702,
+      "sourceGuess": "RED"
+     },
+     {
+      "label": "Sim round score to par",
+      "binding": "{{ r.score }}",
+      "line": 1707,
+      "sourceGuess": "RED"
+     },
+     {
+      "label": "Sim round date label",
+      "binding": "{{ r.label }}",
+      "line": 1711,
+      "sourceGuess": "RED"
+     },
+     {
+      "label": "Sim round mechanics ('Zero mechanics' / 'N mechanical leaks')",
+      "binding": "{{ r.clean }}",
+      "line": 1712,
+      "sourceGuess": "RED"
+     },
+     {
+      "label": "Round average",
+      "binding": "{{ simAvg }}",
+      "line": 1717,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Mechanical leak rate %",
+      "binding": "{{ simLeakPct }}",
+      "line": 1718,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "On-course facet label + 'Plays to N'",
+      "binding": "{{ t.label }} {{ t.sub }}",
+      "line": 1730,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "On-course facet SG",
+      "binding": "{{ t.value }}",
+      "line": 1731,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Transfer gap value",
+      "binding": "{{ transferGap }}",
+      "line": 1746,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Transfer gap label",
+      "binding": "{{ transferLabel }}",
+      "line": 1747,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Challenge level",
+      "binding": "{{ challengeLevel }}",
+      "line": 1754,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Challenge score",
+      "binding": "{{ challengeScore }}",
+      "line": 1756,
+      "sourceGuess": "FORGE"
+     }
+    ]
+   },
+   {
+    "name": "04 Performance",
+    "evidenceLine": 1769,
+    "purpose": "The composite SG number, practice-vs-on-course diverging bars per facet, the five-axis Practice DNA radar against a scratch baseline, and a screenshot-able send-to-player coach card.",
+    "fields": [
+     {
+      "label": "Composite SG",
+      "binding": "{{ composite }}",
+      "line": 1780,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Composite 'Plays to N \u00b7 target N'",
+      "binding": "{{ compositeSub }}",
+      "line": 1781,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Facet label + 'Plays to N'",
+      "binding": "{{ d.label }} {{ d.sub }}",
+      "line": 1794,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Facet practice-to-course delta + label",
+      "binding": "{{ d.delta }} {{ d.deltaLabel }}",
+      "line": 1795,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Facet practice SG",
+      "binding": "{{ d.value }}",
+      "line": 1803,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Facet on-course (Arccos) SG",
+      "binding": "{{ d.trValue }}",
+      "line": 1811,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Primary stroke leak facet + value",
+      "binding": "{{ leakLabel }} {{ leakValue }}",
+      "line": 1820,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Primary leak weight (%)",
+      "binding": "{{ leakWeight }}",
+      "line": 1821,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Radar axis label (Off the tee / Approach / Around the green / Putting / Speed-distance)",
+      "binding": "{{ l.label }}",
+      "line": 1833,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Radar scratch baseline polygon",
+      "binding": "{{ radarBase }}",
+      "line": 1842,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Radar 'you' polygon (Practice DNA 0-100 per axis)",
+      "binding": "{{ radarYou }}",
+      "line": 1843,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Coach card date ('21 Jul \u00b7 Q3 baseline')",
+      "binding": "{{ ccDate }}",
+      "line": 1861,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Coach card composite SG",
+      "binding": "{{ ccComposite }}",
+      "line": 1866,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Coach card 'Plays to N'",
+      "binding": "{{ ccCompositeSub }}",
+      "line": 1867,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Coach card target handicap",
+      "binding": "{{ ccTarget }}",
+      "line": 1871,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Coach card facet label",
+      "binding": "{{ r.label }}",
+      "line": 1877,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Coach card facet SG",
+      "binding": "{{ r.value }}",
+      "line": 1884,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Coach card facet 'Plays to N'",
+      "binding": "{{ r.sub }}",
+      "line": 1885,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Coach card leak facet",
+      "binding": "{{ ccLeak }}",
+      "line": 1891,
+      "sourceGuess": "FORGE"
+     },
+     {
+      "label": "Coach card prescription sentence",
+      "binding": "{{ ccPrescription }}",
+      "line": 1892,
+      "sourceGuess": "computed-in-page"
+     }
+    ]
+   },
+   {
+    "name": "Plan",
+    "evidenceLine": 1899,
+    "purpose": "Tier chooser (Foundation/Builder/Competitive), four phase tabs with hours/split/mix and a 7-row prescribed week, a scheduler that emits .ics and Google Calendar links, weekly volume meters, the Fitness and Rebuild Mode toggles, and the money 'stake'.",
+    "fields": [
+     {
+      "label": "Tier name",
+      "binding": "{{ t.name }}",
+      "line": 1909,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Tier badge ('Current plan' / 'Switch')",
+      "binding": "{{ t.badge }}",
+      "line": 1910,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Tier practice floor ('N hrs / week')",
+      "binding": "{{ t.floor }}",
+      "line": 1912,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Tier audience description",
+      "binding": "{{ t.who }}",
+      "line": 1913,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Tier speed prescription",
+      "binding": "{{ t.speed }}",
+      "line": 1914,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Phase tab number",
+      "binding": "{{ p.n }}",
+      "line": 1922,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Phase tab label",
+      "binding": "{{ p.label }}",
+      "line": 1923,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Current phase label",
+      "binding": "{{ phaseLabel }}",
+      "line": 1932,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Practice floor hours",
+      "binding": "{{ floorRead }}",
+      "line": 1937,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Play target hours",
+      "binding": "{{ playRead }}",
+      "line": 1938,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Speed sessions",
+      "binding": "{{ speedRead }}",
+      "line": 1939,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Home/range split",
+      "binding": "{{ splitRead }}",
+      "line": 1940,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Phase mix ('6 \u00d7 15 Home + 1 \u00d7 30 Range')",
+      "binding": "{{ phaseMix }}",
+      "line": 1943,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Week row day",
+      "binding": "{{ w.day }}",
+      "line": 1948,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Week row session",
+      "binding": "{{ w.session }}",
+      "line": 1949,
+      "sourceGuess": "STATIC-CONTENT"
+     },
+     {
+      "label": "Schedule row kind label (Home practice / Range practice / Lift / Speed)",
+      "binding": "{{ r.label }}",
+      "line": 1965,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Schedule row days + duration",
+      "binding": "{{ r.days }} {{ r.dur }}",
+      "line": 1966,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Schedule row time-of-day input",
+      "binding": "{{ r.time }}",
+      "line": 1968,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Google Calendar link",
+      "binding": "{{ r.gcal }}",
+      "line": 1969,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Reminders toggle label",
+      "binding": "{{ schedNotifyLabel }}",
+      "line": 1975,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Reminder lead chip (10/30/60 min before)",
+      "binding": "{{ l.label }}",
+      "line": 1977,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": ".ics data-URI download",
+      "binding": "{{ icsHref }}",
+      "line": 1981,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Practice logged vs floor ('3.5 of 5.0 hrs')",
+      "binding": "{{ practiceRead }}",
+      "line": 1998,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Practice meter width",
+      "binding": "{{ practiceBar }}",
+      "line": 2000,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Play logged vs target",
+      "binding": "{{ playReadWk }}",
+      "line": 2006,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Play meter width",
+      "binding": "{{ playBar }}",
+      "line": 2008,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Speed sessions this week ('2 of 3')",
+      "binding": "{{ speedCount }}",
+      "line": 2015,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Fitness sessions this week ('1 of 2')",
+      "binding": "{{ fitnessCount }}",
+      "line": 2029,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Stake amount chip ($10/$25/$50/$100)",
+      "binding": "{{ c.label }}",
+      "line": 2054,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Stake destination chip (charity / coaching session)",
+      "binding": "{{ d.label }}",
+      "line": 2061,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Pledge status ('Pledge recorded \u00b7 24 Jul')",
+      "binding": "{{ pledgeLabel }}",
+      "line": 2067,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Declared misses left ('N of 2 \u2026this phase')",
+      "binding": "{{ missesRead }}",
+      "line": 2072,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Rebuild Mode toggle label",
+      "binding": "{{ rebuildLabel }}",
+      "line": 2080,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Rebuild Mode explanatory note",
+      "binding": "{{ rebuildNote }}",
+      "line": 2083,
+      "sourceGuess": "STATIC-CONTENT"
+     }
+    ]
+   },
+   {
+    "name": "Team (Thread)",
+    "evidenceLine": 2092,
+    "purpose": "Four coach cards showing monthly session allowance, sessions used/banked and expiry, plus a three-message conversation feed.",
+    "fields": [
+     {
+      "label": "Coach initials",
+      "binding": "{{ c.initials }}",
+      "line": 2101,
+      "sourceGuess": "identity"
+     },
+     {
+      "label": "Coach name",
+      "binding": "{{ c.name }}",
+      "line": 2103,
+      "sourceGuess": "identity"
+     },
+     {
+      "label": "Coach role ('Method \u00b7 swing construction')",
+      "binding": "{{ c.role }}",
+      "line": 2104,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Sessions available ('N available')",
+      "binding": "{{ c.leftRead }}",
+      "line": 2108,
+      "sourceGuess": "coach-relationship"
+     },
+     {
+      "label": "Monthly allowance ('N / month' / 'Not in Foundation')",
+      "binding": "{{ c.allowRead }}",
+      "line": 2109,
+      "sourceGuess": "coach-relationship"
+     },
+     {
+      "label": "Allowance pips",
+      "binding": "{{ c.pips }}",
+      "line": 2113,
+      "sourceGuess": "coach-relationship"
+     },
+     {
+      "label": "Banked sessions + expiry ('N banked' / '18 days')",
+      "binding": "{{ c.bankedRead }} {{ c.expiry }}",
+      "line": 2117,
+      "sourceGuess": "coach-relationship"
+     },
+     {
+      "label": "Booking CTA ('Book' / 'Upgrade to book' / 'None left this month')",
+      "binding": "{{ c.cta }}",
+      "line": 2119,
+      "sourceGuess": "computed-in-page"
+     },
+     {
+      "label": "Message author",
+      "binding": "{{ m.who }}",
+      "line": 2130,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Message timestamp",
+      "binding": "{{ m.when }}",
+      "line": 2131,
+      "sourceGuess": "unknown"
+     },
+     {
+      "label": "Message body",
+      "binding": "{{ m.body }}",
+      "line": 2133,
+      "sourceGuess": "unknown"
+     }
+    ]
+   }
+  ],
+  "dataObjects": [
+   {
+    "name": "ROSTER",
+    "line": 2544,
+    "holds": "\u26a0\ufe0f ALREADY WIRED \u2014 do not re-strip. Reads `window.__ATLAS_DATA__.roster || []`, injected by server/routes/proto.ts. The strip comment (2536-2543) says the literal was 8 hardcoded players / ~5.9K.",
+    "owner": "ATLAS"
+   },
+   {
+    "name": "ATLAS_ME",
+    "line": 2547,
+    "holds": "\u26a0\ufe0f ALREADY WIRED \u2014 the signed-in account from `window.__ATLAS_DATA__.me || {}`. Used only for playerName/initials at 4881-4882.",
+    "owner": "ATLAS"
+   },
+   {
+    "name": "EMPTY_PLAYER",
+    "line": 2567,
+    "holds": "THE ROSTER ROW CONTRACT protoData.ts must satisfy \u2014 every key the render dereferences: id, n, tier, zone, hcp, target, days, leak, hand, carry, intake, sg[], hist{}, read{}, note{}, tone{}, answer{}, est{}, grid[], file{}. Not a data source; the shape spec.",
+    "owner": "ATLAS"
+   },
+   {
+    "name": "state (class field)",
+    "line": 2695,
+    "holds": "The single largest data blob in the file \u2014 one player's entire dataset as component state: view, log (=SEED), sets, tempo, disp (3 dispersion ellipses), hand 'R', pivot 'cannon', impactOpp, stake {active,amount:25,dest,pledged,misses:2}, session, speeds [94..99], ticked (=DONE), openStep 3, signed [1,2], verified, watched, coachMode, tier 'builder', phase 2, rebuild, fitnessOn, clock, lastSession, lifts ['lift-a','speed-1'].",
+    "owner": "mixed \u2014 see sub-entries"
+   },
+   {
+    "name": "state.forge",
+    "line": 2706,
+    "holds": "The whole strokes-gained model for one player: driving 14.0 / approach 8.0 / chipping -3.0 / putting 2.0 practice indices; tr{} on-course indices; transferGap 2.4; level 2; challenge -3; dna{offTheTee 74, approach 46, aroundTheGreen 81, putting 63, speedDistance 38}; sim[] 4 virtual rounds; simAvg 2.8; simLeakPct 12; history[] 4 quarters \u00d7 4 facets. Feeds the rail, Today, Transfer, Performance and the coach card.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "BASELINE_CARRY_TABLE",
+    "line": 2149,
+    "holds": "8 rows mapping driver carry distance to a baseline handicap (184 yds \u2192 30 hcp \u2026 309+ \u2192 -5).",
+    "owner": "FORGE"
+   },
+   {
+    "name": "PLAYER_CARRY",
+    "line": 2154,
+    "holds": "Literal 265 \u2014 the player's driver carry, used to compute the driving index baseline in DRILL_DEFS.drive20.verdict (2450).",
+    "owner": "FORGE"
+   },
+   {
+    "name": "CHIP_LEVELS",
+    "line": 2162,
+    "holds": "4 chipping tolerance rungs (Two drivers / One driver / One wedge / Two feet), each with roadmap, what, note and 5 scoring rows.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "GAP_SAMPLE",
+    "line": 2220,
+    "holds": "13 clubs \u00d7 {carry, spread, bias} \u2014 the sole source of the entire Calibration gapping ladder, the three derived launch-monitor reads, and every gap flag. Loaded by the 'Upload session file' button (4451).",
+    "owner": "FORGE"
+   },
+   {
+    "name": "RAW_COURSES",
+    "line": 2238,
+    "holds": "12 courses \u00d7 {id, name, city, tee, yards, rating, slope, home, fav, parStr}. Hole pars and yardages are derived at 2255 into COURSES via BASE_YDS (2254). Drives the entire Virtual Round picker and scorecard differential.",
+    "owner": "RED"
+   },
+   {
+    "name": "REL",
+    "line": 2265,
+    "holds": "6 score-relative-to-par options (Eagle -2 \u2026 Triple+ +3) with tone.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "INDEX_GROUPS",
+    "line": 2277,
+    "holds": "Maps each of 4 domains to its drill ids (chipping\u2192chip20/sga30, putting\u2192ryp20/stroke20, approach\u2192appr20, driving\u2192drive20).",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "DRILL_PICK",
+    "line": 2283,
+    "holds": "4 drill picker entries \u00d7 {kind: Index|Diagnostic, blurb}.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "DRILL_DEFS",
+    "line": 2291,
+    "holds": "The full drill library (~150 lines): per drill id \u2014 domain, name, shots, entry mode, score range/units/hint, note, what, setup steps, scoring rows, conditions caveat, tally columns, tones, and a verdict() scoring function. Drives the whole Forge capture modal.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "SESSION_DOMAINS",
+    "line": 2455,
+    "holds": "The 4-domain Forge roadmap \u00d7 {k, step, name, shots, state 'Next'/'Queued', drills[]}.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "BLOCKS",
+    "line": 2462,
+    "holds": "The four zone names: Construction, Calibration, Transfer, Performance.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "WORKS",
+    "line": 2465,
+    "holds": "Workout kinds: Lift, Mobility, Speed, Rest.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "DOWS",
+    "line": 2466,
+    "holds": "Day-of-week short names, Sun-first.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "OFFSET / DAYS / TODAY",
+    "line": 2467,
+    "holds": "Literals 3 / 31 / 26 \u2014 the calendar is hard-pinned to a 31-day month starting Wednesday with 'today' = the 26th. Every 'today', streak and week calculation in the file reads TODAY.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "SEED",
+    "line": 2469,
+    "holds": "22 pre-logged practice days keyed by day-of-month \u00d7 {m: minutes, b: zone, w: workout}. The entire practice log, streak, hours total and calendar heat come from this.",
+    "owner": "unknown"
+   },
+   {
+    "name": "STEPS",
+    "line": 2480,
+    "holds": "The five-step swing-change workbook: per step \u2014 n, title, body, cond, opener flag, pivot variants (cannon/anchor with their own drill sets), and 3-7 drills \u00d7 {ref, name, std, cam}. ~50 lines.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "DONE",
+    "line": 2531,
+    "holds": "12 drill keys pre-ticked as completed ('1-1a','2-P3','3-S2'\u2026). Sets the build progress bar and every step's state.",
+    "owner": "unknown"
+   },
+   {
+    "name": "WHY",
+    "line": 2575,
+    "holds": "28 drill-name \u2192 one-sentence mechanism strings, shown in the drill row and the demo overlay.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "SG_W",
+    "line": 2607,
+    "holds": "The composite weighting: driving .30, approach .35, chipping .15, putting .20. Every composite index, rail SG, transfer gap and coach card reads this.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "IMPACT_OPP",
+    "line": 2616,
+    "holds": "3 impact-opposite drills \u00d7 {ref, name, std, ball flag, tag, blurb}.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "CLUBS",
+    "line": 2625,
+    "holds": "3 clubs \u00d7 {club, carry label ('265 yd carry'), fieldW, fieldD, tight, base ellipse}. Sets the dispersion plot scales and the carry labels shown on Calibration.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "SCATTER",
+    "line": 2635,
+    "holds": "Deterministic unit-circle offsets: 11 / 14 / 16 shot dots for sand wedge, 7-iron and driver. Every dot on the three dispersion plots.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "FITNESS",
+    "line": 2641,
+    "holds": "5 movement-screen rows \u00d7 {name, value ('42\u00b0 / 45\u00b0'), status Pass|Limited}. The whole Fitness screen's screen results.",
+    "owner": "unknown"
+   },
+   {
+    "name": "TIERS",
+    "line": 2649,
+    "holds": "~44 lines. Three tiers (foundation/builder/competitive) \u00d7 {name, floor, play, speed, home, range, who} \u00d7 4 phases \u00d7 {label, hrs, mix, split, partial, week[7 rows]}. Source of the Plan screen, the calendar's prescribed ghost bars (plannedZone/Work/Mins 3222-3260) and the scheduler.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "logged (in stakeVals)",
+    "line": 2920,
+    "holds": "Literal 3.5 \u2014 hours practised this week. Drives the Today stake bar %, verdict and 'at risk' line.",
+    "owner": "unknown"
+   },
+   {
+    "name": "AX (in forgeVals)",
+    "line": 2974,
+    "holds": "The 5 Practice DNA radar axes and their 0-100 values, read from state.forge.dna.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "DRILLS (in forgeVals)",
+    "line": 2990,
+    "holds": "4 Forge index drills \u00d7 {k, step, name, shots, note} shown on the Transfer screen.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "SG (in forgeVals)",
+    "line": 2997,
+    "holds": "IN-METHOD literal. 6 short-game situations \u00d7 {name, note, pts}. The sole source of every number in the Short Game Assessment block \u2014 points, per-situation SG, total, best/worst.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "BENCH (in forgeVals)",
+    "line": 3009,
+    "holds": "4 handicap\u2192points benchmarks [[20,9],[10,24],[0,40],[-4,53]] used to interpolate the short-game target.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "ANCH (in forgeVals)",
+    "line": 3021,
+    "holds": "4 per-situation points\u2192handicap anchors used to read any one situation back as a handicap.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "ALLOW (in teamVals)",
+    "line": 3174,
+    "holds": "IN-METHOD literal. Monthly coaching-session allowance per coach per tier (foundation/builder/competitive \u00d7 luke/brock/yannick/phil).",
+    "owner": "unknown"
+   },
+   {
+    "name": "USED (in teamVals)",
+    "line": 3179,
+    "holds": "IN-METHOD literal. Sessions consumed this month per coach {luke:1, brock:1, yannick:0, phil:0}.",
+    "owner": "coach-relationship"
+   },
+   {
+    "name": "BANKED (in teamVals)",
+    "line": 3180,
+    "holds": "IN-METHOD literal. Sessions carried over per coach {luke:1, brock:0, yannick:2, phil:0}.",
+    "owner": "coach-relationship"
+   },
+   {
+    "name": "EXPIRY (in teamVals)",
+    "line": 3181,
+    "holds": "IN-METHOD literal. Banked-session expiry per coach {luke:'18 days', yannick:'6 days'}.",
+    "owner": "coach-relationship"
+   },
+   {
+    "name": "COACHES (in teamVals)",
+    "line": 3182,
+    "holds": "IN-METHOD literal. 4 coaches \u00d7 {k, name, role, cred, initials} \u2014 Dr. Luke Benoit, Brock Winter, Yannick Artigolle, Phil Herder.",
+    "owner": "unknown"
+   },
+   {
+    "name": "ROWS (in fitnessVals)",
+    "line": 3289,
+    "holds": "IN-METHOD literal. 5 programmed sessions \u00d7 {k, name, kind, day} \u2014 this week's lift and speed programming.",
+    "owner": "unknown"
+   },
+   {
+    "name": "ZONES (in clockVals)",
+    "line": 3326,
+    "holds": "IN-METHOD literal. 4 practice-clock zones \u00d7 {k, label, note} (Construction\u00b7Home prescribed, Calibration\u00b7Range, Transfer\u00b7Range/course, Speed\u00b715 min).",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "logged (in planVals)",
+    "line": 3378,
+    "holds": "IN-METHOD literal {practice: 3.5, play: 4, speed: 2} \u2014 this week's volume against the plan. Drives all four Plan meters.",
+    "owner": "unknown"
+   },
+   {
+    "name": "FACETS (in autoVals)",
+    "line": 3606,
+    "holds": "IN-METHOD literal, ~48 lines. 4 facets \u00d7 {primary[3], alt[3]} prescribed blocks \u00d7 {zone, mins, name, why} = 24 hand-written sessions. The entire Today auto-session generator.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "NAMES (in profileVals)",
+    "line": 3706,
+    "holds": "IN-METHOD literal. The 5 band names per read category used to render 'You said'.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "FIELDS (in profileVals)",
+    "line": 3727,
+    "holds": "IN-METHOD literal. 5 interview questions \u00d7 {k, label, hint} (sport, years, limits, time, goal).",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "STEPS (in profileVals, handicap history)",
+    "line": 3759,
+    "holds": "IN-METHOD literal. The 6 lookback periods {m3, m6, y1, y3, y5, y10} and their display labels.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "STEPS (in intakeVals)",
+    "line": 3874,
+    "holds": "IN-METHOD literal. Same 6 lookback periods with '\u2026 ago' labels for the intake form.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "CATS (in intakeVals)",
+    "line": 3879,
+    "holds": "IN-METHOD literal. The 4 self-estimate categories \u00d7 {k, label, question, 5 options} on the intake form.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "FIELDS (in intakeVals)",
+    "line": 3889,
+    "holds": "IN-METHOD literal. The same 5 background questions with longer hints for the intake form.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "CATS (in buildOnboarding)",
+    "line": 4143,
+    "holds": "IN-METHOD literal, ~25 lines. The 4 read categories carrying BOTH content (what, video title, lesson, 5 options) AND one player's actual results: answer index, read ('4.2\u00b0 in-to-out'), note, tone. The read/answer/note/tone half is per-player data hiding inside a content constant.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "GRID (in buildOnboarding)",
+    "line": 4167,
+    "holds": "IN-METHOD literal [0,1,4, 0,3,2, 0,0,0] \u2014 the 3\u00d73 strike map counts out of ten on the Calibration screen.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "STRIKE (in buildGapping)",
+    "line": 4476,
+    "holds": "IN-METHOD literal [1,4,9,2,18,14,1,8,8] \u2014 the face-strike 3\u00d73 distribution and the 'N% in the centre box across M strikes' line on Calibration.",
+    "owner": "FORGE"
+   },
+   {
+    "name": "DEF (in buildSchedule)",
+    "line": 4548,
+    "holds": "IN-METHOD literal. Default session times {home 07:00, range 17:30, lift 06:30, speed 17:00}.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "KINDS + BASE (in buildSchedule)",
+    "line": 4550,
+    "holds": "IN-METHOD literals. 4 schedulable kinds \u00d7 {k, label, dur, match regex, days}, plus BASE = [2026, 7, 27] (4560), the hardcoded Monday every recurring calendar event is anchored to.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "RUNGS (in buildLadder)",
+    "line": 4634,
+    "holds": "IN-METHOD literal. 4 facets \u00d7 4 tolerance rung names (chipping 'Two drivers'\u2026'Two feet', putting '12 feet'\u2026'4 feet', approach '10% of distance'\u2026'3%', driving 'Corridor 5'\u2026'Corridor 2'). Also `cleared` defaults {chipping:2, putting:1, approach:1, driving:1} on the same line.",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "AVG / HCP (in buildLadder)",
+    "line": 4642,
+    "holds": "IN-METHOD literals. Rung-clearing averages ('+2 or better'\u2026'\u22124 or better') and their handicap equivalents ('\u2248 20 hcp'\u2026'Tour standard').",
+    "owner": "STATIC-CONTENT"
+   },
+   {
+    "name": "messages (in renderVals)",
+    "line": 5076,
+    "holds": "IN-METHOD literal. 3 hardcoded thread messages \u00d7 {who, when, accent, border, bg, body} \u2014 the entire Team conversation feed, including named coaches and dated replies.",
+    "owner": "unknown"
+   }
+  ],
+  "totals": {
+   "screenCount": 15,
+   "fieldCount": 392,
+   "dataObjectCount": 59
+  }
+ }
+}
