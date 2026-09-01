@@ -45,18 +45,26 @@ export function defaultStage(run: QuizRun): Stage {
   return 'result';
 }
 
-/** Which tier a "keep going" button should offer next, or null when they're done. */
-export function nextTier(tierCompleted: TierCompleted): 'tier1B' | 'tier2' | 'tier3' | null {
-  switch (tierCompleted) {
-    case 1:
-      return 'tier1B';
-    case 2:
-      return 'tier2';
-    case 3:
-      return 'tier3';
-    default:
-      return null;
-  }
+/**
+ * Which tier a "keep going" button should offer next, or null when they're done.
+ *
+ * ── THE INTAKE ENDS AT TIER 1A. Decision, Makel, 2026-09-01. ────────────────────────────────
+ * Atlas's intake is three sections and no more: the practice week (two typed questions and the
+ * allocation slider), background and body (the seven profile fields), and one block of questions
+ * (Tier 1A). That is 23 answers.
+ *
+ * Tiers 1B, 2 and 3 are 78 further questions — Tier 2 alone is 51 — and they are cut from the
+ * product, not merely deprioritised. They are the "continue the diagnosis" path, and asking a
+ * golfer for a hundred answers before they have seen anything is not an onboarding.
+ *
+ * NOT DELETED from `shared/practice-dna/items.ts`. That file is Forge's canonical copy of the
+ * instrument, verified byte-identical, and removing items would fork our version from theirs
+ * invisibly — the exact trap that produced the ZP_* and PRO_AGE bugs. The items stay; the flow
+ * stops offering them. `TierRunner` can still render any tier if something asks it to, so
+ * restoring the depth later is this function, not a migration.
+ */
+export function nextTier(_tierCompleted: TierCompleted): 'tier1B' | 'tier2' | 'tier3' | null {
+  return null;
 }
 
 /** Progress dots in the header. Tier 3 is excluded: it is research opt-in, not the flow. */
