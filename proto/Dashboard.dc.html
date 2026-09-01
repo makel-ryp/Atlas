@@ -73,8 +73,15 @@
       <div style="height:1px; background:rgba(255,255,255,0.07); margin:11px 14px;"></div>
       <div onClick="{{ goThread }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cThread }}; background: {{ bThread }};"><span>Team</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#7fa8c9;">{{ sessionsLeft }}</span></div>
       <div onClick="{{ goProfile }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cProfile }}; background: {{ bProfile }};"><span>Profile</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#c8a05e;">{{ pfAware }}</span></div>
+      <sc-if value="{{ showIntake }}" hint-placeholder-val="{{ false }}">
       <div onClick="{{ goIntake }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cIntake }}; background: {{ bIntake }};"><span>Intake form</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#c8a05e;">{{ inPct }}</span></div>
+      </sc-if>
+      <!-- TUCKED 2026-09-01 (Makel): the roster is empty for most accounts and the coach
+           product is not the focus yet. Flagged, not deleted — set showRoster in
+           __ATLAS_DATA__ (server/protoData.ts) to bring the tab straight back. -->
+      <sc-if value="{{ showRoster }}" hint-placeholder-val="{{ false }}">
       <div onClick="{{ goRoster }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cRoster }}; background: {{ bRoster }};"><span>Roster</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#d9885e;">{{ rosterFlagged }}</span></div>
+      </sc-if>
     </div>
 
     <div style="margin-top:auto; padding:20px 26px 18px; border-top:1px solid rgba(255,255,255,0.06);">
@@ -4860,6 +4867,11 @@ class Component extends DCLogic {
 
     const tempoRungs = [10, 9, 8, 7, 6, 5, 4, 3, 2];
 
+    // A LOCAL const, deliberately, not a property of the object below: these values are read
+    // while that literal is still being constructed, so `this.isHidden` would be undefined and
+    // every guard would throw. See the HIDDEN SECTIONS note further down.
+    const isHidden = k => (((window.__ATLAS_DATA__ && window.__ATLAS_DATA__.hidden) || []).indexOf(k) !== -1);
+
     return {
       // STRIPPED 2026-08-31 with ROSTER: was `?? '<a sample player name>'` — and support.js hydrates
       // `this.props` from the `data-props` JSON `default` above, so the sample name was ALWAYS
@@ -4872,25 +4884,43 @@ class Component extends DCLogic {
       playerName: this.props.playerName || ATLAS_ME.name || '',
       initials: (this.props.playerName || ATLAS_ME.name || '').split(' ').map(w => w[0]).join(''),
 
-      isToday: view === 'today', isCal: view === 'cal', isBuild: view === 'build',
-      isEvidence: view === 'evidence', isThread: view === 'thread',
+      // ── HIDDEN SECTIONS, injected ──────────────────────────────────────────────────────────
+      // Every section of this file is wrapped in its own `sc-if`, so hiding one is a flag rather
+      // than markup surgery — no cutting blocks out of a 390KB document and hoping the nesting
+      // survives. `__ATLAS_DATA__.hidden` is a list of section keys the server does not want
+      // shown; each `isX` below is ANDed against it, which closes the section AND kills its nav
+      // item in one place. Empty by default, so the file opens standalone exactly as Luke built it.
+      //
+      // Currently hidden (Makel, 2026-09-01): 'intake' and 'evidence' — the ten-shots-one-7-iron
+      // video test. Four measured reads, four self-estimates and a 3x3 strike map, all of them
+      // read by a coach off a filmed set. There is no video-capture or coach-measurement pipeline
+      // and there is not going to be one: "this whole 10 shots one 7 iron section is
+      // unachievable". Flagged rather than deleted, because the pristine file is the reference and
+      // this decision could change.
+
+      isToday: view === 'today' && !isHidden('today'), isCal: view === 'cal' && !isHidden('cal'), isBuild: view === 'build' && !isHidden('build'),
+      isEvidence: view === 'evidence' && !isHidden('evidence'), isThread: view === 'thread' && !isHidden('thread'),
       goToday: this.nav('today'), goCal: this.nav('cal'), goBuild: this.nav('build'),
       goEvidence: this.nav('evidence'), goThread: this.nav('thread'),
       cToday: r.today.c, bToday: r.today.b, cCal: r.cal.c, bCal: r.cal.b,
       cBuild: r.build.c, bBuild: r.build.b, cEvidence: r.evidence.c, bEvidence: r.evidence.b,
       cThread: r.thread.c, bThread: r.thread.b,
       isRoster: view === 'roster', goRoster: this.nav('roster'),
+      // Injected, default false — see the TUCKED note on the nav item above.
+      // Nav visibility comes off the SAME `hidden` list the sections use — one list, so a
+      // section and its way in can never disagree.
+      showRoster: !isHidden('roster'), showIntake: !isHidden('intake'),
       cRoster: r.roster.c, bRoster: r.roster.b,
-      isProfile: view === 'profile', goProfile: this.nav('profile'),
+      isProfile: view === 'profile' && !isHidden('profile'), goProfile: this.nav('profile'),
       cProfile: r.profile.c, bProfile: r.profile.b,
-      isIntake: view === 'intake', goIntake: this.nav('intake'),
+      isIntake: view === 'intake' && !isHidden('intake'), goIntake: this.nav('intake'),
       cIntake: r.intake.c, bIntake: r.intake.b,
       ...this.profileVals(),
       ...this.intakeVals(),
       ...this.shellVals(),
       ...this.autoVals(),
       ...this.rosterVals(),
-      isPlan: view === 'plan', goPlan: this.nav('plan'),
+      isPlan: view === 'plan' && !isHidden('plan'), goPlan: this.nav('plan'),
       cPlan: r.plan.c, bPlan: r.plan.b,
       tierName: TIERS[s.tier].name,
       ...this.planVals(),
@@ -4900,15 +4930,15 @@ class Component extends DCLogic {
       ...this.forgeVals(),
       ...this.stakeVals(),
       ...this.sessionVals(),
-      isTransfer: view === 'transfer', goTransfer: this.nav('transfer'),
+      isTransfer: view === 'transfer' && !isHidden('transfer'), goTransfer: this.nav('transfer'),
       cTransfer: r.transfer.c, bTransfer: r.transfer.b,
-      isPerf: view === 'perf', goPerf: this.nav('perf'),
+      isPerf: view === 'perf' && !isHidden('perf'), goPerf: this.nav('perf'),
       cPerf: r.perf.c, bPerf: r.perf.b,
       zoneBuild: 'Step ' + (s.signed.length + 1) + '/5',
       zoneCal: 'Plotted',
       zoneTransfer: 'Active',
       zonePerf: 'Locked',
-      isFitness: view === 'fitness', goFitness: this.nav('fitness'),
+      isFitness: view === 'fitness' && !isHidden('fitness'), goFitness: this.nav('fitness'),
       cFitness: r.fitness.c, bFitness: r.fitness.b,
       weekRead: weekDone + '/6',
 

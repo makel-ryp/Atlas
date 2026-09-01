@@ -76,6 +76,12 @@ export type RosterRow = {
   file: Record<string, string>
 }
 
+/**
+ * Sections the served prototype does not show. One list, one place to change it — put a key back
+ * and the section and its nav item both return.
+ */
+export const HIDDEN_SECTIONS = ['intake', 'evidence', 'roster'] as const satisfies readonly string[]
+
 export type AtlasData = {
   /**
    * Which of the file's four views to open on: 'today' | 'roster' | 'profile' | 'cal'.
@@ -87,6 +93,16 @@ export type AtlasData = {
    * Only the server knows who is asking, so the server picks the tab.
    */
   view: 'today' | 'roster'
+  /**
+   * Section keys the served page must not show. Each of Luke's sections is `sc-if`-guarded, so
+   * this closes the section AND removes its nav item without touching his markup.
+   *
+   * 'intake' + 'evidence' are the ten-shots-one-7-iron video test: four measured reads, four
+   * self-estimates and a 3x3 strike map, all read by a coach off a filmed set. There is no
+   * video-capture or coach-measurement pipeline and there is not going to be one
+   * (Makel, 2026-09-01: "this whole 10 shots one 7 iron section is unachievable").
+   */
+  hidden: string[]
   roster: RosterRow[]
   /** The signed-in coach. `hcp` is the raw `numeric` string here — see the type note below. */
   me: { name: string | null; hcp: string | null }
@@ -329,7 +345,7 @@ export async function buildAtlasData(
     const ids = [...candidates.keys()]
     // The empty roster is a real, common answer — a coach with no students, or a player who opened
     // the page. It renders as an empty screen, which is correct.
-    if (ids.length === 0) return { view, roster: [], me: meBlock }
+    if (ids.length === 0) return { view, hidden: [...HIDDEN_SECTIONS], roster: [], me: meBlock }
 
     // ── 3. Identity tier ───────────────────────────────────────────────────────────────────────
     // Anything RLS refuses simply does not come back, so an edge pointing at an account the caller
@@ -387,6 +403,6 @@ export async function buildAtlasData(
       }
     })
 
-    return { view, roster, me: meBlock }
+    return { view, hidden: [...HIDDEN_SECTIONS], roster, me: meBlock }
   })
 }

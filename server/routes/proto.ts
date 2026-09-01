@@ -155,9 +155,14 @@ protoRouter.get('/proto/dashboard', verifySessionCookieMiddleware, attachUser(po
       // session already resolved rather than inferring it from whether the roster came back
       // non-empty — a coach with no students yet is still a coach, and would otherwise be dropped
       // onto a player's screen exactly like before.
+      // EVERYONE lands on the main page. The roster tab is tucked for now (Makel, 2026-09-01):
+      // it is empty for most accounts and the coach product is not the focus, so advertising it
+      // costs more than it gives. A coach still gets the tab — they are the only one it means
+      // anything to — but the landing view is the dashboard either way.
       const isCoach = ((req as any).appRoleRows as { app: string; role: string }[] | undefined)
         ?.some((r) => r.app === 'atlas' && r.role === 'coach') ?? false
-      data = await buildAtlasData(firebaseUid, isCoach ? 'roster' : 'today')
+      void isCoach // the roster is tucked for everyone right now — see HIDDEN_SECTIONS
+      data = await buildAtlasData(firebaseUid, 'today')
     } catch (err) {
       // A Firebase account with no `public.users` row is an authorization answer, not a server
       // fault. Left to the global error handler it would come back as a 500 JSON body in a
