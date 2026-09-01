@@ -20,7 +20,7 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-01 11:59 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-01 12:19 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-01 11:59 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.18.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.18.0.tgz`
-- **Atlas HEAD:** `0b65731 One source of truth for the widened profile bounds -- juniors were locked out`
+- **Atlas HEAD:** `e151c43 Stop refusing an account over an age, a speed or a handicap`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -66,7 +66,8 @@ Each line here was observed working. Do not rebuild any of it.
 | **signup → quiz → result → home, in a browser** | ✅ verified | driven end to end 2026-09-01; `golf.player_profile` written by the quiz (4.2, right-handed), not the seed |
 | **Deployed to Railway** | ✅ live | `https://atlas.ryptest.com` — project `proactive-comfort`, service `Atlas`. Health 200, SPA serves, API 404s as JSON, unauth 401 |
 | Atlas auto-grant is gated | ✅ verified | `ATLAS_SIGNUP_ALLOWLIST=@rypgolf.com`; an account outside it gets 403, inside gets 200 |
-| Juniors (13+) can complete the intake | ✅ verified live | ages 13/14/17/85 and a 45 mph swing all save; 12 and 90 refused |
+| **No profile answer refuses an account** | ✅ verified live | 9 and 95 year olds, 38 mph, a 60 and a 108 handicap, plus handicaps and "I don't have one" all save |
+| Google sign-in on the login screen | ✅ live | domain authorised; popup path accepted |
 | `npm run seed` resets the intake | ✅ verified | row back to `in_progress` / tier 0, confirmed in the DB |
 
 ## 3. What is BROKEN — top blocker
@@ -116,12 +117,17 @@ argument for keeping a browser pass in the loop.
 | **B-5** | Every real handicap was rejected | `PROFILE_FIELDS` types `PRO_HCP_NOW` as a select of whole numbers; the UI is a free-text box reading "8.4 — plus side: +2.1". The route enforced membership; **tgt's own validator never does**. Both demo players (4.2, 17.8) 400'd on the last screen. |
 | **B-6** | No way out of the result screen | Its only control sold the next tier, and the gate is read once at sign-in. A finished golfer's sole escape was a page reload. Added "Go to my Atlas". |
 
-### 🔴 B-7 · OPEN · Google sign-in needs one Firebase console click
+### 🟢 B-7 · Google sign-in — DONE 2026-09-01
 
-`atlas.ryptest.com` is **not** in Firebase → Authentication → Settings → **Authorised domains**.
-The browser console says so directly. This blocks `signInWithPopup` / `signInWithRedirect` only —
-**email+password is unaffected**, which is why the deployed site logs in fine today. Nothing in the
-code can fix this; it is a console setting. Tracked as **T-29**.
+`atlas.ryptest.com` added to Firebase Authorised domains (Makel). "Continue with Google" is live on
+the login screen. Verified the domain is accepted: clicking it errors `auth/popup-blocked` (the
+automated browser), **not** `auth/unauthorized-domain` — Firebase accepted the origin and tried to
+open the window. Completing a real Google sign-in needs Makel's own account and is his to do.
+
+A Google signup also now gets a name: eco's `attachUser` stores only `firebase_uid` + `email`
+(correct for a shared spine that cannot assume a provider gave one), so `Profile.tsx`'s
+`displayName ?? email` would have shown an email address where a name belongs. The client adopts
+the provider's name once, onto a row that has never had one.
 
 ### 🟢 B-8 · Four client/server validation mismatches — FIXED 2026-09-01
 
@@ -135,9 +141,17 @@ value and the save then 400'd with a bare `invalid_profile_value` naming no fiel
 | `PRO_SPEED` | ≥ 40 mph | ≥ 60 (items.ts) | juniors |
 | `PRO_AGE` | ≥ 13 | ≥ 18 (items.ts) | **every academy junior, on the first question** |
 
-Fixed at the root: `shared/profile-bounds.ts` holds `WIDENED_BOUNDS` and is imported by **both**
-the quiz UI and the intake route, and every numeric check reads `effectiveBounds()` rather than
-`field.min`. Mirroring them one at a time is how the age one survived the speed fix.
+**Then removed entirely** (Makel, same day: *"why are we not allowing the user in bc of speed, or
+age, or handicap?"*). Widening the bounds was the wrong fix — the ranges should not refuse anyone
+at all. In tgt they are input hints on a marketing quiz; in Atlas the same screens **are account
+creation**. Validation now checks TYPE and closed vocabularies only. `shared/profile-bounds.ts`
+survives as `suggestedRange()` feeding the inputs' `min`/`max` attributes — stepper hints, never a
+gate — and carries the warning that any comparison returning an error there is the gate coming
+back.
+
+> ⚠️ **Consequence worth a decision:** with no age floor, an under-13 can now create an account.
+> That is the right default for an academy, and it makes the parental-consent gate (**T-16**) a
+> real requirement rather than a nice-to-have. COPPA applies to under-13s in the US.
 
 ### 🟢 B-9 · Quiz contrast and divider alignment — FIXED 2026-09-01
 

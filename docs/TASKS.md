@@ -17,9 +17,6 @@
 | --- | --- | --- | --- | --- |
 | T-02 | ✅ done | Repin Atlas to `@ryp/eco#v0.18.0` | AI | Done 2026-08-31, typecheck clean. Was **not** related to T-01 (v0.18.0 is a SQL-only change). |
 | T-24 | ✅ done | **Host on Railway so nothing is demoed from localhost** | AI | Project `proactive-comfort`, service `Atlas`. Env vars set from `.env` via the CLI; `railway.json` added; eco vendored to fix the build. Live at `https://atlas.ryptest.com`, verified end to end. |
-| T-29 | 🔵 waiting | **Add `atlas.ryptest.com` to Firebase Authorised domains** | Makel | Firebase console → Authentication → Settings → Authorised domains. Blocks Google/Apple sign-in only; email+password already works. One click, and nothing in the repo can do it. |
-| T-30 | ⚪ open | Google sign-in button | AI | Provider is already enabled project-wide (`google.com` and `apple.com` accounts exist). `onAuthStateChanged` is the single reaction point, so it is a Login-screen change plus error handling. Blocked on T-29 to be testable. |
-| T-31 | ⚪ open | Capture `displayName` for OAuth signups | AI | `attachUser` stores only `firebaseUid` + `email`, so a Google signup shows their email as their name. `PATCH /api/users/me` already accepts `displayName`. |
 | T-27 | ⚪ open | Publish `@ryp/eco` to a private registry | AI | It is currently vendored into Atlas as a committed `.tgz` because the GitHub SSH form breaks Railway's builder. Works, but every eco release needs a manual repack. GitHub Packages + an `NPM_TOKEN` is the real fix. |
 | T-28 | ⚪ open | Migrate `railway.json` to the new config format | AI | Railway CLI warns the old file format stops working **2026-12-01**. `railway config migrate`. |
 | T-25 | ⚪ open | Rewrite the demo runbook around the intake | AI | The runbook was written 26 Aug and has 4 steps; it predates Practice DNA and Luke's prototype entirely. Its "cold start" also still says localhost. |
@@ -45,7 +42,7 @@
 | T-13 | ⚪ open | Rotate the old `ryp-red` owner credential | Makel | Runbook exists: `operations/RUNBOOK-rotate-ryp-red-owner.md`. |
 | T-14 | ⚪ open | `ryp-red` RLS is decorative | AI | Every role on the LIVE Red DB is `BYPASSRLS`, so **no policy binds**. Fixing the policies alone would not close it. |
 | T-15 | ⚪ open | Subscription → edge teardown | AI | — |
-| T-16 | ⚪ open | Parental consent gate | AI | Known requirement for minors in academies. |
+| T-16 | ⚪ open | **Parental consent gate** | AI | Upgraded from nice-to-have 2026-09-01: the age floor is gone, so an under-13 can now create an account. COPPA applies to under-13s in the US. |
 | T-17 | ⚪ open | Put `practice-dna` and `inventory` under git | Makel | Both are currently **not git repos**. Unversioned work is at risk. |
 | T-18 | ⚪ open | `drizzle-kit` can no longer migrate | AI | `atlas_app` has no DDL rights. Migrations are applied by hand via the Neon connector with a hand-inserted journal row. Document or fix. |
 | T-19 | ⚪ open | Commit the dirty file in `RYP-RED` (`mac` branch) | Makel | 1 uncommitted file. |
@@ -82,8 +79,12 @@
 | D-18 | 2026-09-01 | Closed the open auto-grant | 28,347 shared Firebase accounts could have self-provisioned; `ATLAS_SIGNUP_ALLOWLIST` now fails closed in production |
 | D-19 | 2026-09-01 | Fixed 4 client/server validation mismatches | Root-caused into `shared/profile-bounds.ts`; **academy juniors could not complete the intake at all** |
 | D-20 | 2026-09-01 | Fixed quiz contrast + divider alignment | `:where(.quiz-root)` reset; registered Tailwind's missing `5.5` spacing step |
+| D-21 *(closes T-29/T-30/T-31)* | 2026-09-01 | **Google sign-in live** | Domain authorised; popup path accepted (`popup-blocked`, not `unauthorized-domain`); provider name adopted so a Google user is not shown their email as their name |
+| D-22 | 2026-09-01 | **Removed the profile eligibility gates** | No age, speed or handicap refuses an account. 9 and 95 year olds, 38 mph, 60 and 108 handicaps all verified live |
 
 ---
 **Retired IDs** (closed, kept so no ID is ever reused): T-01 → D-12 · T-03 → D-12 · T-04 → D-16 · T-23 → D-14.
 
-_Next free ID: **T-32** / **D-21**._
+**Retired IDs:** T-29 → D-21 · T-30 → D-21 · T-31 → D-21.
+
+_Next free ID: **T-32** / **D-23**._
