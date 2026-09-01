@@ -16,7 +16,9 @@
 | ID | State | Task | Owner | Notes |
 | --- | --- | --- | --- | --- |
 | T-02 | ✅ done | Repin Atlas to `@ryp/eco#v0.18.0` | AI | Done 2026-08-31, typecheck clean. Was **not** related to T-01 (v0.18.0 is a SQL-only change). |
-| T-24 | ⚪ open | **Host on Railway so nothing is demoed from localhost** | AI | Makel, 2026-09-01. The runbook currently says localhost. Needs: Railway service for the Node server, `DATABASE_URL`/Firebase env vars, a build step, and the Firebase authorised-domain entry for the Railway hostname. |
+| T-24 | 🟡 in progress | **Host on Railway so nothing is demoed from localhost** | AI | Project `proactive-comfort`, service `Atlas`. Env vars set from `.env` via the CLI; `railway.json` added; eco vendored to fix the build. **Still needs: the Railway hostname added to Firebase → Authentication → Settings → Authorised domains, or sign-in fails on the deployed site.** |
+| T-27 | ⚪ open | Publish `@ryp/eco` to a private registry | AI | It is currently vendored into Atlas as a committed `.tgz` because the GitHub SSH form breaks Railway's builder. Works, but every eco release needs a manual repack. GitHub Packages + an `NPM_TOKEN` is the real fix. |
+| T-28 | ⚪ open | Migrate `railway.json` to the new config format | AI | Railway CLI warns the old file format stops working **2026-12-01**. `railway config migrate`. |
 | T-25 | ⚪ open | Rewrite the demo runbook around the intake | AI | The runbook was written 26 Aug and has 4 steps; it predates Practice DNA and Luke's prototype entirely. Its "cold start" also still says localhost. |
 | T-26 | ⚪ open | A completed intake appends a `handicap_history` row every run | AI | Each rehearsal adds another row for the same player, so Avery's trend grows a fake point per run. `atlas_app` has no DELETE, so the seed cannot clean them. Decide: dedupe by day, or give the seed an owner connection. |
 | T-05 | 🔵 waiting | Forge repo from Luke | Luke | **44 of 81 metrics (54%) come from Forge.** Six Dashboard screens cannot show real numbers until it exists. Ask recorded in `operations/ASK-luke-forge-repo.md`. |
@@ -77,4 +79,4 @@
 ---
 **Retired IDs** (closed, kept so no ID is ever reused): T-01 → D-12 · T-03 → D-12 · T-04 → D-16 · T-23 → D-14.
 
-_Next free ID: **T-27** / **D-17**._
+_Next free ID: **T-29** / **D-17**._

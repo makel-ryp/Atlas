@@ -13,6 +13,15 @@ const app = express()
 const isProduction = process.env.NODE_ENV === 'production'
 
 app.disable('x-powered-by')
+
+// Behind Railway's edge the app sees plain HTTP on an internal port; the TLS terminates upstream.
+// Without this, `req.protocol` reads 'http' and `req.secure` is false on a request that genuinely
+// arrived over HTTPS — so anything that gates on either (the session cookie's own Secure attribute
+// is set explicitly, but redirects and future checks are not) makes the wrong call. One hop,
+// because exactly one proxy sits in front of us; `true` would trust a client-supplied
+// X-Forwarded-For and let a caller spoof its own address.
+if (isProduction) app.set('trust proxy', 1)
+
 app.use(express.json())
 
 app.get('/health', (_req, res) => {

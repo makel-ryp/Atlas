@@ -28,6 +28,19 @@ npm run dev          # Vite client
   navigation cannot carry an `Authorization` header.
 - Never `select *` in a response projection. `quality_flag` and `IPIP01`–`IPIP20` are private
   to the subject and must never reach a client or a coach.
+- **`@ryp/eco` is vendored as `vendor/ryp-eco-<version>.tgz`, not pulled from GitHub.** Do not
+  "fix" this back to `github:RYPGolf/ryp-eco#vX`. That form resolves over SSH, and the Railway
+  builder has no key for the private repo — `npm install` dies with
+  `git@github.com: Permission denied (publickey)` and the deploy never starts.
+  **Releasing a new eco therefore has one extra step:**
+
+```bash
+cd ~/dev/ATR/eco && npm pack --pack-destination ~/dev/ATR/atlas/vendor
+```
+
+  then `npm pkg set dependencies.@ryp/eco="file:vendor/ryp-eco-<new>.tgz"`, delete the old tarball,
+  `npm install`, and commit both. The proper fix is a private registry (GitHub Packages) — until
+  then this is deterministic, needs no token, and cannot fail mid-build.
 - Schema and RLS live in eco, not here. The authoritative policy record is
   `~/dev/ATR/eco/sql/rls_core.sql` — **read its inline warnings, they are load-bearing.**
 - `atlas_app` has no DDL rights, so `drizzle-kit migrate` does not work. Migrations are applied
