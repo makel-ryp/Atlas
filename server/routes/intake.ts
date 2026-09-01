@@ -16,6 +16,7 @@ import { pool } from '../db'
 import { ensureAtlasAccess } from '../ensureAtlasAccess'
 import { PROFILE_FIELDS, ITEM_BY_CODE, type Profile, type Answers, type AnswerValue } from '../../shared/practice-dna/items'
 import { computeResult, type PracticeDnaResult } from '../../shared/practice-dna/scoring'
+import { computeVolumeBreakdown } from '../../shared/volume'
 // The instrument's own version constants, stamped onto every run. Imported from the copied
 // instrument so they can never drift from the scoring that actually ran.
 import { CONFIG_VERSION, SCORING_VERSION, RESULT_VERSION } from '../../shared/practice-dna/config'
@@ -90,11 +91,30 @@ function isProfileComplete(profile: Record<string, unknown>): profile is Record<
 // profile block is observed ALL-OR-NOTHING (7/7 fields on every scored profile in 110/118 runs), and
 // computeResult takes a `Profile`, not a `Partial<Profile>` — calling it against a partial object
 // would silently score against `undefined` fields rather than refuse.
-function tryComputeResult(profile: unknown, answers: unknown): PracticeDnaResult | null {
+/**
+ * Scores a run. `volume` and `alloc` are the RAW inputs; the engine wants shares of effective total,
+ * which only the volume adapter can produce — so ALLOC is derived HERE, into a copy, and never
+ * persisted. Mirrors `tgt/server/service.ts:180-191` deliberately.
+ *
+ * ⚠️ An earlier version of this route stored a CLIENT-computed ALLOC into `answers`, the column eco
+ * calls "the re-score lifeline — every raw item response". That put a derived, client-produced value
+ * in the raw column with no provenance, and dropped the raw minutes/hours entirely, so a run could
+ * never be re-scored after the adapter changed. Raw goes in `volume`/`alloc`; derived is computed on
+ * every read.
+ */
+function tryComputeResult(
+  profile: unknown,
+  answers: unknown,
+  volume?: unknown,
+  alloc?: unknown,
+): PracticeDnaResult | null {
   const p = (profile ?? {}) as Record<string, unknown>
-  const a = (answers ?? {}) as Answers
+  const a = { ...((answers ?? {}) as Answers) }
   if (!isProfileComplete(p)) return null
   try {
+    if (volume && alloc) {
+      a.ALLOC = computeVolumeBreakdown(volume as never, alloc as never).alloc
+    }
     return computeResult(p as unknown as Profile, a)
   } catch {
     // Scoring is defensive by design (Confidence grades partial `answers`), but a malformed stored
@@ -114,7 +134,7 @@ function toEnvelope(row: SubmissionRow) {
     completedAt: row.completedAt,
     startedAt: row.startedAt,
     updatedAt: row.updatedAt,
-    result: tryComputeResult(row.profile, row.answers),
+    result: tryComputeResult(row.profile, row.answers, row.volume, row.alloc),
   }
 }
 
@@ -164,9 +184,19 @@ function isAllocValue(v: unknown): v is { construction: number; calibration: num
   if (typeof v !== 'object' || v === null) return false
   const o = v as Record<string, unknown>
   const keys = ['construction', 'calibration', 'transfer', 'performance']
-  if (!keys.every((k) => typeof o[k] === 'number' && Number.isFinite(o[k] as number))) return false
-  const sum = keys.reduce((acc, k) => acc + (o[k] as number), 0)
-  return sum >= 99 && sum <= 101 // tolerance for slider rounding; instrument spec says "sum to 100"
+  // Each share bounded 0..100 and NO SUM CONSTRAINT — copied from the instrument's own authority,
+  // `tgt/server/validation.ts:23-29`, not inferred.
+  //
+  // ⚠️ An earlier version here required the four to sum to 99..101 "because the spec says sum to
+  // 100". The spec says no such thing and the shares legitimately do not sum to 100: the allocation
+  // is DERIVED by the volume adapter from practice time, and time spent in the Messy Middle is
+  // counted in none of the four zones. With `messy: 20` the adapter returns a total of 83.33, and
+  // TGT's own conformance fixture stores {25, 12.5, 0, 50} = 87.5. That rule would have rejected
+  // every golfer who reported any messy time — a 400 on the most common answer.
+  return keys.every((k) => {
+    const n = o[k]
+    return typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 100
+  })
 }
 
 function validateAnswersPartial(input: Record<string, unknown>): string | null {
@@ -223,7 +253,12 @@ intakeRouter.post('/intake/start', ...identityChain, async (req, res, next) => {
             scoringVersion: SCORING_VERSION,
             resultVersion: RESULT_VERSION,
           })
-          .onConflictDoNothing({ target: atlasIntakeSubmissions.userId })
+          // The unique index is (user_id, instrument), so the conflict target must name BOTH columns.
+          // Inferring on user_id alone raises Postgres 42P10 — "no unique or exclusion constraint
+          // matching the ON CONFLICT specification" — on every single call.
+          .onConflictDoNothing({
+            target: [atlasIntakeSubmissions.userId, atlasIntakeSubmissions.instrument],
+          })
           .returning()
         if (inserted) return inserted
         const existing = await db.query.atlasIntakeSubmissions.findFirst({
@@ -263,7 +298,10 @@ intakeRouter.post('/intake/start', ...identityChain, async (req, res, next) => {
  */
 const patchBodySchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('profile'), profile: z.record(z.string(), z.unknown()), tierCompleted: z.number().int().min(0).max(4).optional() }).strict(),
-  z.object({ kind: z.literal('volume'), answers: z.record(z.string(), z.unknown()), tierCompleted: z.number().int().min(0).max(4).optional() }).strict(),
+  // `volume` carries the RAW inputs (practice minutes, course hours, messy time) — the client sends
+  // `volume`, and an earlier version of this line demanded `answers`, so every volume save 400'd on
+  // `.strict()` before validation even ran.
+  z.object({ kind: z.literal('volume'), volume: z.record(z.string(), z.unknown()), tierCompleted: z.number().int().min(0).max(4).optional() }).strict(),
   z.object({ kind: z.literal('alloc'), alloc: z.record(z.string(), z.unknown()), tierCompleted: z.number().int().min(0).max(4).optional() }).strict(),
   z.object({ kind: z.literal('answers'), answers: z.record(z.string(), z.unknown()), tierCompleted: z.number().int().min(0).max(4).optional() }).strict(),
 ])
@@ -283,6 +321,9 @@ intakeRouter.patch('/intake/:id', ...identityChain, async (req, res, next) => {
     // source of truth for "what is a legal answer" (see PROFILE_FIELDS / ITEM_BY_CODE above).
     let profilePatch: Record<string, unknown> | undefined
     let answersPatch: Record<string, unknown> | undefined
+    // Raw inputs get their own columns. They are NOT merged into `answers` — see tryComputeResult.
+    let volumePatch: Record<string, unknown> | undefined
+    let allocPatch: Record<string, unknown> | undefined
     if (body.kind === 'profile') {
       const err = validateProfilePartial(body.profile)
       if (err) {
@@ -295,9 +336,13 @@ intakeRouter.patch('/intake/:id', ...identityChain, async (req, res, next) => {
         res.status(400).json({ error: 'invalid_answer_value:ALLOC' })
         return
       }
-      answersPatch = { ALLOC: body.alloc }
+      // The RAW alloc column — not answers. The engine's ALLOC is derived from this at score time.
+      allocPatch = body.alloc
+    } else if (body.kind === 'volume') {
+      // Raw practice minutes / course hours / messy time. Stored as given so the run stays
+      // re-scoreable if the volume adapter changes.
+      volumePatch = body.volume
     } else {
-      // 'volume' | 'answers'
       const err = validateAnswersPartial(body.answers)
       if (err) {
         res.status(400).json({ error: err })
@@ -323,6 +368,8 @@ intakeRouter.patch('/intake/:id', ...identityChain, async (req, res, next) => {
 
         const nextProfile = profilePatch ? { ...(current.profile as object ?? {}), ...profilePatch } : current.profile
         const nextAnswers = answersPatch ? { ...(current.answers as object ?? {}), ...answersPatch } : current.answers
+        const nextVolume = volumePatch ? { ...(current.volume as object ?? {}), ...volumePatch } : current.volume
+        const nextAlloc = allocPatch ? { ...(current.alloc as object ?? {}), ...allocPatch } : current.alloc
         const nextTier =
           body.tierCompleted !== undefined ? Math.max(current.tierCompleted ?? 0, body.tierCompleted) : current.tierCompleted
 
@@ -331,6 +378,8 @@ intakeRouter.patch('/intake/:id', ...identityChain, async (req, res, next) => {
           .set({
             profile: nextProfile,
             answers: nextAnswers,
+            volume: nextVolume,
+            alloc: nextAlloc,
             tierCompleted: nextTier,
             updatedAt: new Date(),
           })

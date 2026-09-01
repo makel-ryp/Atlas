@@ -92,9 +92,18 @@ export const intakeApi: QuizApi = {
     } catch (err) {
       // Deliberately re-thrown, not swallowed: the golfer needs to know their time bars won't
       // show up, even though the part that scores them did save. See the method doc above.
-      throw toQuizApiError(
+      // `partialRun: run` carries the alloc-save's result — the caller (`useQuizRun`) applies it
+      // even though this call is throwing, so the golfer's local state doesn't fall back to
+      // "the volume screen isn't done" when the server already has `answers.ALLOC`.
+      const asQuizApiError = toQuizApiError(
         err,
         "Your practice split saved, but we couldn't save your weekly minutes yet.",
+      );
+      throw new QuizApiError(
+        asQuizApiError.message,
+        asQuizApiError.status,
+        asQuizApiError.code,
+        run,
       );
     }
     return run;

@@ -139,6 +139,10 @@ export function useQuizRun(api: QuizApi): QuizRunState {
     try {
       setRun(await fn());
     } catch (e) {
+      // See `QuizApiError.partialRun`'s doc: `saveVolume` can fail on its second of two PATCHes
+      // after the first already landed server-side. Applying it here means the local `run`
+      // reflects that half-success instead of silently staying one save behind until a reload.
+      if (e instanceof QuizApiError && e.partialRun) setRun(e.partialRun);
       setError(messageFor(e, fallback));
       throw e; // let the calling screen know not to advance
     } finally {

@@ -131,6 +131,15 @@ export class QuizApiError extends Error {
     message: string,
     readonly status: number,
     readonly code?: string,
+    /**
+     * Set only by `saveVolume` when its FIRST of two PATCHes (kind: 'alloc') succeeds and its
+     * SECOND (kind: 'volume') fails — see `api.ts`. Without this, `useQuizRun`'s `mutate` (which
+     * only calls `setRun` when the whole call resolves) would show the error but leave `run`
+     * pointing at the pre-save state, even though the server already has the scored `ALLOC`
+     * answer. Reading this lets the error path still advance the local run to what's actually
+     * true server-side, rather than making a reload the only way to see it.
+     */
+    readonly partialRun?: QuizRun,
   ) {
     super(message);
     this.name = 'QuizApiError';
