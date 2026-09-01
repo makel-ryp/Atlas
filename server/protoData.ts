@@ -77,6 +77,16 @@ export type RosterRow = {
 }
 
 export type AtlasData = {
+  /**
+   * Which of the file's four views to open on: 'today' | 'roster' | 'profile' | 'cal'.
+   *
+   * Luke's Dashboard is ONE app for both audiences — everybody gets the same player dashboard
+   * (today, the four zones, plan, calendar) and a coach's addition is the roster tab plus the
+   * student dossiers it opens. Its initial state hardcoded 'today', so a coach signing in landed
+   * on a player's screen and asked, reasonably, why they were looking at the wrong product.
+   * Only the server knows who is asking, so the server picks the tab.
+   */
+  view: 'today' | 'roster'
   roster: RosterRow[]
   /** The signed-in coach. `hcp` is the raw `numeric` string here — see the type note below. */
   me: { name: string | null; hcp: string | null }
@@ -199,7 +209,15 @@ export class NoAtlasRecordError extends Error {
  * rule, not visibility logic. `public.user_relationships` has no `deleted_at` column, so there is
  * nothing to filter there.
  */
-export async function buildAtlasData(firebaseUid: string): Promise<AtlasData> {
+export async function buildAtlasData(
+  firebaseUid: string,
+  /**
+   * Which tab to open on. The caller knows the role; this module knows the data. A coach opens on
+   * their roster, everyone else on their own day. Defaults to 'today' so a direct hit on the route
+   * behaves the way the file does standalone.
+   */
+  view: AtlasData['view'] = 'today',
+): Promise<AtlasData> {
   const schema = {
     users,
     userRelationships,
@@ -311,7 +329,7 @@ export async function buildAtlasData(firebaseUid: string): Promise<AtlasData> {
     const ids = [...candidates.keys()]
     // The empty roster is a real, common answer — a coach with no students, or a player who opened
     // the page. It renders as an empty screen, which is correct.
-    if (ids.length === 0) return { roster: [], me: meBlock }
+    if (ids.length === 0) return { view, roster: [], me: meBlock }
 
     // ── 3. Identity tier ───────────────────────────────────────────────────────────────────────
     // Anything RLS refuses simply does not come back, so an edge pointing at an account the caller
@@ -369,6 +387,6 @@ export async function buildAtlasData(firebaseUid: string): Promise<AtlasData> {
       }
     })
 
-    return { roster, me: meBlock }
+    return { view, roster, me: meBlock }
   })
 }

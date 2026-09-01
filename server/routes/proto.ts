@@ -138,14 +138,26 @@ ${home}Live from ryp-core: ${liveCount} student${liveCount === 1 ? '' : 's'} &md
   return html.replace(/<body([^>]*)>/i, `<body$1>${banner}`)
 }
 
-protoRouter.get('/proto/dashboard', verifySessionCookieMiddleware, async (req, res, next) => {
+// `attachUser` is not optional here even though the cookie already proves who you are.
+// verifySessionCookieMiddleware sets `req.firebaseUid` and nothing else — it never touches the
+// database — so without this the route has no `appRoleRows`, `isCoach` reads as false for
+// everyone, and a coach is served the player tab with no error anywhere. Which is exactly what
+// happened on the first attempt (2026-09-01): typecheck passed, the page rendered, and the only
+// symptom was the wrong screen.
+protoRouter.get('/proto/dashboard', verifySessionCookieMiddleware, attachUser(pool), async (req, res, next) => {
   try {
     const firebaseUid = (req as any).firebaseUid as string
     const file = await fs.readFile(path.join(PROTO_DIR, 'Dashboard.dc.html'), 'utf8')
 
     let data
     try {
-      data = await buildAtlasData(firebaseUid)
+      // A coach opens on the roster tab; everyone else on their own day. Read off the role the
+      // session already resolved rather than inferring it from whether the roster came back
+      // non-empty — a coach with no students yet is still a coach, and would otherwise be dropped
+      // onto a player's screen exactly like before.
+      const isCoach = ((req as any).appRoleRows as { app: string; role: string }[] | undefined)
+        ?.some((r) => r.app === 'atlas' && r.role === 'coach') ?? false
+      data = await buildAtlasData(firebaseUid, isCoach ? 'roster' : 'today')
     } catch (err) {
       // A Firebase account with no `public.users` row is an authorization answer, not a server
       // fault. Left to the global error handler it would come back as a 500 JSON body in a

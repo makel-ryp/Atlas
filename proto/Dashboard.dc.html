@@ -2693,7 +2693,14 @@ const TIERS = {
 
 class Component extends DCLogic {
   state = {
-    view: 'today', log: SEED, sel: TODAY,
+    // ── LANDING VIEW, injected ─────────────────────────────────────────────────────────────
+    // Stripped 2026-09-01, same reasoning as the ROSTER strip below: this file holds FOUR views
+    // ('today' the player day, 'roster' the coach's students, 'profile', 'cal') and hardcoding
+    // 'today' meant a coach signing in landed on a player's screen and reasonably asked why they
+    // were looking at the wrong product. Which view is right depends on who is asking, and only
+    // the server knows that. Falls back to 'today' so the file still opens standalone.
+    view: (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.view) || 'today',
+    log: SEED, sel: TODAY,
     sets: [false, false, false, false], tempo: 6,
     disp: {
       'Sand wedge': { cx: 50, cy: 48, rl: 14, rr: 12, rt: 14, rb: 17, rot: 11.3 },
