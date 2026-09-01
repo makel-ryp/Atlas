@@ -562,11 +562,29 @@ intakeRouter.post('/intake/:id/complete', ...identityChain, async (req, res, nex
           })
 
         if (hcpNumeric !== null) {
-          await db.insert(golfHandicapHistory).values({
-            userId: me.id,
-            handicapIndex: String(hcpNumeric),
-            source: 'self_reported',
+          // Append only when the number actually MOVED.
+          //
+          // This table is a trend — the coach dashboard's metric tier plots it — and an
+          // unconditional insert made it a log of submissions instead. Every completion added a
+          // point, so re-running the intake (which the seed now allows, deliberately, so the
+          // signup flow can be demoed more than once) drew a flat line of identical values with
+          // whatever a test had left in the middle. Avery finished 2026-09-01 reading
+          // 4.2 → 8 → 4.2 → 4.2 → 4.2: five points, one real change, and the one change was junk.
+          //
+          // A history row should mean "their handicap became this". Comparing against the latest
+          // row makes a repeat submission idempotent without needing a unique index, and still
+          // records a genuine change the same day.
+          const latest = await db.query.golfHandicapHistory.findFirst({
+            where: eq(golfHandicapHistory.userId, me.id),
+            orderBy: (h, { desc }) => [desc(h.recordedAt)],
           })
+          if (!latest || Number(latest.handicapIndex) !== hcpNumeric) {
+            await db.insert(golfHandicapHistory).values({
+              userId: me.id,
+              handicapIndex: String(hcpNumeric),
+              source: 'self_reported',
+            })
+          }
         }
 
         return { kind: 'ok' as const, row }
