@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import type { Answers } from './contract';
+import { SavingOverlay } from './Saving';
 import { itemStatus } from '../../../shared/practice-dna/config';
 import { type QuizItem, type Tier, itemsForTier } from '../../../shared/practice-dna/items';
 import { zonePriorItems } from '../../../shared/zone-grades';
@@ -212,7 +213,9 @@ export function TierRunner({
         {item.text}
       </p>
 
-      <fieldset disabled={busy} className="disabled:opacity-50">
+      <div className="relative">
+      {busy && <SavingOverlay />}
+      <fieldset disabled={busy} className="transition-opacity duration-150 disabled:opacity-40">
         {item.type === 'likert' && <LikertControl value={numeric} onPick={pickAndAdvance} />}
 
         {item.type === 'stepper' && <StepperControl value={numeric} onPick={pickAndAdvance} />}
@@ -229,6 +232,7 @@ export function TierRunner({
           />
         )}
       </fieldset>
+      </div>
 
       <div className="mt-8 flex items-center justify-between gap-4">
         <button

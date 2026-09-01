@@ -13,6 +13,7 @@
 
 import { useState } from 'react';
 import type { Profile } from './contract';
+import { SavingOverlay } from './Saving';
 import { WIDENED_BOUNDS } from '../../../shared/profile-bounds';
 import { PROFILE_FIELDS } from '../../../shared/practice-dna/items';
 
@@ -224,6 +225,8 @@ export function ProfileStage({
 
       <p className="mb-8 text-xl leading-snug font-medium">{field.label}</p>
 
+      <div className="relative">
+      {busy && <SavingOverlay />}
       {!typed ? (
         <div className="flex flex-col gap-2">
           {field.options?.map((o) => (
@@ -370,6 +373,8 @@ export function ProfileStage({
           ))}
         </div>
       )}
+
+      </div>
 
       <div className="mt-8 flex items-center justify-between gap-4">
         <button

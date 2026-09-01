@@ -17,6 +17,11 @@ import { ensureAtlasAccess } from '../ensureAtlasAccess'
 import { PROFILE_FIELDS, ITEM_BY_CODE, type Profile, type Answers, type AnswerValue } from '../../shared/practice-dna/items'
 import { computeResult, type PracticeDnaResult } from '../../shared/practice-dna/scoring'
 import { computeVolumeBreakdown } from '../../shared/volume'
+// The 17 zone-prior sliders Tier 2 appends. They are NOT in the instrument's item bank on purpose —
+// `shared/practice-dna/` is Forge's canonical copy and adding to it would fork our version from
+// theirs invisibly (see zone-grades.ts) — so the route has to learn about them separately or it
+// rejects every one of them as an unknown code.
+import { ZONE_PRIOR_ITEMS } from '../../shared/zone-grades'
 // The instrument's own version constants, stamped onto every run. Imported from the copied
 // instrument so they can never drift from the scoring that actually ran.
 import { CONFIG_VERSION, SCORING_VERSION, RESULT_VERSION } from '../../shared/practice-dna/config'
@@ -264,10 +269,29 @@ function isAllocValue(v: unknown): v is { construction: number; calibration: num
   })
 }
 
+/**
+ * The zone-effectiveness sliders, which live outside the item bank.
+ *
+ * `TierRunner` builds Tier 2 as `[...fromBank, ...zonePriorItems()]` and renders these exactly
+ * like any other bipolar slider, so the client happily collects all 17 — and then the save died on
+ * the first one with `unknown_item_code:ZP_CON1`. Tier 2 is 49 questions; a golfer answered every
+ * one and lost the lot. (Found in a user test, 2026-09-01.)
+ *
+ * Validated as bipolar sliders (0–100), which is what `SliderControl` emits and what
+ * `zoneEffectiveness()` clamps to when it scores them.
+ */
+const ZONE_PRIOR_CODES = new Set(ZONE_PRIOR_ITEMS.map((i) => i.code))
+
 function validateAnswersPartial(input: Record<string, unknown>): string | null {
   for (const [code, value] of Object.entries(input)) {
     const item = ITEM_BY_CODE.get(code)
-    if (!item) return `unknown_item_code:${code}`
+    if (!item) {
+      if (!ZONE_PRIOR_CODES.has(code)) return `unknown_item_code:${code}`
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100) {
+        return `invalid_answer_value:${code}`
+      }
+      continue
+    }
     if (item.type === 'alloc') {
       if (!isAllocValue(value)) return `invalid_answer_value:${code}`
     } else if (item.type === 'stepper') {

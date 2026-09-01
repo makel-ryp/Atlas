@@ -723,3 +723,21 @@ button.btn-oauth svg {
   height: 18px;
   flex: none;
 }
+
+/* Saving indicator between quiz questions — see client/src/quiz/Saving.tsx for why it exists. */
+.quiz-spinner {
+  width: 26px;
+  height: 26px;
+  border: 2px solid color-mix(in srgb, var(--paper) 22%, transparent);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: quiz-spin 0.7s linear infinite;
+}
+@keyframes quiz-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Still says "working", without the rotation. */
+  .quiz-spinner { animation: quiz-pulse 1.2s ease-in-out infinite; }
+  @keyframes quiz-pulse { 0%, 100% { opacity: 0.35 } 50% { opacity: 1 } }
+}
