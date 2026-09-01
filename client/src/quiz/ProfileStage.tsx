@@ -114,10 +114,12 @@ export function speedFromCarryDistance(yards: number): number {
  */
 export function parseHcpInput(raw: string): number | null {
   const s = raw.trim();
-  if (!/^\+?\d{1,2}(\.\d+)?$/.test(s)) return null;
+  // Shape only, no range. The old version returned null outside -10…54, and null here means
+  // "Continue stays disabled" — so a beginner on a 60 index was stuck on the screen with a
+  // perfectly honest answer typed in. A handicap is an answer, not an entry requirement.
+  if (!/^\+?\d{1,3}(\.\d+)?$/.test(s)) return null;
   const n = s.startsWith('+') ? -Number(s.slice(1)) : Number(s);
-  if (!Number.isFinite(n) || n < -10 || n > 54) return null;
-  return n;
+  return Number.isFinite(n) ? n : null;
 }
 
 /** Normalise a typed handicap for the engine: "+2.1" → "-2.1". Chips pass through. */
@@ -156,15 +158,19 @@ export function ProfileStage({
   const onChip = chips.includes(value);
   const bounds = boundsFor(field.code, field);
 
-  const valid =
-    !typed ||
-    onChip ||
-    (isHcp
-      ? parseHcpInput(value) !== null
-      : value !== '' &&
-        Number.isFinite(Number(value)) &&
-        Number(value) >= (bounds.min ?? 0) &&
-        Number(value) <= (bounds.max ?? Number.MAX_SAFE_INTEGER));
+  /**
+   * ANSWERED, not APPROVED.
+   *
+   * This used to also require the number to sit inside the instrument's min/max, which disabled
+   * Continue with nothing on screen explaining why — the golfer could see their answer typed in
+   * and the button simply would not respond. A 12-year-old, a 60 handicap and a 38 mph swing were
+   * each dead ends. None of those is a reason to refuse someone an account; the intake IS the
+   * signup. Whatever they report, we take.
+   *
+   * The bounds still reach the inputs as `min`/`max` attributes below, where the browser renders
+   * them as stepper limits and a soft hint — guidance, not a gate.
+   */
+  const valid = !typed || onChip || (isHcp ? parseHcpInput(value) !== null : value.trim() !== '' && Number.isFinite(Number(value)));
 
   function set(code: string, v: string) {
     setDraft((d) => ({ ...d, [code]: v }));

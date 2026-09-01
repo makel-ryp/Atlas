@@ -3,7 +3,6 @@ import { eq, and, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { verifyToken, attachUser, requireApp } from '@ryp/eco/auth'
 import { withRls } from '@ryp/eco/db'
-import { effectiveBounds } from '../../shared/profile-bounds'
 // ⚠️ SCHEMA DEPENDENCY NOT YET PUBLISHED — see the block comment below. `atlasIntakeSubmissions`
 // does not exist in @ryp/eco@0.15.0 (the version this repo is pinned to, verified by grepping the
 // installed dist for "intake": zero hits, and by `git log` in ~/dev/ATR/eco showing no commit for
@@ -185,29 +184,39 @@ const HANDICAP_FIELDS = new Set(['PRO_HCP_NOW', 'PRO_HCP_3YR'])
 // signed number. So a LEADING MINUS is the normal wire form for every better-than-scratch golfer,
 // and rejecting it 400'd exactly the players most likely to be in a coaching demo.
 // `parseHcpInput` also allows unbounded decimals (`\.\d+`), so pinning two here would reject a
-// value its own UI accepted. Range is parseHcpInput's: -10 … 54.
-const HANDICAP_PATTERN = /^[+-]?\d{1,2}(\.\d+)?$/
+// value its own UI accepted.
+//
+// ⚠️ SHAPE ONLY — no range. See the note on validateProfilePartial: a handicap does not decide
+// whether someone may have an account.
+const HANDICAP_PATTERN = /^[+-]?\d{1,3}(\.\d+)?$/
 
+/**
+ * ⚠️ TYPE, NOT ELIGIBILITY. This function answers "is this storable?" and never "is this person
+ * allowed in?".
+ *
+ * The instrument's PROFILE_FIELDS carry min/max (age 18–85, speed 60–135, handicap 0–54) and this
+ * route used to enforce them. In tgt those numbers are input hints on a marketing quiz. In Atlas
+ * the same screens ARE account creation, so enforcing them meant a golfer was refused an account
+ * for how old they are, how fast they swing, or how well they play — which is not a thing this
+ * product gets to decide. It rejected juniors, plus handicaps and high handicaps in turn, each
+ * one surfacing as a bare `invalid_profile_value` on the last screen with no way forward.
+ * (Makel, 2026-09-01: "why are we not allowing the user in bc of speed, or age, or handicap?")
+ *
+ * So: a number must be a number and a string must be a string — enough that the jsonb column
+ * stays typed and the scoring engine gets what it expects — and nothing else. Whatever the golfer
+ * reports is what we store. A closed vocabulary (handedness, shot shape) is still checked, because
+ * those render as buttons and anything else did not come from the product.
+ */
 function validateProfilePartial(input: Record<string, unknown>): string | null {
   for (const [code, value] of Object.entries(input)) {
     const field = profileFieldByCode.get(code)
     if (!field) return `unknown_profile_field:${code}`
-    // Atlas widens some of the instrument's floors (juniors) — see shared/profile-bounds.ts.
-    // Read through effectiveBounds, never field.min/field.max directly, or the server refuses
-    // values its own UI accepted.
-    const bounds = effectiveBounds(code, field)
     if (field.kind === 'number' && NUMERIC_WIRE_FIELDS.has(code)) {
       if (typeof value !== 'number' || !Number.isFinite(value)) return `invalid_profile_value:${code}`
-      if (bounds.min !== undefined && value < bounds.min) return `invalid_profile_value:${code}`
-      if (bounds.max !== undefined && value > bounds.max) return `invalid_profile_value:${code}`
     } else if (field.kind === 'number') {
-      // Numeric-but-string-typed (PRO_SPEED): a numeric string, bounds-checked as a number,
-      // stored as a string.
+      // Numeric-but-string-typed (PRO_SPEED): a numeric string, stored as a string.
       if (typeof value !== 'string' || !/^\d+(\.\d+)?$/.test(value)) return `invalid_profile_value:${code}`
-      const n = Number(value)
-      if (!Number.isFinite(n)) return `invalid_profile_value:${code}`
-      if (bounds.min !== undefined && n < bounds.min) return `invalid_profile_value:${code}`
-      if (bounds.max !== undefined && n > bounds.max) return `invalid_profile_value:${code}`
+      if (!Number.isFinite(Number(value))) return `invalid_profile_value:${code}`
     } else if (HANDICAP_FIELDS.has(code)) {
       // A sentinel from the options list ("I don't have one", "Wasn't playing", …) OR a real
       // handicap index. See the note on HANDICAP_FIELDS above.
@@ -215,11 +224,15 @@ function validateProfilePartial(input: Record<string, unknown>): string | null {
       const v = value.trim()
       if (field.options?.includes(v)) continue
       if (!HANDICAP_PATTERN.test(v)) return `invalid_profile_value:${code}`
-      // A '+' prefix means BETTER than scratch, so it reads as a negative index.
-      // '+2.1' means 2.1 BETTER than scratch. The client already converted it, but accept the
-      // raw '+' form too so a direct API caller is not silently told a plus handicap is invalid.
-      const n = v.startsWith('+') ? -Number(v.slice(1)) : Number(v)
-      if (!Number.isFinite(n) || n < -10 || n > 54) return `invalid_profile_value:${code}`
+      // '+2.1' means 2.1 BETTER than scratch, so it reads as a negative index. The client already
+      // converts it, but accept the raw '+' form too so a direct API caller is not told a plus
+      // handicap is invalid.
+      //
+      // SHAPE ONLY — no range. The old `n < -10 || n > 54` refused a beginner playing off 60 an
+      // account, which is not this product's call to make.
+      if (!Number.isFinite(v.startsWith('+') ? -Number(v.slice(1)) : Number(v))) {
+        return `invalid_profile_value:${code}`
+      }
     } else {
       // 'select' with a genuinely closed vocabulary — the UI renders these as buttons, so anything
       // off the list did not come from the product.
