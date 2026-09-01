@@ -1,6 +1,6 @@
 # ATR — STATUS
 
-**Owner:** Makel (makel@rypgolf.com) · **Last hand-edited:** 2026-08-31 · **Demo:** 2026-09-07
+**Owner:** Makel (makel@rypgolf.com) · **Last hand-edited:** 2026-09-01 · **Demo:** 2026-09-07
 
 > ### ⛔ READ THIS BEFORE ANY OTHER LINE
 > **The real Atlas repo is `~/dev/ATR/atlas`.**
@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-01 10:53 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-01 11:14 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **3 file(s)** | **2 ahead** |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **2 file(s)** | **6 ahead** |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | **1 file(s)** | **1 ahead** |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-01 10:53 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.18.0`  •  **pinned in Atlas as:** `github:RYPGolf/ryp-eco#v0.18.0`
-- **Atlas HEAD:** `4bcfd89 Add the living handoff docs, and repin eco to v0.18.0`
+- **Atlas HEAD:** `7089bbc Unblock the quiz: stage gate, handicap validation, and a way out`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -62,6 +62,9 @@ Each line here was observed working. Do not rebuild any of it.
 | Luke's prototype served from real DB | ✅ live | commit `d15d7a4`; **zero sample names remain** |
 | `atlas.intake_submissions` table + RLS applied to ryp-core | ✅ applied | one Neon transaction, journal hash `26ba3786…` |
 | `POST /api/intake/start` unauthenticated → 401 | ✅ verified | smoke test 2026-08-31 |
+| **Practice DNA intake, API** | ✅ verified | 18/18 smoke assertions, 2026-09-01 |
+| **signup → quiz → result → home, in a browser** | ✅ verified | driven end to end 2026-09-01; `golf.player_profile` written by the quiz (4.2, right-handed), not the seed |
+| `npm run seed` resets the intake | ✅ verified | row back to `in_progress` / tier 0, confirmed in the DB |
 
 ## 3. What is BROKEN — top blocker
 
@@ -97,6 +100,18 @@ eco pin drift (v0.17.0→v0.18.0 is SQL-only).
 ### 🟢 B-2 · eco pin drift — RESOLVED 2026-08-31
 
 Repinned and installed at v0.18.0; typecheck clean. Was never a candidate cause for B-1.
+
+### 🟢 B-4, B-5, B-6 · Three quiz defects — ALL FIXED 2026-09-01
+
+Found by driving the flow in a browser. **None was visible to the API smoke suite**, because in
+each case both sides were individually correct and disagreed only at the seam. This is the
+argument for keeping a browser pass in the loop.
+
+| | Defect | Cause |
+| --- | --- | --- |
+| **B-4** | The quiz could never leave the volume stage | `stages.ts` keyed "volume done?" on `answers.ALLOC`, which the server **by design** never persists. A permanent loop: save succeeds, same screen returns. |
+| **B-5** | Every real handicap was rejected | `PROFILE_FIELDS` types `PRO_HCP_NOW` as a select of whole numbers; the UI is a free-text box reading "8.4 — plus side: +2.1". The route enforced membership; **tgt's own validator never does**. Both demo players (4.2, 17.8) 400'd on the last screen. |
+| **B-6** | No way out of the result screen | Its only control sold the next tier, and the gate is read once at sign-in. A finished golfer's sole escape was a page reload. Added "Go to my Atlas". |
 
 ### 🟡 B-3 · Silent-looking PATCH — FIXED 2026-09-01
 

@@ -1,5 +1,5 @@
 # ATR — TASKS
-**Last updated:** 2026-09-01 · Board for [STATUS.md](STATUS.md) · Orientation in [HANDOFF.md](HANDOFF.md)
+**Last updated:** 2026-09-01 (evening) · Board for [STATUS.md](STATUS.md) · Orientation in [HANDOFF.md](HANDOFF.md)
 
 ## How to maintain this file
 - One task = one row. **Never delete a row** — move it to §5 Done with the date.
@@ -16,7 +16,9 @@
 | ID | State | Task | Owner | Notes |
 | --- | --- | --- | --- | --- |
 | T-02 | ✅ done | Repin Atlas to `@ryp/eco#v0.18.0` | AI | Done 2026-08-31, typecheck clean. Was **not** related to T-01 (v0.18.0 is a SQL-only change). |
-| T-04 | ⚪ open | Wire the quiz redirect gate end to end in a browser | AI | `client/src/quiz/` is lifted and wired as a redirect gate, not a tab. Never driven in a real browser. |
+| T-24 | ⚪ open | **Host on Railway so nothing is demoed from localhost** | AI | Makel, 2026-09-01. The runbook currently says localhost. Needs: Railway service for the Node server, `DATABASE_URL`/Firebase env vars, a build step, and the Firebase authorised-domain entry for the Railway hostname. |
+| T-25 | ⚪ open | Rewrite the demo runbook around the intake | AI | The runbook was written 26 Aug and has 4 steps; it predates Practice DNA and Luke's prototype entirely. Its "cold start" also still says localhost. |
+| T-26 | ⚪ open | A completed intake appends a `handicap_history` row every run | AI | Each rehearsal adds another row for the same player, so Avery's trend grows a fake point per run. `atlas_app` has no DELETE, so the seed cannot clean them. Decide: dedupe by day, or give the seed an owner connection. |
 | T-05 | 🔵 waiting | Forge repo from Luke | Luke | **44 of 81 metrics (54%) come from Forge.** Six Dashboard screens cannot show real numbers until it exists. Ask recorded in `operations/ASK-luke-forge-repo.md`. |
 | T-06 | ⚪ open | Rehearse `operations/DEMO-RUNBOOK-2026-09-07.md` | Makel | Four steps + break-glass table. Not yet rehearsed against the current build. |
 
@@ -69,8 +71,10 @@
 | D-12 *(closes T-01, T-03)* | 2026-09-01 | **Fixed B-1 — the intake works end to end** | 18/18 smoke assertions; completion verified in `golf.player_profile` + `golf.handicap_history` |
 | D-13 | 2026-09-01 | Fixed the silent-looking PATCH (B-3) | `volume`/`alloc` added to `toEnvelope`; resumed runs rehydrate |
 | D-14 *(closes T-23)* | 2026-09-01 | Audited every table for the drizzle column-grant bug | `atlas.intake_submissions` was the only one; the other six hold table-level INSERT |
+| D-15 | 2026-09-01 | `npm run seed` resets the intake | Row back to `in_progress` / tier 0, confirmed in the DB |
+| D-16 *(closes T-04)* | 2026-09-01 | **signup → quiz → result → home driven in a browser** | Fixed 3 defects the API suite could not see (STATUS §3 B-4/5/6); profile written through by the quiz |
 
 ---
-**Retired IDs** (closed, kept so no ID is ever reused): T-01 → D-12 · T-03 → D-12 · T-23 → D-14.
+**Retired IDs** (closed, kept so no ID is ever reused): T-01 → D-12 · T-03 → D-12 · T-04 → D-16 · T-23 → D-14.
 
-_Next free ID: **T-24** / **D-15**._
+_Next free ID: **T-27** / **D-17**._
