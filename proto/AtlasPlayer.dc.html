@@ -1,0 +1,2575 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0E141B">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Atlas">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/forge-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&amp;family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; background:#0B1015; font-family:'Archivo',sans-serif; color:#ece7db; overscroll-behavior:none; }
+  a { color:#c8a05e; text-decoration:none; }
+  a:hover { color:#d9b45e; }
+</style>
+</helmet>
+
+<div style="min-height:100dvh; background:#0B1015; display:flex; justify-content:center; filter: {{ shellFilter }};">
+<div style="width:100%; max-width:460px; min-height:100dvh; background: {{ shellBg }}; border-left:1px solid rgba(255,255,255,0.05); border-right:1px solid rgba(255,255,255,0.05); display:flex; flex-direction:column; padding-top:env(safe-area-inset-top);">
+
+  <div style="display:flex; align-items:center; justify-content:space-between; padding:18px 22px 14px; border-bottom:1px solid rgba(255,255,255,0.055);">
+    <div style="display:flex; align-items:center; gap:9px;">
+      <span style="position:relative; display:inline-block; width:24px; height:24px;"><i style="position:absolute; width:6px; height:6px; background:#ece7db; left:0px; top:0px;"></i><i style="position:absolute; width:6px; height:6px; background:#ece7db; left:6px; top:6px;"></i><i style="position:absolute; width:6px; height:6px; background:#ece7db; left:12px; top:12px;"></i><i style="position:absolute; width:6px; height:6px; background:#ece7db; left:18px; top:18px;"></i></span>
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:#8d99a8;">Atlas</span>
+    </div>
+    <div onClick="{{ goProfile }}" style="cursor:pointer; display:flex; align-items:center; gap:9px; padding:10px 12px; margin:-10px -12px; border-radius:999px;">
+      <span style="width:6px; height:6px; border-radius:50%; background: {{ netDot }};"></span>
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; color:#c3cdd9;">{{ hcpChip }}</span>
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#5b6573;">&rsaquo;</span>
+    </div>
+  </div>
+
+  <div style="flex:1; padding:26px 22px 30px;">
+
+  <!-- ===== INTRO / BASELINE SETUP ===== -->
+  <sc-if value="{{ onIntro }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.24em; text-transform:uppercase; color:#c8a05e; margin-bottom:14px;">00 · Baseline setup</div>
+    <h1 style="font-family:'Archivo'; font-weight:800; font-size:34px; line-height:1.05; letter-spacing:-0.03em; color:#ece7db; margin:0 0 12px;">Where do you want the work?</h1>
+    <p style="font-family:'Newsreader',serif; font-size:17px; line-height:1.5; color:#8d99a8; margin:0 0 26px;">The Forge scores all four domains either way. This just tells your coach where you think the strokes are &mdash; and it's interesting when the number disagrees with you.</p>
+
+    <div style="display:flex; flex-direction:column; gap:9px; margin-bottom:28px;">
+      <sc-for list="{{ interests }}" as="i" hint-placeholder-count="4">
+        <div onClick="{{ i.onClick }}" style="cursor:pointer; display:grid; grid-template-columns:24px 1fr auto; gap:14px; align-items:center; border:1px solid {{ i.border }}; background: {{ i.bg }}; border-radius:15px; padding:17px 18px;">
+          <span style="width:21px; height:21px; border-radius:6px; border:1.5px solid {{ i.boxBorder }}; background: {{ i.boxBg }}; display:grid; place-items:center; font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600; color:#0E141B;">{{ i.tick }}</span>
+          <span style="font-family:'Newsreader',serif; font-size:19px; color: {{ i.color }};">{{ i.label }}</span>
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#5b6573;">{{ i.weight }}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.2em; text-transform:uppercase; color:#66717f; margin-bottom:12px;">Your numbers</div>
+    <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:28px;">
+      <sc-for list="{{ steppers }}" as="p" hint-placeholder-count="2">
+        <div style="display:grid; grid-template-columns:1fr auto; gap:16px; align-items:center; border:1px solid rgba(255,255,255,0.09); border-radius:15px; padding:16px 16px 16px 18px;">
+          <div style="min-width:0;">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f; margin-bottom:5px;">{{ p.label }}</div>
+            <div style="font-family:'Archivo'; font-weight:800; font-size:26px; color:#ece7db;">{{ p.value }}</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <span onClick="{{ p.dec }}" style="cursor:pointer; width:46px; height:46px; display:grid; place-items:center; border-radius:12px; border:1px solid rgba(255,255,255,0.13); font-family:'IBM Plex Mono',monospace; font-size:16px; color:#8d99a8;">−</span>
+            <span onClick="{{ p.inc }}" style="cursor:pointer; width:46px; height:46px; display:grid; place-items:center; border-radius:12px; border:1px solid rgba(200,160,94,0.4); font-family:'IBM Plex Mono',monospace; font-size:16px; color:#c8a05e;">+</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="border:1px solid rgba(127,168,201,0.32); border-radius:16px; background:rgba(127,168,201,0.05); padding:20px 22px; margin-bottom:22px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#7fa8c9; margin-bottom:7px;">Recommended first</div>
+      <div style="font-family:'Newsreader',serif; font-size:21px; color:#ece7db; margin-bottom:6px;">Run the baseline screening</div>
+      <div style="font-family:'Newsreader',serif; font-size:16px; line-height:1.5; color:#8d99a8;">Thirty short game shots, about twenty minutes. It calibrates the tolerances your Chipping Index is scored against &mdash; run it before the eighty, or the chipping number means less than it should.</div>
+    </div>
+
+    <div onClick="{{ introToSga }}" style="cursor:pointer; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:#0E141B; background:#c8a05e; padding:22px 0; border-radius:16px; margin-bottom:10px;">Start baseline screening</div>
+    <div onClick="{{ introSkip }}" style="cursor:pointer; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8; border:1px solid rgba(255,255,255,0.12); padding:18px 0; border-radius:14px;">Skip — go straight to the Forge</div>
+  </div>
+  </sc-if>
+
+  <!-- ===== TRANSFER TAB ===== -->
+  <sc-if value="{{ onTransfer }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:#c8a05e; margin-bottom:12px;">Zone 03 &middot; Transfer</div>
+    <h2 style="font-family:'Archivo'; font-weight:800; font-size:29px; line-height:1.05; letter-spacing:-0.02em; color:#ece7db; margin:0 0 10px;">Does it survive the course?</h2>
+    <p style="font-family:'Newsreader',serif; font-size:16.5px; line-height:1.5; color:#8d99a8; margin:0 0 22px;">A swing you own on the range is not a swing you own. The Forge is the exam &mdash; eighty shots, four indices, scored against par rather than feel.</p>
+    <div style="display:flex; gap:10px; margin-bottom:26px;">
+      <div onClick="{{ primaryAction }}" style="cursor:pointer; flex:1; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:#0E141B; background:#c8a05e; padding:23px 0; border-radius:16px;" style-active="opacity:0.82">{{ primaryLabel }}</div>
+      <div onClick="{{ toggleKit }}" style="cursor:pointer; flex:none; width:62px; border-radius:16px; border:1px solid {{ kitBorder }}; background: {{ kitBg }}; display:grid; place-items:center; font-family:'Newsreader',serif; font-style:italic; font-size:22px; color: {{ kitColor }};">i</div>
+    </div>
+
+    <div style="display: {{ kitShow }}; border:1px solid rgba(255,255,255,0.09); border-radius:16px; background:#12181f; padding:20px 22px; margin-bottom:26px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:12px;">What you need</div>
+      <div style="display:flex; flex-direction:column; gap:9px;">
+        <sc-for list="{{ kitList }}" as="k" hint-placeholder-count="4">
+          <div style="display:grid; grid-template-columns:7px 1fr; gap:12px; align-items:baseline;">
+            <span style="width:5px; height:5px; border-radius:50%; background:#c8a05e; transform:translateY(-3px);"></span>
+            <span style="font-family:'Newsreader',serif; font-size:16.5px; line-height:1.45; color:#c3cdd9;">{{ k }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div onClick="{{ discardRun }}" style="display: {{ discardShow }}; cursor:pointer; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color: {{ discardColor }}; padding:14px 0; margin-bottom:12px;">{{ discardLabel }}</div>
+
+    <div onClick="{{ openSga }}" style="cursor:pointer; border:1px solid {{ sgaCardBorder }}; background: {{ sgaCardBg }}; border-radius:16px; padding:20px 22px; margin-bottom:8px;">
+      <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:8px;">
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#7fa8c9;">Separate assessment</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color: {{ sgaStateColor }};">{{ sgaState }}</span>
+      </div>
+      <div style="font-family:'Newsreader',serif; font-size:21px; color:#ece7db; margin-bottom:6px;">Short game assessment</div>
+      <div style="font-family:'Newsreader',serif; font-size:15.5px; line-height:1.5; color:#8d99a8;">Thirty shots, six situations. It does not feed the composite &mdash; it sets the tolerances your Chipping Index is scored against.</div>
+    </div>
+
+  </div>
+  </sc-if>
+
+  <!-- ===== CALIBRATION TAB ===== -->
+  <sc-if value="{{ onCalibrate }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:#c8a05e; margin-bottom:12px;">Zone 02 &middot; Calibration</div>
+    <h2 style="font-family:'Archivo'; font-weight:800; font-size:29px; line-height:1.05; letter-spacing:-0.02em; color:#ece7db; margin:0 0 10px;">Where does it actually go?</h2>
+    <p style="font-family:'Newsreader',serif; font-size:16.5px; line-height:1.5; color:#8d99a8; margin:0 0 22px;">Calibration is not practice, it is measurement. You cannot score a drill honestly until you know the standard you are being held to.</p>
+
+    <div style="border:1px solid rgba(255,255,255,0.09); border-radius:16px; background:#12181f; padding:20px 22px; margin-bottom:14px;">
+      <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:8px;">
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f;">Chipping tolerance</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#7fa8c9;">{{ chipTierSource }}</span>
+      </div>
+      <div style="font-family:'Newsreader',serif; font-size:21px; color:#ece7db; margin-bottom:6px;">{{ chipTierName }}</div>
+      <div style="font-family:'Newsreader',serif; font-size:15.5px; line-height:1.5; color:#8d99a8;">Birdie is {{ tierBirdie }}. Par is {{ tierPar }}. Set by the short game assessment in Zone 03 &mdash; beat it and the tolerances tighten.</div>
+    </div>
+
+    <div style="border:1px solid rgba(200,160,94,0.35); border-radius:18px; background:#161d28; padding:22px 22px 20px; margin-bottom:14px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#c8a05e; margin-bottom:8px;">Launch monitor import</div>
+      <div style="font-family:'Newsreader',serif; font-size:21px; color:#ece7db; margin-bottom:6px;">Bring your own numbers.</div>
+      <p style="font-family:'Newsreader',serif; font-size:15.5px; line-height:1.5; color:#8d99a8; margin:0 0 18px;">Export a session from Trackman, GCQuad, Foresight or Garmin and drop the file here. Atlas reads carry and side, finds the centre of your pattern, and separates what you lose to spread from what you lose to bias &mdash; two different problems with two different fixes.</p>
+
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:10px;">Club</div>
+      <div style="display:flex; gap:8px; margin-bottom:16px;">
+        <sc-for list="{{ lmClubs }}" as="c" hint-placeholder-count="3">
+          <div onClick="{{ c.onClick }}" style="cursor:pointer; flex:1; text-align:center; padding:15px 8px; border-radius:13px; border:1px solid {{ c.border }}; background: {{ c.bg }};" style-active="opacity:0.7">
+            <div style="font-family:'Archivo',sans-serif; font-weight:700; font-size:14px; color: {{ c.color }};">{{ c.label }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.08em; color: {{ c.sub }}; margin-top:3px;">{{ c.dist }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="position:relative; margin-bottom:12px;">
+        <div style="text-align:center; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#c8a05e; border:1px dashed rgba(200,160,94,0.5); padding:22px 16px; border-radius:15px;">{{ lmDropLabel }}</div>
+        <input type="file" accept=".csv,.tsv,.txt,image/*" onChange="{{ onLmFile }}" style="position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer;" />
+      </div>
+      <div style="font-family:'Newsreader',serif; font-size:14.5px; line-height:1.45; color: {{ lmHintColor }}; margin-bottom: {{ lmHintGap }};">{{ lmHint }}</div>
+
+      <div style="display: {{ lmResultShow }};">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+          <div style="border:1px solid rgba(255,255,255,0.09); border-radius:14px; background:#0E141B; padding:16px 16px 14px;">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8; margin-bottom:7px;">Strokes gained</div>
+            <div style="font-family:'Archivo'; font-weight:900; font-size:27px; line-height:1; color: {{ lmSgColor }};">{{ lmSg }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.08em; color:#8d99a8; margin-top:6px;">per shot vs {{ lmHcp }}</div>
+          </div>
+          <div style="border:1px solid rgba(255,255,255,0.09); border-radius:14px; background:#0E141B; padding:16px 16px 14px;">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8; margin-bottom:7px;">Bias strokes lost</div>
+            <div style="font-family:'Archivo'; font-weight:900; font-size:27px; line-height:1; color: {{ lmBiasColor }};">{{ lmBias }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.08em; color:#8d99a8; margin-top:6px;">free if you centre it</div>
+          </div>
+        </div>
+
+        <div style="border:1px solid rgba(255,255,255,0.09); border-radius:14px; background:#0E141B; padding:18px 18px 16px; margin-bottom:12px;">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ lmSgColor }}; margin-bottom:9px;">The pattern</div>
+          <p style="font-family:'Newsreader',serif; font-size:16.5px; line-height:1.55; color:#c3cdd9; margin:0 0 14px;">{{ lmRead }}</p>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <sc-for list="{{ lmRows }}" as="r" hint-placeholder-count="4">
+              <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px;">
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; color:#8d99a8;">{{ r.label }}</span>
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.04em; color:#c3cdd9;">{{ r.value }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div onClick="{{ lmReset }}" style="cursor:pointer; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8; padding:16px 0;" style-active="opacity:0.7">Clear this import</div>
+      </div>
+    </div>
+
+    <div style="border:1px solid rgba(255,255,255,0.09); border-radius:16px; background:#12181f; padding:20px 22px; margin-bottom:20px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:8px;">Putting model</div>
+      <div style="font-family:'Newsreader',serif; font-size:21px; color:#ece7db; margin-bottom:6px;">{{ puttModelState }}</div>
+      <div style="font-family:'Newsreader',serif; font-size:15.5px; line-height:1.5; color:#8d99a8;">Twenty putts at five distances fit a make-rate curve for every distance in between. Run the Putting Index in Zone 03 to build it.</div>
+    </div>
+
+  </div>
+  </sc-if>
+
+  <!-- ===== PROFILE ===== -->
+  <sc-if value="{{ onProfile }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:#c8a05e;">Your profile</span>
+      <span onClick="{{ profileBack }}" style="cursor:pointer; padding:17px 18px; margin:-17px -18px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8;">Done</span>
+    </div>
+    <h2 style="font-family:'Archivo'; font-weight:800; font-size:29px; line-height:1.05; letter-spacing:-0.02em; color:#ece7db; margin:0 0 10px;">The numbers behind every number.</h2>
+    <p style="font-family:'Newsreader',serif; font-size:16.5px; line-height:1.5; color:#8d99a8; margin:0 0 24px;">Your handicap is the baseline every strokes-gained figure in Atlas is measured against. Keep it current or the whole app drifts with it.</p>
+
+    <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:24px;">
+      <sc-for list="{{ steppers }}" as="p" hint-placeholder-count="2">
+        <div style="display:grid; grid-template-columns:1fr auto; gap:16px; align-items:center; border:1px solid rgba(255,255,255,0.09); border-radius:15px; padding:16px 16px 16px 18px;">
+          <div style="min-width:0;">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f; margin-bottom:5px;">{{ p.label }}</div>
+            <div style="font-family:'Archivo'; font-weight:800; font-size:26px; color:#ece7db;">{{ p.value }}</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <span onClick="{{ p.dec }}" style="cursor:pointer; width:46px; height:46px; display:grid; place-items:center; border-radius:12px; border:1px solid rgba(255,255,255,0.13); font-family:'IBM Plex Mono',monospace; font-size:16px; color:#8d99a8;">−</span>
+            <span onClick="{{ p.inc }}" style="cursor:pointer; width:46px; height:46px; display:grid; place-items:center; border-radius:12px; border:1px solid rgba(200,160,94,0.4); font-family:'IBM Plex Mono',monospace; font-size:16px; color:#c8a05e;">+</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="border:1px solid rgba(255,255,255,0.09); border-radius:16px; background:#12181f; padding:20px 22px; margin-bottom:14px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:8px;">Last conditions recorded</div>
+      <div style="font-family:'Newsreader',serif; font-size:19px; color:#ece7db;">{{ profileConds }}</div>
+    </div>
+
+    <div onClick="{{ install }}" style="display: {{ installShow }}; cursor:pointer; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#c8a05e; border:1px solid rgba(200,160,94,0.4); padding:17px 0; border-radius:14px; margin-bottom:10px;">Install Atlas on this phone</div>
+    <div style="display: {{ iosHintShow }}; font-family:'Newsreader',serif; font-size:15px; line-height:1.5; color:#5b6573; text-align:center; margin-bottom:10px;">Add to Home Screen from the share menu to run Atlas offline on the range.</div>
+
+    <div onClick="{{ rerunSetup }}" style="cursor:pointer; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8; border:1px solid rgba(255,255,255,0.12); padding:17px 0; border-radius:14px;">Run baseline setup again</div>
+  </div>
+  </sc-if>
+
+  <!-- ===== PERFORMANCE TAB ===== -->
+  <sc-if value="{{ onPerform }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:#c8a05e; margin-bottom:12px;">Zone 04 &middot; Performance</div>
+    <h2 style="font-family:'Archivo'; font-weight:800; font-size:29px; line-height:1.05; letter-spacing:-0.02em; color:#ece7db; margin:0 0 10px;">Playing the shot in front of you.</h2>
+    <p style="font-family:'Newsreader',serif; font-size:16.5px; line-height:1.5; color:#8d99a8; margin:0 0 26px;">Zone 04 has no fixed cadence. It is the competitive calendar, the pre-shot routine, and the psychology of the shot you are standing over &mdash; driven by what the round exposes rather than a weekly schedule.</p>
+    <div style="border:1px solid rgba(200,160,94,0.35); border-radius:18px; background:#161d28; padding:24px 22px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#c8a05e; margin-bottom:10px;">In development</div>
+      <div style="display:flex; align-items:baseline; gap:10px; margin:0 0 10px; flex-wrap:wrap;">
+        <h3 style="font-family:'Archivo'; font-weight:800; font-size:21px; letter-spacing:-0.02em; color:#ece7db; margin:0;">Debrief</h3>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8;">Mental performance coaching</span>
+      </div>
+      <p style="font-family:'Newsreader',serif; font-size:16.5px; line-height:1.5; color:#c3cdd9; margin:0 0 20px;">Your swing is not what falls apart on the tenth tee. Debrief is the mental side of the round &mdash; attention, commitment, and what you did with the shot after the bad one. Not a scorecard review; a coaching conversation about the player.</p>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:11px;">What it will work on</div>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:22px;">
+        <sc-for list="{{ debriefItems }}" as="d" hint-placeholder-count="4">
+          <div style="display:grid; grid-template-columns:7px 1fr; gap:12px; align-items:baseline;">
+            <span style="width:5px; height:5px; border-radius:50%; background:#c8a05e; transform:translateY(-3px);"></span>
+            <span style="font-family:'Newsreader',serif; font-size:16px; line-height:1.45; color:#8d99a8;">{{ d }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="text-align:center; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8; border:1px solid rgba(255,255,255,0.12); padding:19px 0; border-radius:15px;">Debrief opens after your first round logged</div>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ===== TODAY TAB ===== -->
+  <sc-if value="{{ onToday }}" hint-placeholder-val="{{ true }}">
+  <div>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:#c8a05e; margin-bottom:12px;">{{ todayDate }}</div>
+    <h2 style="font-family:'Archivo'; font-weight:800; font-size:29px; line-height:1.05; letter-spacing:-0.02em; color:#ece7db; margin:0 0 10px;">{{ todayTitle }}</h2>
+    <p style="font-family:'Newsreader',serif; font-size:16.5px; line-height:1.5; color:#8d99a8; margin:0 0 20px;">{{ todayBody }}</p>
+
+    <div style="display:flex; gap:10px; margin-bottom:14px;">
+      <div onClick="{{ todayAction }}" style="cursor:pointer; flex:1; display:flex; align-items:center; justify-content:space-between; gap:12px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color:#0E141B; background:#c8a05e; padding:21px 22px; border-radius:16px;" style-active="opacity:0.82">
+        <span>{{ todayActionLabel }}</span>
+        <span style="opacity:0.65; letter-spacing:0.06em;">{{ todayActionMeta }}</span>
+      </div>
+    </div>
+
+    <div onClick="{{ goCoach }}" style="cursor:pointer; border:1px solid rgba(127,168,201,0.28); background:rgba(127,168,201,0.05); border-radius:16px; padding:16px 18px; margin-bottom:30px; display:flex; align-items:center; gap:13px;" style-active="background:rgba(127,168,201,0.12)">
+      <span style="flex:none; width:8px; height:8px; border-radius:50%; background:#7fa8c9;"></span>
+      <span style="flex:1; min-width:0;">
+        <span style="display:block; font-family:'Newsreader',serif; font-size:17.5px; color:#ece7db;">{{ coachCardTitle }}</span>
+        <span style="display:block; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#7fa8c9; margin-top:3px;">{{ coachCardNote }}</span>
+      </span>
+      <span style="flex:none; font-family:'IBM Plex Mono',monospace; font-size:14px; color:#66717f;">&rsaquo;</span>
+    </div>
+
+    <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:12px;">
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:#c8a05e;">Practice DNA</span>
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.12em; text-transform:uppercase; color:#5b6573;">0–100 · scratch is 62</span>
+    </div>
+
+    <div style="position:relative; margin:0 0 6px; opacity: {{ dnaOpacity }};">
+      <svg viewBox="0 0 300 252" style="width:100%; height:auto; display:block;">
+        <sc-for list="{{ dnaRings }}" as="r" hint-placeholder-count="4">
+          <polygon points="{{ r.pts }}" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="1"></polygon>
+        </sc-for>
+        <sc-for list="{{ dnaSpokes }}" as="k" hint-placeholder-count="5">
+          <line x1="150" y1="126" x2="{{ k.x }}" y2="{{ k.y }}" stroke="rgba(255,255,255,0.08)" stroke-width="1"></line>
+        </sc-for>
+        <polygon points="{{ dnaBase }}" fill="none" stroke="rgba(127,168,201,0.55)" stroke-width="1.5" stroke-dasharray="4 4"></polygon>
+        <polygon points="{{ dnaYou }}" fill="rgba(200,160,94,0.18)" stroke="#c8a05e" stroke-width="2"></polygon>
+        <sc-for list="{{ dnaDots }}" as="d" hint-placeholder-count="5">
+          <circle cx="{{ d.x }}" cy="{{ d.y }}" r="4" fill="#c8a05e"></circle>
+        </sc-for>
+      </svg>
+      <sc-for list="{{ dnaLabels }}" as="l" hint-placeholder-count="5">
+        <div style="position:absolute; white-space:nowrap; left: {{ l.left }}; top: {{ l.top }}; transform: translate({{ l.tx }}, {{ l.ty }});">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8; margin-bottom:3px;">{{ l.label }}</div>
+          <div style="font-family:'Archivo',sans-serif; font-weight:800; font-size:15px; color: {{ l.color }};">{{ l.value }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-bottom:26px;">
+      <span style="display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8;"><span style="width:14px; height:2px; background:#c8a05e;"></span>You</span>
+      <span style="display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8;"><span style="width:14px; height:0; border-top:2px dashed #7fa8c9;"></span>Scratch baseline</span>
+    </div>
+
+    <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:12px;">
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:#c8a05e;">The transfer gap</span>
+      <span style="display: {{ sampleShow }}; font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.14em; text-transform:uppercase; color:#0E141B; background:#8d99a8; padding:4px 9px; border-radius:999px;">Sample data</span>
+    </div>
+    <div style="display:flex; align-items:baseline; gap:10px; margin-bottom:12px;">
+      <span style="font-family:'Archivo'; font-weight:900; font-size:62px; line-height:1; letter-spacing:-0.03em; color: {{ gapColor }};">{{ gapValue }}</span>
+      <span style="font-family:'Newsreader',serif; font-size:19px; color:#8d99a8;">{{ gapUnit }}</span>
+      <span style="margin-left:auto; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color: {{ gapColor }}; border:1px solid {{ gapColor }}; padding:7px 12px; border-radius:999px; white-space:nowrap;">{{ gapVerdict }}</span>
+    </div>
+    <p style="font-family:'Newsreader',serif; font-size:18px; line-height:1.5; color:#c3cdd9; margin:0 0 14px;">{{ gapBody }}</p>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#5b6573; padding-bottom:18px; margin-bottom:18px; border-bottom:1px solid rgba(255,255,255,0.07);">{{ heroSource }}</div>
+
+    <div style="display:flex; flex-direction:column; border-top:1px solid rgba(255,255,255,0.07); margin-bottom:26px;">
+      <sc-for list="{{ statRows }}" as="d" hint-placeholder-count="4">
+        <div onClick="{{ d.onClick }}" style="cursor:pointer; padding:14px 0; border-bottom:1px solid rgba(255,255,255,0.05);" style-active="opacity:0.6">
+          <div style="display:grid; grid-template-columns:auto 1fr auto auto; gap:11px; align-items:baseline; margin-bottom:8px;">
+            <span style="width:18px; height:18px; border-radius:5px; border:1px solid rgba(255,255,255,0.14); display:inline-grid; place-items:center; font-family:'IBM Plex Mono',monospace; font-size:9px; color:#8d99a8; transform:translateY(3px);">{{ d.letter }}</span>
+            <span style="font-family:'Newsreader',serif; font-size:18.5px; color:#ece7db;">{{ d.label }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.1em; color:#5b6573;">{{ d.weight }}</span>
+            <span style="font-family:'Archivo'; font-weight:800; font-size:19px; color: {{ d.sgColor }}; min-width:62px; text-align:right;">{{ d.sg }}</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="flex:1; height:3px; border-radius:2px; background:rgba(255,255,255,0.06); overflow:hidden;"><div style="height:100%; background: {{ d.barBg }}; width: {{ d.barW }};"></div></div>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.12em; text-transform:uppercase; color:#5b6573; white-space:nowrap;">{{ d.contrib }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display: {{ recShow }}; border:1px solid rgba(200,160,94,0.35); border-radius:18px; background:#161d28; padding:22px 22px 20px; margin-bottom:22px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#c8a05e; margin-bottom:8px;">Where the strokes are</div>
+      <div style="font-family:'Newsreader',serif; font-size:22px; color:#ece7db; margin-bottom:8px;">{{ recTitle }}</div>
+      <div style="font-family:'Newsreader',serif; font-size:16px; line-height:1.5; color:#8d99a8; margin-bottom:20px;">{{ recBody }}</div>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:11px;">Suggested week &middot; {{ recTotal }}</div>
+      <div style="display:flex; flex-direction:column; gap:9px;">
+        <sc-for list="{{ recRows }}" as="r" hint-placeholder-count="4">
+          <div style="display:grid; grid-template-columns:88px 1fr 62px; gap:11px; align-items:center;">
+            <span style="font-family:'Newsreader',serif; font-size:16px; color: {{ r.color }};">{{ r.label }}</span>
+            <div style="height:8px; border-radius:4px; background:rgba(255,255,255,0.055); overflow:hidden;"><div style="height:100%; border-radius:4px; background: {{ r.bg }}; width: {{ r.w }};"></div></div>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.08em; color:#8d99a8; text-align:right;">{{ r.mins }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+  </div>
+  </sc-if>
+
+  <!-- ===== TRANSFER TAB · practice log ===== -->
+  <sc-if value="{{ onTransfer }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div>
+      <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:16px;">
+        <span style="font-family:'Newsreader',serif; font-size:22px; color:#ece7db;">July 2026</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f; text-align:right;">{{ calSummary }}</span>
+      </div>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.1em; text-transform:uppercase; color:#5b6573; margin-bottom:14px;">D driving &middot; A approach &middot; C chipping &middot; P putting</div>
+
+      <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:7px; margin-bottom:9px;">
+        <sc-for list="{{ calDows }}" as="w" hint-placeholder-count="7">
+          <span style="text-align:center; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f;">{{ w }}</span>
+        </sc-for>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:7px; margin-bottom:18px;">
+        <sc-for list="{{ calCells }}" as="c" hint-placeholder-count="35">
+          <div onClick="{{ c.onClick }}" style="cursor: {{ c.cursor }}; aspect-ratio:1/0.92; border-radius:10px; border:1px solid {{ c.border }}; background: {{ c.bg }}; padding:6px 5px 5px; display:flex; flex-direction:column; align-items:center; justify-content:space-between;">
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color: {{ c.numColor }};">{{ c.num }}</span>
+            <span style="display:flex; gap:3px; justify-content:center; flex-wrap:wrap; min-height:10px;">
+              <sc-for list="{{ c.dots }}" as="dt" hint-placeholder-count="0">
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:8px; letter-spacing:0; color:#c8a05e;">{{ dt.letter }}</span>
+              </sc-for>
+            </span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="border:1px solid rgba(255,255,255,0.09); border-radius:16px; background:#12181f; padding:18px 20px;">
+        <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:6px;">
+          <span style="font-family:'Newsreader',serif; font-size:20px; color:#ece7db;">{{ calSelTitle }}</span>
+          <span onClick="{{ calClear }}" style="display: {{ calClearShow }}; cursor:pointer; padding:14px 16px; margin:-14px -16px; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.12em; text-transform:uppercase; color: {{ calClearColor }};">{{ calClearLabel }}</span>
+        </div>
+        <div style="font-family:'Newsreader',serif; font-size:15.5px; line-height:1.45; color:#8d99a8; margin-bottom:14px;">{{ calSelNote }}</div>
+        <div style="display:flex; flex-wrap:wrap; gap:7px;">
+          <sc-for list="{{ calChips }}" as="ch" hint-placeholder-count="4">
+            <div onClick="{{ ch.onClick }}" style="cursor:pointer; display:flex; align-items:center; gap:8px; padding:15px 16px; border-radius:999px; border:1px solid {{ ch.border }}; background: {{ ch.bg }};" style-active="opacity:0.7">
+              <span style="width:6px; height:6px; border-radius:50%; background: {{ ch.dot }};"></span>
+              <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color: {{ ch.color }};">{{ ch.label }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <div style="height:26px;"></div>
+  </div>
+  </sc-if>
+
+  <!-- ===== DOMAIN DEEP DIVE ===== -->
+  <sc-if value="{{ onDomain }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:#c8a05e;">{{ domWeight }} of composite</span>
+      <span onClick="{{ domBack }}" style="cursor:pointer; padding:17px 18px; margin:-17px -18px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8;">Back</span>
+    </div>
+    <h2 style="font-family:'Archivo'; font-weight:800; font-size:29px; line-height:1.05; letter-spacing:-0.02em; color:#ece7db; margin:0 0 16px;">{{ domName }}</h2>
+
+    <div style="display: {{ domFigShow }}; align-items:baseline; gap:12px; margin-bottom:16px;">
+      <span style="font-family:'Archivo'; font-weight:900; font-size:52px; line-height:1; color: {{ domSgColor }};">{{ domSg }}</span>
+      <span style="font-family:'Newsreader',serif; font-size:17px; color:#8d99a8;">{{ domSgNote }}</span>
+    </div>
+
+    <div style="display: {{ domEmptyShow }}; border:1px solid rgba(255,255,255,0.09); border-radius:16px; background:#12181f; padding:20px 22px; margin-bottom:22px;">
+      <div style="font-family:'Newsreader',serif; font-size:21px; color:#ece7db; margin-bottom:6px;">Not measured yet.</div>
+      <div style="font-family:'Newsreader',serif; font-size:16px; line-height:1.5; color:#8d99a8;">Run the index and your strokes gained, your standard, and the read all fill in here.</div>
+    </div>
+
+    <div style="display: {{ domStatsShow }}; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:22px;">
+      <sc-for list="{{ domStats }}" as="st" hint-placeholder-count="3">
+        <div style="border:1px solid rgba(255,255,255,0.08); border-radius:13px; padding:14px 14px;">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f; margin-bottom:6px;">{{ st.label }}</div>
+          <div style="font-family:'Archivo',sans-serif; font-weight:800; font-size:19px; color: {{ st.color }};">{{ st.value }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="border:1px solid rgba(255,255,255,0.09); border-radius:16px; background:#12181f; padding:20px 22px; margin-bottom:14px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:9px;">What this index measures</div>
+      <p style="font-family:'Newsreader',serif; font-size:16.5px; line-height:1.55; color:#c3cdd9; margin:0;">{{ domWhat }}</p>
+    </div>
+
+    <div style="display: {{ domReadShow }}; border:1px solid rgba(255,255,255,0.09); border-radius:16px; background:#12181f; padding:20px 22px; margin-bottom:22px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color: {{ domSgColor }}; margin-bottom:9px;">Your read</div>
+      <p style="font-family:'Newsreader',serif; font-size:16.5px; line-height:1.55; color:#c3cdd9; margin:0;">{{ domRead }}</p>
+    </div>
+
+    <div onClick="{{ domTest }}" style="cursor:pointer; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:#0E141B; background:#c8a05e; padding:22px 0; border-radius:16px; margin-bottom:10px;">{{ domTestLabel }}</div>
+    <div style="font-family:'Newsreader',serif; font-size:15px; line-height:1.5; color:#5b6573; text-align:center;">{{ domTestNote }}</div>
+  </div>
+  </sc-if>
+
+  <!-- ===== CONSTRUCTION TAB ===== -->
+  <sc-if value="{{ onBuild }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:#c8a05e; margin-bottom:12px;">Zone 01 &middot; Construction</div>
+    <h2 style="font-family:'Archivo'; font-weight:800; font-size:30px; line-height:1.05; letter-spacing:-0.02em; color:#ece7db; margin:0 0 10px;">Where you are on the ladder.</h2>
+    <p style="font-family:'Newsreader',serif; font-size:17px; line-height:1.5; color:#8d99a8; margin:0 0 24px;">Every step has a standard, not a feeling. Nothing unlocks until the condition is met on camera.</p>
+
+    <div style="display: {{ buildBarShow }}; align-items:center; gap:16px; border:1px solid rgba(255,255,255,0.09); border-radius:14px; background:#161d28; padding:18px 20px; margin-bottom:20px;">
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; white-space:nowrap;">Whole build</span>
+      <span style="flex:1; height:4px; border-radius:3px; background:rgba(255,255,255,0.07); overflow:hidden;"><span style="display:block; height:100%; background:#c8a05e; width: {{ buildPct }};"></span></span>
+      <span style="font-family:'Archivo',sans-serif; font-weight:700; font-size:14px; color:#ece7db; white-space:nowrap;">{{ buildCount }}</span>
+    </div>
+
+    <div style="display: {{ buildEmptyShow }}; border:1px solid rgba(255,255,255,0.09); border-radius:18px; background:#12181f; padding:26px 24px; text-align:center;">
+      <div style="font-family:'Newsreader',serif; font-size:20px; color:#ece7db; margin-bottom:8px;">No build prescribed yet.</div>
+      <div style="font-family:'Newsreader',serif; font-size:16px; line-height:1.5; color:#8d99a8;">Construction is written for you, not chosen from a menu. Dr. Benoit sets the ladder once he has seen a number &mdash; run an index and it appears here.</div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:11px;">
+      <sc-for list="{{ buildSteps }}" as="b" hint-placeholder-count="4">
+        <div style="border:1px solid {{ b.border }}; background: {{ b.bg }}; border-radius:16px; padding:20px;">
+          <div style="display:flex; align-items:center; gap:14px; margin-bottom:10px;">
+            <span style="flex:none; width:34px; height:34px; border-radius:50%; border:1px solid {{ b.nodeBorder }}; background: {{ b.nodeBg }}; display:grid; place-items:center; font-family:'IBM Plex Mono',monospace; font-size:12px; color: {{ b.nodeColor }};">{{ b.node }}</span>
+            <span style="flex:1; min-width:0;">
+              <span style="display:block; font-family:'Newsreader',serif; font-size:20px; color:#ece7db;">{{ b.title }}</span>
+              <span style="display:block; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color: {{ b.accent }}; margin-top:3px;">{{ b.state }}</span>
+            </span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#8d99a8; white-space:nowrap;">{{ b.count }}</span>
+          </div>
+          <div style="font-family:'Newsreader',serif; font-size:15.5px; line-height:1.45; color:#8d99a8;">{{ b.cond }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display: {{ buildBarShow }}; font-family:'Newsreader',serif; font-size:15.5px; line-height:1.5; color:#5b6573; margin-top:20px;">Drill-level checkboxes and Parallax review live in your full Atlas file on the web.</div>
+  </div>
+  </sc-if>
+
+  <!-- ===== COACH TAB ===== -->
+  <sc-if value="{{ onCoach }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:#c8a05e;">24-hour standard</span>
+      <span onClick="{{ coachBack }}" style="cursor:pointer; padding:17px 18px; margin:-17px -18px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8;">Done</span>
+    </div>
+    <h2 style="font-family:'Archivo'; font-weight:800; font-size:29px; line-height:1.05; letter-spacing:-0.02em; color:#ece7db; margin:0 0 10px;">Your thread with the team.</h2>
+    <p style="font-family:'Newsreader',serif; font-size:17px; line-height:1.5; color:#8d99a8; margin:0 0 24px;">One continuous conversation, not a ticket queue. Every reply comes from someone who has read your whole file.</p>
+    <div style="display: {{ threadEmptyShow }}; border:1px solid rgba(255,255,255,0.09); border-radius:18px; background:#12181f; padding:26px 24px; text-align:center;">
+      <div style="font-family:'Newsreader',serif; font-size:20px; color:#ece7db; margin-bottom:8px;">Nothing here yet.</div>
+      <div style="font-family:'Newsreader',serif; font-size:16px; line-height:1.5; color:#8d99a8;">Your coach reads numbers before words. Run an index and the first reply lands inside twenty-four hours.</div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:13px;">
+      <sc-for list="{{ messages }}" as="m" hint-placeholder-count="0">
+        <div style="border:1px solid {{ m.border }}; background: {{ m.bg }}; border-radius:16px; padding:20px;">
+          <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:10px;">
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color: {{ m.accent }};">{{ m.who }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.12em; text-transform:uppercase; color:#66717f; white-space:nowrap;">{{ m.when }}</span>
+          </div>
+          <p style="font-family:'Newsreader',serif; font-size:16.5px; line-height:1.55; color:#c3cdd9; margin:0;">{{ m.body }}</p>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ===== ROADMAP ===== -->
+  <sc-if value="{{ onRoadmap }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:16px;">
+      <div style="min-width:0;">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:#c8a05e; margin-bottom:8px;">Session in progress</div>
+        <h2 style="font-family:'Archivo'; font-weight:800; font-size:28px; letter-spacing:-0.02em; color:#ece7db; margin:0 0 6px;">{{ shotsRead }}</h2>
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f;">{{ sessionTime }} elapsed &middot; 60–70 min expected</div>
+      </div>
+      <span onClick="{{ goHome }}" style="flex:none; cursor:pointer; width:46px; height:46px; display:grid; place-items:center; border-radius:50%; border:1px solid rgba(255,255,255,0.13); font-family:'IBM Plex Mono',monospace; font-size:16px; color:#8d99a8;">&times;</span>
+    </div>
+    <div style="height:4px; border-radius:3px; background:rgba(255,255,255,0.07); overflow:hidden; margin-bottom:24px;"><div style="height:100%; background:#c8a05e; width: {{ sessionPct }};"></div></div>
+
+    <div style="display:flex; flex-direction:column; gap:11px; margin-bottom:22px;">
+      <sc-for list="{{ roadmap }}" as="r" hint-placeholder-count="4">
+        <div onClick="{{ r.onClick }}" style="cursor:pointer; border:1px solid {{ r.border }}; background: {{ r.bg }}; border-radius:16px; padding:18px 20px; display:grid; grid-template-columns:1fr auto; gap:16px; align-items:center;" style-active="opacity:0.7">
+          <div style="min-width:0;">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:6px;">Step {{ r.step }} &middot; {{ r.shots }} &middot; <span style="color: {{ r.timeColor }};">{{ r.time }}</span></div>
+            <div style="font-family:'Newsreader',serif; font-size:21px; color: {{ r.color }}; margin-bottom:4px;">{{ r.name }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.1em; text-transform:uppercase; color:#5b6573;">{{ r.note }}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-family:'Archivo'; font-weight:800; font-size:23px; color: {{ r.valueColor }};">{{ r.value }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.16em; text-transform:uppercase; color: {{ r.stateColor }}; margin-top:4px;">{{ r.state }}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div onClick="{{ finishSession }}" style="display: {{ finishShow }}; cursor:pointer; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:#0E141B; background:#f2ede1; padding:22px 0; border-radius:16px;">See your composite</div>
+    <div style="display: {{ finishHint }}; font-family:'Newsreader',serif; font-size:15.5px; line-height:1.5; color:#66717f; text-align:center;">Finish all four indices to get a composite. Order doesn't matter &mdash; take whichever surface is free.</div>
+  </div>
+  </sc-if>
+
+  <!-- ===== BRIEF / GREEN CONDITIONS ===== -->
+  <sc-if value="{{ onBrief }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:#c8a05e;">{{ briefShots }}</div>
+      <span onClick="{{ briefBack }}" style="cursor:pointer; padding:17px 18px; margin:-17px -18px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8;">Back</span>
+    </div>
+    <h2 style="font-family:'Archivo'; font-weight:800; font-size:30px; line-height:1.05; letter-spacing:-0.02em; color:#ece7db; margin:0 0 18px;">{{ briefName }}</h2>
+
+    <div style="position:relative; aspect-ratio:16/9; border-radius:16px; background:linear-gradient(150deg,#26303f,#12171f); border:1px solid rgba(200,160,94,0.22); display:grid; place-items:center; margin-bottom:22px;">
+      <div style="text-align:center;">
+        <div style="width:0; height:0; border-left:20px solid rgba(200,160,94,0.9); border-top:13px solid transparent; border-bottom:13px solid transparent; margin:0 auto 12px;"></div>
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:#8d99a8;">Watch the drill &middot; 40 sec</div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:13px; margin-bottom:22px;">
+      <sc-for list="{{ briefRules }}" as="r" hint-placeholder-count="4">
+        <div style="display:grid; grid-template-columns:22px 1fr; gap:12px; align-items:baseline;">
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#c8a05e;">{{ r.n }}</span>
+          <span style="font-family:'Newsreader',serif; font-size:17px; line-height:1.5; color:#c3cdd9;">{{ r.text }}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="border-left:2px solid #c8a05e; background:rgba(200,160,94,0.07); padding:16px 18px; margin-bottom:26px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#c8a05e; margin-bottom:6px;">Keep the score in your head</div>
+      <div style="font-family:'Newsreader',serif; font-size:16px; line-height:1.5; color:#c3cdd9;">Run the total as you go, the way you would on the course. The phone is the record, not the scoreboard &mdash; if you only find out where you stand at the end, the test has not asked you the question it is supposed to ask.</div>
+    </div>
+
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.2em; text-transform:uppercase; color:#66717f; margin-bottom:5px;">{{ condsTitle }}</div>
+    <div style="font-family:'Newsreader',serif; font-size:15.5px; line-height:1.45; color:#66717f; margin-bottom:16px;">{{ condsBlurb }}</div>
+
+    <div style="display: {{ showWind }}; margin-bottom:20px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#8d99a8; margin-bottom:10px;">Wind</div>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <sc-for list="{{ windChips }}" as="c" hint-placeholder-count="4">
+          <div onClick="{{ c.onClick }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 18px; border-radius:14px; color: {{ c.color }}; background: {{ c.bg }}; border:1px solid {{ c.border }};">
+            <span style="font-family:'Archivo',sans-serif; font-weight:700; font-size:16px;">{{ c.label }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.08em; text-transform:uppercase; opacity:0.75;">{{ c.note }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display: {{ showFirm }}; margin-bottom:20px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#8d99a8; margin-bottom:10px;">Green firmness</div>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <sc-for list="{{ firmChips }}" as="c" hint-placeholder-count="3">
+          <div onClick="{{ c.onClick }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 18px; border-radius:14px; color: {{ c.color }}; background: {{ c.bg }}; border:1px solid {{ c.border }};">
+            <span style="font-family:'Archivo',sans-serif; font-weight:700; font-size:16px;">{{ c.label }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.06em; text-transform:uppercase; opacity:0.75;">{{ c.note }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display: {{ showSpeed }}; margin-bottom:20px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#8d99a8; margin-bottom:10px;">Green speed</div>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <sc-for list="{{ speedChips }}" as="c" hint-placeholder-count="5">
+          <div onClick="{{ c.onClick }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 18px; border-radius:14px; color: {{ c.color }}; background: {{ c.bg }}; border:1px solid {{ c.border }};">
+            <span style="font-family:'Archivo',sans-serif; font-weight:700; font-size:16px;">{{ c.label }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; opacity:0.75;">Stimp {{ c.stimp }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display: {{ showSlope }}; margin-bottom:20px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#8d99a8; margin-bottom:10px;">Slope</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+        <sc-for list="{{ slopeChips }}" as="c" hint-placeholder-count="4">
+          <div onClick="{{ c.onClick }}" style="cursor:pointer; display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:15px 16px; border-radius:14px; color: {{ c.color }}; background: {{ c.bg }}; border:1px solid {{ c.border }};">
+            <span style="font-family:'Archivo',sans-serif; font-weight:700; font-size:15px;">{{ c.label }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.06em; opacity:0.75;">{{ c.deg }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="height:6px;"></div>
+
+    <div onClick="{{ beginTest }}" style="cursor: {{ beginCursor }}; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color: {{ beginColor }}; background: {{ beginBg }}; border:1px solid {{ beginBorder }}; padding:23px 0; border-radius:16px;">{{ beginLabel }}</div>
+  </div>
+  </sc-if>
+
+  <!-- ===== CAPTURE ===== -->
+  <sc-if value="{{ onCapture }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+      <h2 style="font-family:'Archivo'; font-weight:800; font-size:24px; letter-spacing:-0.02em; color:#ece7db; margin:0;">{{ capName }}</h2>
+      <span onClick="{{ goRoadmap }}" style="cursor:pointer; padding:17px 18px; margin:-17px -18px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8;">Exit</span>
+    </div>
+    <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:9px;">
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#c8a05e;">{{ capProgress }}</span>
+      <span style="display:flex; align-items:baseline; gap:12px;">
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#66717f;">{{ capLive }}</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.06em; color: {{ capPaceColor }};">{{ capTimer }}</span>
+      </span>
+    </div>
+    <div style="height:4px; border-radius:3px; background:rgba(255,255,255,0.07); overflow:hidden; margin-bottom:22px;"><div style="height:100%; background:#c8a05e; width: {{ capPct }};"></div></div>
+
+    <div onClick="{{ openDrill }}" style="cursor:pointer; display:flex; align-items:center; gap:14px; border:1px solid rgba(255,255,255,0.09); background:#12181f; border-radius:14px; padding:12px 16px 12px 12px; margin-bottom:20px;">
+      <span style="flex:none; position:relative; display:block; width:58px; aspect-ratio:16/9; border-radius:8px; background:linear-gradient(150deg,#26303f,#12171f); border:1px solid rgba(200,160,94,0.22);">
+        <span style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:0; height:0; border-left:9px solid rgba(200,160,94,0.9); border-top:6px solid transparent; border-bottom:6px solid transparent;"></span>
+      </span>
+      <span style="flex:1; min-width:0;">
+        <span style="display:block; font-family:'Newsreader',serif; font-size:16.5px; color:#ece7db;">{{ capName }}</span>
+        <span style="display:block; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f; margin-top:3px;">Watch the drill &middot; {{ condRead }}</span>
+      </span>
+      <span style="flex:none; font-family:'IBM Plex Mono',monospace; font-size:14px; color:#66717f;">&rsaquo;</span>
+    </div>
+
+    <sc-if value="{{ drillOpen }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeDrill }}" style="position:fixed; inset:0; z-index:120; background:rgba(8,11,15,0.9); display:flex; align-items:flex-end; justify-content:center;">
+        <div onClick="{{ stopClick }}" style="width:100%; max-width:460px; max-height:88vh; overflow:auto; background:#0E141B; border-top:1px solid rgba(200,160,94,0.3); border-radius:24px 24px 0 0; padding:22px 22px calc(26px + env(safe-area-inset-bottom));">
+          <div style="width:38px; height:4px; border-radius:3px; background:rgba(255,255,255,0.16); margin:0 auto 20px;"></div>
+          <div style="position:relative; aspect-ratio:16/9; border-radius:16px; background:linear-gradient(150deg,#26303f,#12171f); border:1px solid rgba(200,160,94,0.22); display:grid; place-items:center; margin-bottom:20px;">
+            <div style="text-align:center;">
+              <div style="width:0; height:0; border-left:20px solid rgba(200,160,94,0.9); border-top:13px solid transparent; border-bottom:13px solid transparent; margin:0 auto 12px;"></div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:#8d99a8;">{{ capName }} &middot; 40 sec</div>
+            </div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:22px;">
+            <sc-for list="{{ capRules }}" as="r" hint-placeholder-count="4">
+              <div style="display:grid; grid-template-columns:22px 1fr; gap:12px; align-items:baseline;">
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; color:#c8a05e;">{{ r.n }}</span>
+                <span style="font-family:'Newsreader',serif; font-size:16.5px; line-height:1.5; color:#c3cdd9;">{{ r.text }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div onClick="{{ closeDrill }}" style="cursor:pointer; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#0E141B; background:#f2ede1; padding:19px 0; border-radius:15px;">Back to the drill</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- called shape gate (approach) -->
+    <sc-if value="{{ showCall }}" hint-placeholder-val="{{ false }}">
+      <div>
+        <div style="border-left:2px solid #c8a05e; background:rgba(200,160,94,0.09); padding:16px 18px; margin-bottom:18px;">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#c8a05e; margin-bottom:6px;">Called shot</div>
+          <div style="font-family:'Newsreader',serif; font-size:21px; color:#ece7db;">{{ callShape }}</div>
+          <div style="font-family:'Newsreader',serif; font-size:15.5px; line-height:1.45; color:#8d99a8; margin-top:6px;">Call it out loud before you swing. Did the ball do it?</div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div onClick="{{ callHeld }}" style="cursor:pointer; text-align:center; padding:26px 0; border-radius:16px; background:#4FBF7C; font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; text-transform:uppercase; color:#0E141B;">Held</div>
+          <div onClick="{{ callMissed }}" style="cursor:pointer; text-align:center; padding:26px 0; border-radius:16px; background:#E5533D; font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.14em; text-transform:uppercase; color:#0E141B;">Missed</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- chipping: sprinkler rotation, scored as a hole -->
+    <sc-if value="{{ showChip }}" hint-placeholder-val="{{ false }}">
+      <div>
+        <div style="border:1px solid rgba(200,160,94,0.32); border-radius:18px; background:#161d28; padding:20px 20px 18px; margin-bottom:14px;">
+          <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:10px;">
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f;">{{ chipStation }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#c8a05e; text-align:right;">{{ chipShape }}</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; padding-bottom:12px; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.07);">
+            <span style="width:6px; height:6px; border-radius:50%; background:#7fa8c9;"></span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#7fa8c9;">{{ chipTierName }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.12em; text-transform:uppercase; color:#5b6573; margin-left:auto;">{{ chipTierSource }}</span>
+          </div>
+          <div style="display:flex; align-items:baseline; gap:10px; margin-bottom:16px;">
+            <span style="font-family:'Archivo'; font-weight:900; font-size:46px; line-height:1; color:#ece7db;">{{ chipYds }}</span>
+            <span style="font-family:'Newsreader',serif; font-size:18px; color:#8d99a8;">yards to the flag</span>
+          </div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:9px;">Lie — tap to change</div>
+          <div style="display:flex; flex-wrap:wrap; gap:7px;">
+            <sc-for list="{{ chipLies }}" as="l" hint-placeholder-count="4">
+              <div onClick="{{ l.onClick }}" style="cursor:pointer; padding:15px 16px; border-radius:999px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; style-active="opacity:0.7" color: {{ l.color }}; background: {{ l.bg }}; border:1px solid {{ l.border }};">{{ l.label }}</div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <sc-for list="{{ chipOutcomes }}" as="o" hint-placeholder-count="4">
+            <div onClick="{{ o.onClick }}" style="cursor:pointer; border:1px solid {{ o.border }}; background: {{ o.bg }}; border-radius:16px; padding:20px 12px; text-align:center;" style-active="opacity:0.7">
+              <div style="font-family:'Archivo'; font-weight:800; font-size:20px; color: {{ o.color }}; margin-bottom:6px;">{{ o.label }}</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8d99a8; line-height:1.4;">{{ o.rule }}</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.14em; text-transform:uppercase; color:#5b6573; margin-top:6px;">{{ o.count }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- proximity buckets (approach) -->
+    <sc-if value="{{ showBuckets }}" hint-placeholder-val="{{ false }}">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <sc-for list="{{ buckets }}" as="b" hint-placeholder-count="6">
+          <div onClick="{{ b.onClick }}" style="cursor:pointer; border:1px solid {{ b.border }}; background: {{ b.bg }}; border-radius:16px; padding:22px 14px; text-align:center;" style-active="opacity:0.7">
+            <div style="font-family:'Archivo'; font-weight:800; font-size:19px; color: {{ b.color }}; margin-bottom:5px;">{{ b.label }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f;">{{ b.count }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <!-- putting -->
+    <sc-if value="{{ showPutt }}" hint-placeholder-val="{{ false }}">
+      <div>
+        <div style="text-align:center; border:1px solid rgba(255,255,255,0.08); border-radius:18px; padding:26px 18px; margin-bottom:16px;">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.2em; text-transform:uppercase; color:#66717f; margin-bottom:8px;">Next putt</div>
+          <div style="font-family:'Archivo'; font-weight:900; font-size:52px; line-height:1; color:#ece7db;">{{ puttDist }}</div>
+          <div style="font-family:'Newsreader',serif; font-size:16px; color:#8d99a8; margin-top:8px;">{{ puttPos }}</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:9px;">
+          <sc-for list="{{ puttButtons }}" as="b" hint-placeholder-count="3">
+            <div onClick="{{ b.onClick }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:14px; border:1px solid {{ b.border }}; background: {{ b.bg }}; border-radius:16px; padding:20px 20px;" style-active="opacity:0.7">
+              <span style="min-width:0;">
+                <span style="display:block; font-family:'Archivo',sans-serif; font-weight:800; font-size:18px; color: {{ b.color }}; margin-bottom:4px;">{{ b.label }}</span>
+                <span style="display:block; font-family:'Newsreader',serif; font-size:14.5px; line-height:1.35; color:#8d99a8;">{{ b.note }}</span>
+              </span>
+              <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.08em; color: {{ b.color }}; white-space:nowrap;">{{ b.val }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- driving corridor -->
+    <sc-if value="{{ showDriving }}" hint-placeholder-val="{{ false }}">
+      <div>
+        <div style="display:flex; gap:6px; margin-bottom:16px;">
+          <sc-for list="{{ corridor }}" as="c" hint-placeholder-count="5">
+            <div onClick="{{ c.onClick }}" style="cursor:pointer; flex:1; border:1px solid {{ c.border }}; background: {{ c.bg }}; border-radius:14px; padding:14px 4px 12px; display:flex; flex-direction:column; align-items:center; gap:10px;">
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:8px; letter-spacing:0.06em; text-transform:uppercase; color:#66717f; text-align:center; min-height:24px; line-height:1.3;">{{ c.label }}</div>
+              <div style="font-family:'Archivo'; font-weight:800; font-size:26px; color: {{ c.color }};">{{ c.count }}</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:8px; letter-spacing:0.1em; color:#5b6573;">{{ c.pen }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <div style="position:sticky; bottom:0; margin-top:18px; padding:14px 0 calc(6px + env(safe-area-inset-bottom)); background:linear-gradient(to top, #0E141B 62%, rgba(14,20,27,0));">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+      <div onClick="{{ sunToggle }}" style="cursor:pointer; flex:none; padding:11px 15px; border-radius:999px; background: {{ sunBg }}; border:1px solid {{ sunBorder }}; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ sunColor }};">{{ sunLabel }}</div>
+      <div style="flex:1; min-width:0; display:flex; align-items:center; gap:7px; justify-content:flex-end;">
+        <span style="width:5px; height:5px; border-radius:50%; background: {{ queueDot }};"></span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.1em; color: {{ queueColor }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ queueLabel }}</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.1em; color: {{ wakeColor }};">·</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.1em; color: {{ wakeColor }}; white-space:nowrap;">{{ wakeLabel }}</span>
+      </div>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <div onClick="{{ undo }}" style="cursor: {{ undoCursor }}; flex:none; padding:20px 22px; border-radius:15px; border:1px solid rgba(255,255,255,0.12); background:#0E141B; font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color: {{ undoColor }};">Undo</div>
+      <div onClick="{{ saveIndex }}" style="cursor:pointer; flex:1; text-align:center; padding:20px 0; border-radius:15px; background: {{ saveBg }}; border:1px solid {{ saveBorder }}; font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color: {{ saveColor }};">{{ saveLabel }}</div>
+    </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ===== SHORT GAME ASSESSMENT ===== -->
+  <sc-if value="{{ onSga }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+      <h2 style="font-family:'Archivo'; font-weight:800; font-size:24px; letter-spacing:-0.02em; color:#ece7db; margin:0;">Short game</h2>
+      <span onClick="{{ goHome }}" style="cursor:pointer; padding:17px 18px; margin:-17px -18px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8;">Exit</span>
+    </div>
+    <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:9px;">
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#c8a05e;">{{ sgaProgress }}</span>
+      <span style="display:flex; align-items:baseline; gap:12px;">
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#66717f;">{{ sgaRunning }}</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.06em; color:#c8a05e;">{{ sgaTimer }}</span>
+      </span>
+    </div>
+    <div style="height:4px; border-radius:3px; background:rgba(255,255,255,0.07); overflow:hidden; margin-bottom:18px;"><div style="height:100%; background:#c8a05e; width: {{ sgaPct }};"></div></div>
+
+    <div style="display: {{ sgaWarnShow }}; border-left:2px solid #E5533D; background:rgba(229,83,61,0.08); padding:14px 16px; margin-bottom:18px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#E5533D; margin-bottom:5px;">Before you play this one</div>
+      <div style="font-family:'Newsreader',serif; font-size:16px; line-height:1.45; color:#c3cdd9;">Check who is around the green. Bunker and flop shots carry a long way when they come out hot.</div>
+    </div>
+
+    <div style="border:1px solid rgba(200,160,94,0.32); border-radius:18px; background:#161d28; padding:20px 20px 18px; margin-bottom:14px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:9px;">Situation {{ sgaCatNum }} of 6</div>
+      <div style="font-family:'Newsreader',serif; font-size:25px; color:#ece7db; margin-bottom:7px;">{{ sgaCatName }}</div>
+      <div style="font-family:'Newsreader',serif; font-size:16px; line-height:1.5; color:#8d99a8; margin-bottom:14px;">{{ sgaCatNote }}</div>
+      <div style="display:flex; align-items:center; gap:7px;">
+        <sc-for list="{{ sgaPips }}" as="p" hint-placeholder-count="5">
+          <span style="flex:1; height:5px; border-radius:3px; background: {{ p.bg }};"></span>
+        </sc-for>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.1em; color:#c8a05e; margin-left:6px; white-space:nowrap;">{{ sgaCatPts }}</span>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:9px;">
+      <sc-for list="{{ sgaButtons }}" as="b" hint-placeholder-count="5">
+        <div onClick="{{ b.onClick }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:14px; border:1px solid {{ b.border }}; background: {{ b.bg }}; border-radius:15px; padding:19px 20px;" style-active="opacity:0.7">
+          <span style="font-family:'Newsreader',serif; font-size:19px; color: {{ b.color }};">{{ b.label }}</span>
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.1em; color: {{ b.color }}; white-space:nowrap;">{{ b.pts }}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="position:sticky; bottom:0; margin-top:18px; padding:14px 0 calc(6px + env(safe-area-inset-bottom)); background:linear-gradient(to top, #0E141B 62%, rgba(14,20,27,0));">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+      <div onClick="{{ sunToggle }}" style="cursor:pointer; flex:none; padding:11px 15px; border-radius:999px; background: {{ sunBg }}; border:1px solid {{ sunBorder }}; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ sunColor }};">{{ sunLabel }}</div>
+      <div style="flex:1; min-width:0; display:flex; align-items:center; gap:7px; justify-content:flex-end;">
+        <span style="width:5px; height:5px; border-radius:50%; background: {{ queueDot }};"></span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.1em; color: {{ queueColor }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ queueLabel }}</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.1em; color: {{ wakeColor }};">·</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.1em; color: {{ wakeColor }}; white-space:nowrap;">{{ wakeLabel }}</span>
+      </div>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <div onClick="{{ sgaUndo }}" style="cursor: {{ sgaUndoCursor }}; flex:none; padding:20px 22px; border-radius:15px; border:1px solid rgba(255,255,255,0.12); background:#0E141B; font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color: {{ sgaUndoColor }};">Undo</div>
+      <div onClick="{{ sgaFinish }}" style="cursor:pointer; flex:1; text-align:center; padding:20px 0; border-radius:15px; background: {{ sgaSaveBg }}; border:1px solid {{ sgaSaveBorder }}; font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color: {{ sgaSaveColor }};">{{ sgaSaveLabel }}</div>
+    </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ===== SHORT GAME RESULT ===== -->
+  <sc-if value="{{ onSgaResult }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:#66717f; margin-bottom:14px;">Short game assessment &middot; 30 shots</div>
+    <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:8px;">
+      <span style="font-family:'Archivo'; font-weight:900; font-size:66px; line-height:1; color: {{ sgaTotalColor }};">{{ sgaTotal }}</span>
+      <span style="font-family:'Newsreader',serif; font-size:19px; color:#8d99a8;">of {{ sgaTargetRead }} target</span>
+    </div>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color: {{ sgaTotalColor }}; margin-bottom:22px;">{{ sgaVerdict }}</div>
+
+    <div style="display:flex; flex-direction:column; border-top:1px solid rgba(255,255,255,0.07); margin-bottom:22px;">
+      <sc-for list="{{ sgaRows }}" as="r" hint-placeholder-count="6">
+        <div style="padding:14px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+          <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:7px;">
+            <span style="font-family:'Newsreader',serif; font-size:18px; color: {{ r.color }};">{{ r.name }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.08em; color: {{ r.color }}; white-space:nowrap;">{{ r.pts }}</span>
+          </div>
+          <div style="height:3px; border-radius:2px; background:rgba(255,255,255,0.06); overflow:hidden;"><div style="height:100%; background: {{ r.barBg }}; width: {{ r.barW }};"></div></div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex; flex-wrap:wrap; gap:14px 24px; margin-bottom:24px;">
+      <span style="display:flex; align-items:center; gap:8px; font-family:'Newsreader',serif; font-size:16px; color:#c3cdd9;"><span style="width:9px; height:9px; border-radius:50%; background:#4FBF7C;"></span>Strength — <span style="color:#4FBF7C;">{{ sgaBest }}</span></span>
+      <span style="display:flex; align-items:center; gap:8px; font-family:'Newsreader',serif; font-size:16px; color:#c3cdd9;"><span style="width:9px; height:9px; border-radius:50%; background:#E5533D;"></span>Weakness — <span style="color:#E5533D;">{{ sgaWorst }}</span></span>
+    </div>
+
+    <div style="border:1px solid rgba(200,160,94,0.35); border-radius:16px; background:rgba(200,160,94,0.06); padding:20px 22px; margin-bottom:22px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#c8a05e; margin-bottom:7px;">Chipping baseline set</div>
+      <div style="font-family:'Newsreader',serif; font-size:21px; color:#ece7db; margin-bottom:6px;">{{ tierName }}</div>
+      <div style="font-family:'Newsreader',serif; font-size:16px; line-height:1.5; color:#8d99a8;">{{ tierBody }}</div>
+    </div>
+
+    <div onClick="{{ goHome }}" style="cursor:pointer; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:#0E141B; background:#c8a05e; padding:22px 0; border-radius:16px; margin-bottom:10px;">Back to Forge</div>
+    <div onClick="{{ sgaReset }}" style="cursor:pointer; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f; padding:14px 0;">Run the assessment again</div>
+  </div>
+  </sc-if>
+
+  <!-- ===== INDEX RESULT ===== -->
+  <sc-if value="{{ onResult }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:#66717f; margin-bottom:14px;">{{ resName }} logged</div>
+    <div style="font-family:'Archivo'; font-weight:900; font-size:74px; line-height:1; color: {{ resColor }}; margin-bottom:12px;">{{ resValue }}</div>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color: {{ resColor }}; margin-bottom:20px;">{{ resVerdict }}</div>
+    <p style="font-family:'Newsreader',serif; font-size:17px; line-height:1.55; color:#c3cdd9; margin:0 0 28px;">{{ resBody }}</p>
+
+    <div style="display:flex; flex-direction:column; margin-bottom:28px; border-top:1px solid rgba(255,255,255,0.07);">
+      <sc-for list="{{ resStats }}" as="st" hint-placeholder-count="3">
+        <div style="display:flex; align-items:baseline; justify-content:space-between; padding:14px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f;">{{ st.label }}</span>
+          <span style="font-family:'Newsreader',serif; font-size:19px; color:#ece7db;">{{ st.value }}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <sc-if value="{{ showCurve }}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid rgba(255,255,255,0.09); border-radius:18px; background:#161d28; padding:22px 20px 20px; margin-bottom:24px;">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#c8a05e; margin-bottom:6px;">Modelled make rate</div>
+        <div style="font-family:'Newsreader',serif; font-size:16px; line-height:1.5; color:#8d99a8; margin-bottom:18px;">{{ curveNote }}</div>
+
+        <svg viewBox="0 0 300 150" style="width:100%; height:auto; display:block; margin-bottom:8px;">
+          <line x1="34" y1="8" x2="34" y2="122" stroke="rgba(255,255,255,0.12)" stroke-width="1"></line>
+          <line x1="34" y1="122" x2="292" y2="122" stroke="rgba(255,255,255,0.12)" stroke-width="1"></line>
+          <sc-for list="{{ curveGrid }}" as="g" hint-placeholder-count="3">
+            <line x1="34" y1="{{ g.y }}" x2="292" y2="{{ g.y }}" stroke="rgba(255,255,255,0.05)" stroke-width="1"></line>
+          </sc-for>
+          <path d="{{ tourPath }}" fill="none" stroke="rgba(127,168,201,0.6)" stroke-width="1.5" stroke-dasharray="4 4"></path>
+          <path d="{{ youArea }}" fill="rgba(200,160,94,0.13)" stroke="none"></path>
+          <path d="{{ youPath }}" fill="none" stroke="#c8a05e" stroke-width="2.5"></path>
+          <sc-for list="{{ curveDots }}" as="p" hint-placeholder-count="5">
+            <circle cx="{{ p.x }}" cy="{{ p.y }}" r="3.5" fill="{{ p.fill }}" stroke="#0E141B" stroke-width="1"></circle>
+          </sc-for>
+        </svg>
+
+        <div style="display:flex; justify-content:space-between; padding:0 0 0 11%; margin-bottom:18px;">
+          <sc-for list="{{ curveTicks }}" as="t" hint-placeholder-count="5">
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.08em; color:#5b6573;">{{ t }}</span>
+          </sc-for>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:18px;">
+          <div style="border:1px solid rgba(255,255,255,0.08); border-radius:13px; padding:15px 16px;">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f; margin-bottom:6px;">Start line</div>
+            <div style="font-family:'Archivo',sans-serif; font-weight:800; font-size:21px; color: {{ lineColor }};">{{ lineVal }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.1em; text-transform:uppercase; color:#5b6573; margin-top:4px;">{{ lineTag }}</div>
+          </div>
+          <div style="border:1px solid rgba(255,255,255,0.08); border-radius:13px; padding:15px 16px;">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f; margin-bottom:6px;">Pace control</div>
+            <div style="font-family:'Archivo',sans-serif; font-weight:800; font-size:21px; color: {{ paceColor }};">{{ paceVal }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.1em; text-transform:uppercase; color:#5b6573; margin-top:4px;">{{ paceTag }}</div>
+          </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; border-top:1px solid rgba(255,255,255,0.07);">
+          <sc-for list="{{ makeTable }}" as="m" hint-placeholder-count="5">
+            <div style="display:grid; grid-template-columns:1fr auto auto; gap:14px; align-items:baseline; padding:11px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
+              <span style="font-family:'Newsreader',serif; font-size:17px; color:#ece7db;">{{ m.dist }}</span>
+              <span style="font-family:'Archivo',sans-serif; font-weight:800; font-size:16px; color: {{ m.color }}; min-width:44px; text-align:right;">{{ m.you }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.1em; color:#5b6573; min-width:58px; text-align:right;">{{ m.tour }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="font-family:'Newsreader',serif; font-size:15px; line-height:1.5; color:#66717f; margin-top:16px;">{{ curveCaveat }}</div>
+      </div>
+    </sc-if>
+
+    <div onClick="{{ goRoadmap }}" style="cursor:pointer; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:#0E141B; background:#c8a05e; padding:22px 0; border-radius:16px;" style-active="opacity:0.82">Back to session</div>
+  </div>
+  </sc-if>
+
+  <!-- ===== COMPLETE ===== -->
+  <sc-if value="{{ onComplete }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:#c8a05e; margin-bottom:14px;">Forge complete &middot; 80 shots</div>
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:8px;">Composite index</div>
+    <div style="font-family:'Archivo'; font-weight:900; font-size:82px; line-height:1; color: {{ compColor }}; margin-bottom:10px;">{{ compValue }}</div>
+    <div style="font-family:'Newsreader',serif; font-size:18px; line-height:1.5; color:#c3cdd9; margin-bottom:28px;">{{ compRead }}</div>
+
+    <div style="display:flex; flex-direction:column; border-top:1px solid rgba(255,255,255,0.07); margin-bottom:24px;">
+      <sc-for list="{{ compRows }}" as="c" hint-placeholder-count="4">
+        <div style="display:grid; grid-template-columns:1fr 54px 62px; gap:12px; align-items:center; padding:15px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+          <div style="min-width:0;">
+            <div style="font-family:'Newsreader',serif; font-size:18.5px; color: {{ c.color }};">{{ c.label }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.14em; text-transform:uppercase; color:#5b6573; margin-top:3px;">{{ c.tag }}</div>
+          </div>
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; color:#66717f; text-align:right;">{{ c.weight }}</span>
+          <span style="font-family:'Archivo'; font-weight:800; font-size:21px; color: {{ c.color }}; text-align:right;">{{ c.value }}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="border:1px solid {{ leakBorder }}; border-radius:16px; background: {{ leakBg }}; padding:20px 22px; margin-bottom:22px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color: {{ leakColor }}; margin-bottom:7px;">Primary leak</div>
+      <div style="font-family:'Newsreader',serif; font-size:21px; color:#ece7db; margin-bottom:6px;">{{ leakName }}</div>
+      <div style="font-family:'Newsreader',serif; font-size:16px; line-height:1.5; color:#8d99a8;">{{ leakBody }}</div>
+    </div>
+
+    <div onClick="{{ sync }}" style="cursor:pointer; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color: {{ syncColor }}; background: {{ syncBg }}; border:1px solid {{ syncBorder }}; padding:22px 0; border-radius:16px; margin-bottom:10px;">{{ syncLabel }}</div>
+    <div onClick="{{ discardRun }}" style="cursor:pointer; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f; padding:14px 0;">Start a new session</div>
+  </div>
+  </sc-if>
+
+  </div>
+
+  <div style="display: {{ navShow }}; position:sticky; bottom:0; background:#0B1015; border-top:1px solid rgba(255,255,255,0.07); padding:9px 8px calc(9px + env(safe-area-inset-bottom));">
+    <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:2px;">
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="5">
+        <div onClick="{{ n.onClick }}" style="cursor:pointer; padding:9px 1px 8px; border-radius:12px; background: {{ n.bg }}; display:flex; flex-direction:column; align-items:center; gap:4px;">
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:8px; letter-spacing:0.08em; color: {{ n.numColor }}; min-height:11px;">{{ n.num }}</span>
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.03em; text-transform:uppercase; color: {{ n.color }}; white-space:nowrap;">{{ n.label }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:460,&quot;height&quot;:900}}">
+// Colour has one job each. GOLD is brand and interaction only — never a verdict.
+// BLUE is reference (scratch, tour). Verdicts are the three below, and they
+// appear only on numbers, bars and result chips.
+const GOLD = '#c8a05e', CREAM = '#ece7db', BLUE = '#7fa8c9';
+const STRONG = '#4FBF7C', CAUTION = '#F2C14E', WEAK = '#E5533D', MUTE = '#66717f';
+const KEY = 'atlas.player.v3';
+const OLD_KEYS = ['atlas.forge.v1', 'atlas.forge.v2', 'atlas.forge.v3', 'atlas.player.v1', 'atlas.player.v2'];
+// Bump whenever seeded demo data changes, so a stored copy of the old seed
+// can never shadow the new one.
+const SEED_VERSION = 2;
+
+// Anything that does not match the current model is discarded rather than trusted —
+// a half-played session from an older build must never be able to blank the app.
+function validData(d) {
+  if (!d || typeof d !== 'object') return null;
+  const c = d.chipping, a = d.approach, p = d.putting, v = d.driving;
+  if (!c || !Array.isArray(c.shots) || c.shots.some(x => !x || typeof x.o !== 'number')) return null;
+  if (!a || !Array.isArray(a.shots) || !Array.isArray(a.calls) || a.shots.some(x => typeof x !== 'number')) return null;
+  if (!p || !Array.isArray(p.shots) || p.shots.some(x => typeof x !== 'number')) return null;
+  if (!v || !Array.isArray(v.tally) || v.tally.length !== 5 || v.tally.some(x => typeof x !== 'number')) return null;
+  return d;
+}
+function validSga(g) {
+  if (!g || typeof g !== 'object') return null;
+  if (typeof g.cat !== 'number' || !Array.isArray(g.shots) || g.shots.length !== 6) return null;
+  if (g.shots.some(arr => !Array.isArray(arr) || arr.some(n => typeof n !== 'number'))) return null;
+  return g;
+}
+
+const SGA_CATS = [
+  { name: 'Short chip · fairway', note: '15–20 ft from the hole, off a fairway lie. Low shot or putter — whatever gets it running early.' },
+  { name: 'Long pitch · fairway', note: '30–40 ft off a tight lie, short carry and release.' },
+  { name: 'Short chip · rough', note: '15–20 ft out of the rough. Sand wedge or lob wedge.' },
+  { name: 'Long pitch · rough', note: '30–40 ft out of the rough — the shot nobody practises.' },
+  { name: 'Bunker', note: '20–25 ft from the bunker. Pick your own lie, good or bad.' },
+  { name: 'Flop shot', note: '15–25 ft, high trajectory, landing soft. Full commitment or leave it.' }
+];
+const SGA_SCORES = [
+  { label: 'In the hole', pts: 3 }, { label: 'Inside 3 ft', pts: 2 },
+  { label: 'Inside 6 ft', pts: 1 }, { label: 'On the green', pts: 0 }, { label: 'Off the green', pts: -1 }
+];
+const SGA_BENCH = { tour: 53, hcp0: 40, hcp10: 24, hcp20: 9, hcp30: 3 };
+function sgaTarget(h) {
+  if (h <= 0) return 40;
+  if (h <= 10) return Math.round(40 - (h / 10) * 16);
+  if (h <= 20) return Math.round(24 - ((h - 10) / 10) * 15);
+  if (h <= 30) return Math.round(9 - ((h - 20) / 10) * 6);
+  return 3;
+}
+
+const CHIP_TIERS = {
+  1: { name: 'Level 1 · Developing', birdie: 'Inside two drivers', par: 'Two to four drivers', bogey: 'Outside four drivers',
+       body: 'Your short game is behind your handicap, so the Chipping Index runs on wider tolerances. Beat this tier and it tightens.' },
+  2: { name: 'Level 2 · Competitive', birdie: 'Inside one driver', par: 'One to two drivers', bogey: 'Outside two drivers',
+       body: 'Standard tolerances. This is the tier the Forge composite is calibrated against.' },
+  3: { name: 'Level 3 · Elite', birdie: 'Inside half a driver', par: 'Half to one driver', bogey: 'Outside one driver',
+       body: 'You are well ahead of your handicap around the green, so the Chipping Index tightens to keep the drill honest.' }
+};
+
+const LM_CLUBS = [
+  { k: 'wedge', label: 'Wedge', dist: 100 },
+  { k: 'iron', label: '7-iron', dist: 165 },
+  { k: 'driver', label: 'Driver', dist: 265 }
+];
+// Strokes remaining from a given proximity, and the proximity a player of a
+// given handicap is expected to average from that distance. The gap between
+// them is strokes gained; the gap between your pattern and your *centred*
+// pattern is what bias alone is costing you.
+const lmStrokes = p => 1.75 + 0.41 * Math.log(Math.max(1, p));
+const lmExpProx = (dist, hcp) => dist * (0.055 + 0.0035 * Math.max(0, hcp));
+const lmProx = (bs, bd, ss, sd) => Math.sqrt(bs * bs + bd * bd + ss * ss + sd * sd);
+const LM_PER_YD = 0.021; // driver: strokes per yard of lateral miss
+
+// Domains are identified by letter, not colour. Colour is reserved for verdict
+// (green/yellow/red), brand (gold) and reference (blue) — a category tint here
+// would read as a judgement it does not mean.
+const DOMAIN_META = {
+  driving: { label: 'Driving', letter: 'D', color: '#8d99a8', w: 30 },
+  approach: { label: 'Approach', letter: 'A', color: '#8d99a8', w: 35 },
+  chipping: { label: 'Chipping', letter: 'C', color: '#8d99a8', w: 15 },
+  putting: { label: 'Putting', letter: 'P', color: '#8d99a8', w: 20 }
+};
+const BASELINE = { driving: 14.0, approach: 8.0, chipping: -3.0, putting: 2.0 };
+
+// --- strokes gained --------------------------------------------------------
+// Indices are handicap-style (0 = scratch, lower is better). SG_EXP is the index
+// a player of handicap h is expected to post in each domain; SG_F converts a
+// point of index into strokes per round. Positive SG means you beat the
+// expectation for YOUR handicap — not a tour player's.
+const SG_EXP = { driving: 1.40, approach: 0.90, chipping: 0.20, putting: 0.35 };
+const SG_F = { driving: 0.12, approach: 0.30, chipping: 0.12, putting: 0.20 };
+function sgFor(k, idx, hcp) {
+  return +((SG_EXP[k] * hcp - idx) * SG_F[k]).toFixed(2);
+}
+function fmtSg(v) { return (v > 0 ? '+' : '') + v.toFixed(2); }
+function sgTone(v) { return v >= 0.25 ? '#4FBF7C' : v >= -0.25 ? '#F2C14E' : '#E5533D'; }
+// Grid geometry and active days mirror the Atlas dashboard calendar exactly —
+// same month, same offset, same logged days. Forge only records the Transfer
+// half of those sessions, broken out by domain.
+const CAL_DOWS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const CAL_OFFSET = 3, CAL_DAYS = 31, CAL_TODAY = 26;
+
+
+const SLOPES = [
+  { label: 'Flat', deg: 'under 1°' }, { label: 'Gentle', deg: '1–2°' },
+  { label: 'Moderate', deg: '2–3°' }, { label: 'Severe', deg: '3°+' }
+];
+// Each test is sensitive to different things. Driver does not care about stimp;
+// putting does not care about wind. Only ask for what changes that index.
+const TEST_CONDS = {
+  chipping: ['speed'],
+  putting: ['slope', 'speed'],
+  approach: ['wind', 'firm'],
+  driving: ['wind'],
+  sga: ['speed', 'slope']
+};
+const COND_BLURB = {
+  chipping: 'A chip onto stimp 11 releases twice as far as the same shot onto stimp 8. Slope is not asked for here — it changes at every one of the twenty stations.',
+  putting: 'A make rate on slow greens is not the same number as a make rate on fast ones. Record the surface or the index is not comparable.',
+  approach: 'Wind and green firmness decide whether a good number finishes close. Record both or proximity means nothing.',
+  driving: 'Wind is the only condition that moves a driving corridor. Twenty shots downwind is a different test.',
+  sga: 'Every one of these thirty shots finishes on the green. Speed and slope decide how close it stops.'
+};
+const WINDS = [
+  { label: 'Calm', note: 'under 5 mph' }, { label: 'Light', note: '5–10 mph' },
+  { label: 'Moderate', note: '10–20 mph' }, { label: 'Strong', note: '20 mph+' }
+];
+const FIRMS = [
+  { label: 'Soft', note: 'deep pitch marks, ball stops dead' },
+  { label: 'Medium', note: 'normal pitch mark, one hop and stop' },
+  { label: 'Firm', note: 'ball bounces and runs out' }
+];
+const SPEEDS = [
+  { label: 'Very slow', stimp: 'under 7' }, { label: 'Slow', stimp: '7–8' },
+  { label: 'Medium', stimp: '8–10' }, { label: 'Fast', stimp: '10–11' },
+  { label: 'Very fast', stimp: '11+' }
+];
+const BRIEFS = {
+  chipping: {
+    name: 'Chipping Index', shots: '20 shots · ~15 min',
+    rules: [
+      'Work left to right across the green like a sprinkler head — twenty stations, never the same flag twice.',
+      'The app calls the yardage (5 to 25) and a lie. Change the lie if that one is not available.',
+      'Three stations demand a high shot. Commit to it or take the double.',
+      'Every shot is scored as a hole: inside one driver is a birdie, one to two drivers a par, outside two a bogey, a mishit or missed green a double.'
+    ]
+  },
+  putting: {
+    name: 'Putting Index', shots: '20 putts · ~15 min',
+    rules: [
+      'The app calls the distance and moves you 100° around the hole after every putt.',
+      'Full read, full routine. No second balls, no re-hits.',
+      'Made is a birdie. Missed but finished within a putter length past is a par — that is good speed.',
+      'Short, or more than a putter length past, is a bogey. Pace is half the test.'
+    ]
+  },
+  approach: {
+    name: 'Approach Index', shots: '20 shots · ~15 min',
+    rules: [
+      'New target and a new club every single shot. Full routine each time.',
+      'On shots 5, 10, 15 and 20 the app calls a shape. Say it out loud before you swing.',
+      'Log where the ball finished, not how the swing felt. Par is thirty-four feet.'
+    ]
+  },
+  driving: {
+    name: 'Driving Index', shots: '20 shots · ~15 min',
+    rules: [
+      'Driver only, against a thirty-yard fairway you have picked out.',
+      'Sort the balls into five piles on the ground as you go — big left, left, fairway, right, big right.',
+      'Do not touch the phone between shots. Log the piles at the end if you prefer.'
+    ]
+  },
+  sga: {
+    name: 'Short game assessment', shots: '30 shots · ~20 min',
+    rules: [
+      'Six situations, five shots each: chip and pitch from fairway and rough, then bunker, then flop.',
+      'Points per shot — in the hole 3, inside 3 ft 2, inside 6 ft 1, on the green 0, off the green −1.',
+      'Check who is around the green before the bunker and flop sets.',
+      'Your total sets the tolerances your Chipping Index is scored against.'
+    ]
+  }
+};
+
+// The nav is the method. Four zones in order, with Today as the way in.
+const TABS = [
+  { k: 'home', num: '', label: 'Today' },
+  { k: 'build', num: '01', label: 'Construction' },
+  { k: 'calibrate', num: '02', label: 'Calibration' },
+  { k: 'transfer', num: '03', label: 'Transfer' },
+  { k: 'perform', num: '04', label: 'Performance', soon: true }
+];
+const BUILD_STEPS = [
+  { n: 1, title: 'Pivot mechanics', state: 'Completed', count: '4 / 4', done: true,
+    cond: 'All four drills verified on camera.' },
+  { n: 2, title: 'Freezers & the Proof Swing', state: 'Completed', count: '6 / 6', done: true,
+    cond: 'Path at zero, shaft lean right, ground force excellent.' },
+  { n: 3, title: 'Smoothies & the Tempo Ladder', state: 'In progress · day 14', count: '2 / 6', live: true,
+    cond: 'A clean 5-second smoothie, reviewed by your coach.' },
+  { n: 4, title: 'Real ball transfer', state: 'Locked', count: '0 / 5',
+    cond: 'Unlocks when Step 3 is completed.' }
+];
+const THREAD = [
+  { who: 'Dr. Luke Benoit', when: 'Yesterday · 6:12pm', accent: '#c8a05e',
+    border: 'rgba(200,160,94,0.32)', bg: '#1e2733',
+    body: 'Watched the three reps from Friday. Ground force is holding at 6 seconds, which is the whole point — do not chase 5 yet. Give me two more sessions at 6 and film the last set each time.' },
+  { who: 'You', when: 'Friday · 7:40am', accent: '#8d99a8',
+    border: 'rgba(255,255,255,0.08)', bg: '#1a222e',
+    body: 'Felt like I lost the left side on the third rep. Sending all four sets rather than my best one.' },
+  { who: 'Coach Phil · Performance', when: 'Wed · 11:05am', accent: '#7fa8c9',
+    border: 'rgba(127,168,201,0.22)', bg: '#1a222e',
+    body: 'Adding a hip-hinge pattern before your lift days. Two minutes, before you touch a club — it will make the pivot cheaper to hold.' }
+];
+
+const DOMAIN_DEEP = {
+  driving: {
+    what: 'Twenty drivers against a thirty-yard corridor, sorted into five piles. It is not distance and it is not fairways hit — it is how far offline your misses finish, because a playable miss and a reload are two different shots.',
+    strong: 'Your corridor is holding. Big misses are rare enough that the tee shot is not what is costing you.',
+    weak: 'The corridor is leaking. Look at which side — a one-sided miss is a setup or path problem, a two-sided miss is a face-control problem, and they need opposite work.'
+  },
+  approach: {
+    what: 'Twenty shots to marked targets, new club and new target every time, with a called shape on four of them. Proximity against a thirty-four foot par, plus whether you can produce a shape on demand.',
+    strong: 'Approach is your strength, which matters more here than anywhere — it carries thirty-five percent of the composite.',
+    weak: 'This is the heaviest weighted domain in the app. A stroke found here is worth more than a stroke found anywhere else.'
+  },
+  chipping: {
+    what: 'Twenty stations across the green, five to twenty-five yards, changing lie every shot. Each one scored as a hole against your calibrated tolerance rather than measured in feet.',
+    strong: 'Your short game is ahead of your handicap. Protect it at maintenance volume and spend the time elsewhere.',
+    weak: 'Chipping carries only fifteen percent of the composite, so fix it because it is cheap to fix — not because it is the biggest number.'
+  },
+  putting: {
+    what: 'Twenty putts on a hundred-degree rotation at five distances, logged as made, good speed, or poor pace. The three-way split is what lets the app model your line and your pace separately.',
+    strong: 'The putter is gaining you strokes against your handicap. Keep the rotation in your weekly work so it stays there.',
+    weak: 'Run the index and read the two parameters — line error and pace control are different problems with different drills, and guessing which one you have is how people waste a winter.'
+  }
+};
+
+const LIES = ['Fairway', 'Light rough', 'Heavy rough', 'Bunker'];
+const CHIP_OUT = [
+  { label: 'Birdie', rule: 'Inside one driver', v: -1, tone: STRONG_C() },
+  { label: 'Par', rule: 'One to two drivers', v: 0, tone: '#ece7db' },
+  { label: 'Bogey', rule: 'Outside two drivers', v: 1, tone: '#F2C14E' },
+  { label: 'Double', rule: 'Mishit or missed green', v: 2, tone: '#E5533D' }
+];
+function STRONG_C() { return '#4FBF7C'; }
+
+// 20 stations, worked left to right across the green like a sprinkler
+const CHIP_SEQ = [
+  { yds: 5, lie: 0 }, { yds: 8, lie: 1 }, { yds: 12, lie: 0 }, { yds: 6, lie: 2, high: 'High shot — short-sided' },
+  { yds: 15, lie: 0 }, { yds: 20, lie: 1 }, { yds: 10, lie: 3 }, { yds: 25, lie: 0 },
+  { yds: 7, lie: 1 }, { yds: 18, lie: 0 }, { yds: 12, lie: 2 }, { yds: 22, lie: 0, high: 'High shot — carry the bunker' },
+  { yds: 5, lie: 3 }, { yds: 16, lie: 1 }, { yds: 9, lie: 0 }, { yds: 25, lie: 2 },
+  { yds: 14, lie: 0 }, { yds: 20, lie: 3 }, { yds: 8, lie: 0, high: 'High shot — tight flag, no run' }, { yds: 12, lie: 1 }
+];
+const APP_B = [
+  { label: "Inside 10'", ft: 7 }, { label: "10–20'", ft: 15 }, { label: "20–35'", ft: 27 },
+  { label: "35–60'", ft: 47 }, { label: "60–90'", ft: 75 }, { label: 'Missed green', ft: 110 }
+];
+const CORRIDOR = [
+  { label: 'Big left', pen: 2 }, { label: 'Left', pen: 1 }, { label: 'Fairway', pen: 0 },
+  { label: 'Right', pen: 1 }, { label: 'Big right', pen: 2 }
+];
+const PUTT_SEQ = [6, 12, 20, 6, 30, 12, 6, 20, 40, 12, 6, 30, 20, 6, 12, 40, 20, 6, 30, 12];
+// 0 = made, 1 = good speed miss (finished inside a putter length past), 2 = poor pace
+const PUTT_OUT = [
+  { label: 'Made', note: 'Dropped', v: -1, tone: '#4FBF7C' },
+  { label: 'Good speed', note: 'Missed, finished within a putter past', v: 0, tone: '#ece7db' },
+  { label: 'Poor pace', note: 'Short, or more than a putter past', v: 1, tone: '#E5533D' }
+];
+
+// --- make-rate model -------------------------------------------------------
+// Two parameters explain a putting stroke: where it starts (line) and how hard
+// it is hit (pace). Fitting both across all 20 putts pools far more information
+// than reading five separate make rates off five small samples.
+const CAPTURE_IN = 1.9;               // effective half-width of the hole, inches
+function normCdf(x) {
+  const t = 1 / (1 + 0.2316419 * Math.abs(x));
+  const d = 0.3989423 * Math.exp(-x * x / 2);
+  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+  return x > 0 ? 1 - p : p;
+}
+function pLine(d, k) {                 // P(start line good enough) at d feet
+  if (d <= 0) return 1;
+  return Math.max(0.0001, Math.min(0.9999, 2 * normCdf(CAPTURE_IN / (k * d)) - 1));
+}
+function fitLine(attempts) {           // MLE over dispersion k, inches per foot
+  if (!attempts.length) return 0.42;
+  let bestK = 0.42, bestLL = -Infinity;
+  for (let k = 0.08; k <= 1.4; k += 0.005) {
+    let ll = 0;
+    for (let i = 0; i < attempts.length; i++) {
+      const p = pLine(attempts[i].d, k);
+      ll += attempts[i].made ? Math.log(p) : Math.log(1 - p);
+    }
+    if (ll > bestLL) { bestLL = ll; bestK = k; }
+  }
+  return bestK;
+}
+const TOUR_K = 0.30, TOUR_Q = 0.97;
+const PUTT_EXP = { 6: 0.50, 12: 0.25, 20: 0.12, 30: 0.06, 40: 0.03 };
+const CALL_AT = [4, 9, 14, 19];
+const CALL_SHAPES = ['Draw', 'Fade', 'High and soft', 'Low and running'];
+
+const INDICES = [
+  { k: 'chipping', step: '01', name: 'Chipping Index', shots: '20 shots', w: 15,
+    note: 'Sprinkler rotation, 5 to 25 yards — every shot scored as a hole.',
+    cap: 'Work left to right across the green like a sprinkler head — twenty stations, 5 to 25 yards, changing lie each time. Every shot is scored as if you had to hole the putt: inside one driver-length is a birdie, one to two drivers is a par, outside two is a bogey, and a mishit or missed green is a double.' },
+  { k: 'putting', step: '02', name: 'Putting Index', shots: '20 putts', w: 20,
+    note: '100° rotation around the hole — the app calls the distance.',
+    cap: 'Move around the hole as the app calls it. Read it, hit it, log it.' },
+  { k: 'approach', step: '03', name: 'Approach Index', shots: '20 shots', w: 35,
+    note: 'Marked targets 80–220 yds, called shape on 5, 10, 15 and 20.',
+    cap: 'New target and full routine every shot. Par for this drill is thirty-four feet.' },
+  { k: 'driving', step: '04', name: 'Driving Index', shots: '20 shots', w: 30,
+    note: 'Five-column corridor tally against a 30-yard fairway.',
+    cap: 'Driver only. Tap the column the ball finished in — the pile, not the swing.' }
+];
+
+const SETUP = [
+  'Range with marked targets, 80–220 yds',
+  'Short game green with multiple flags',
+  'Putting green with slope',
+  '20 balls, full bag, no warm-up shots counted'
+];
+
+const empty = () => ({
+  chipping: { shots: [] }, putting: { shots: [] },
+  approach: { shots: [], calls: [] }, driving: { tally: [0, 0, 0, 0, 0] }
+});
+
+class Component extends DCLogic {
+  state = {
+    screen: 'home', active: null, data: empty(), saved: {}, last: null,
+    setup: [false, false, false, false], online: true, canInstall: false, synced: false,
+    curLie: null, hcp: 10, chipTier: 2, carry: 235,
+    onboarded: false, interest: { driving: false, approach: false, chipping: false, putting: false },
+    practice: {}, calSel: CAL_TODAY,
+    timers: {}, running: null, now: Date.now(), kitOpen: false,
+    brief: null, domain: null, slope: null, speed: null, wind: null, firm: null,
+    confirmDiscard: false, confirmClear: false,
+    lmClub: 'iron', lm: {}, lmErr: null,
+    sun: false, wake: false, queue: [],
+    sga: { cat: 0, shots: [[], [], [], [], [], []], done: false }
+  };
+
+  componentDidMount() {
+    try {
+      OLD_KEYS.forEach(k => window.localStorage.removeItem(k));
+    } catch (e) {}
+    try {
+      const raw = window.localStorage.getItem(KEY);
+      if (raw) {
+        const p = JSON.parse(raw);
+        const d = p ? validData(p.data) : null;
+        const g = p ? validSga(p.sga) : null;
+        this.setState({
+          data: d || empty(),
+          saved: d && p.saved && typeof p.saved === 'object' ? p.saved : {},
+          setup: Array.isArray(p && p.setup) && p.setup.length === 4 ? p.setup : this.state.setup,
+          sga: g || this.state.sga,
+          chipTier: p && [1, 2, 3].indexOf(p.chipTier) > -1 ? p.chipTier : 2,
+          onboarded: !!(p && p.onboarded),
+          hcp: p && typeof p.hcp === 'number' ? p.hcp : 10,
+          carry: p && typeof p.carry === 'number' ? p.carry : 235,
+          interest: p && p.interest && typeof p.interest === 'object' ? p.interest : this.state.interest,
+          practice: p && p.practice && typeof p.practice === 'object' ? p.practice : {},
+          timers: p && p.timers && typeof p.timers === 'object' ? p.timers : {},
+          sun: !!(p && p.sun),
+          queue: Array.isArray(p && p.queue) ? p.queue : [],
+        });
+      }
+    } catch (e) {}
+    // Decided outside the storage guard — a fresh install has no payload at all
+    // and must still land on onboarding.
+    this.setState(st => ({ screen: st.onboarded ? 'home' : 'intro', online: navigator.onLine !== false }));
+    // Coming back online drains the queue on a visible delay, so the player
+    // actually sees the pending count go down rather than it vanishing.
+    this._on = () => {
+      this.setState({ online: true });
+      window.setTimeout(() => this.setState({ queue: [], synced: true }), 1400);
+    };
+    this._off = () => this.setState({ online: false });
+    this._vis = () => {
+      if (document.visibilityState === 'visible') {
+        this.componentDidUpdate();
+      } else { this._wake = null; }
+    };
+    document.addEventListener('visibilitychange', this._vis);
+    window.addEventListener('online', this._on);
+    window.addEventListener('offline', this._off);
+    this._tick = window.setInterval(() => {
+      if (this.state.running) this.setState({ now: Date.now() });
+    }, 1000);
+    this._bip = e => { e.preventDefault(); this._deferred = e; this.setState({ canInstall: true }); };
+    window.addEventListener('beforeinstallprompt', this._bip);
+    if ('serviceWorker' in navigator) {
+      try {
+        caches.keys().then(ks => ks.filter(k => k !== 'atlas-player-v4').forEach(k => caches.delete(k))).catch(() => {});
+        navigator.serviceWorker.register('./sw.js').then(r => { if (r && r.update) r.update(); }).catch(() => {});
+      } catch (e) {}
+    }
+  }
+  // Timers are the point: nobody knows what these drills actually cost until
+  // the app measures it. Accumulated per index, paused whenever you leave.
+  stopped() {
+    const r = this.state.running;
+    if (!r) return this.state.timers || {};
+    const t = Object.assign({}, this.state.timers);
+    t[r.k] = (t[r.k] || 0) + (Date.now() - r.at);
+    return t;
+  }
+  enter = (k, screen) => () => this.persist({
+    timers: this.stopped(), running: { k: k, at: Date.now() },
+    screen: screen, active: k === 'sga' ? this.state.active : k, now: Date.now()
+  });
+  leave = screen => () => this.persist({ timers: this.stopped(), running: null, screen: screen });
+  elapsed(k) {
+    const s = this.state, base = (s.timers && s.timers[k]) || 0;
+    return base + (s.running && s.running.k === k ? s.now - s.running.at : 0);
+  }
+  clock(ms) {
+    const t = Math.max(0, Math.round(ms / 1000));
+    return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
+  }
+
+  componentWillUnmount() {
+    window.clearInterval(this._tick);
+    window.removeEventListener('online', this._on);
+    window.removeEventListener('offline', this._off);
+    window.removeEventListener('beforeinstallprompt', this._bip);
+    document.removeEventListener('visibilitychange', this._vis);
+    if (this._wake) { try { this._wake.release(); } catch (e) {} this._wake = null; }
+  }
+
+  persist(next) {
+    this.setState(next, () => {
+      try {
+        window.localStorage.setItem(KEY, JSON.stringify({
+          data: this.state.data, saved: this.state.saved, setup: this.state.setup,
+          sga: this.state.sga, chipTier: this.state.chipTier,
+          onboarded: this.state.onboarded, hcp: this.state.hcp,
+          carry: this.state.carry, interest: this.state.interest,
+          practice: this.state.practice, timers: this.state.timers,
+          sun: this.state.sun, queue: this.state.queue,
+          seedVersion: SEED_VERSION
+        }));
+      } catch (e) {}
+    });
+  }
+
+  // Everything the phone needs to survive a range session: contrast for
+  // sunlight, a screen that stays awake, and an honest sync count.
+  fieldVals() {
+    const s = this.state, sun = !!s.sun;
+    const pend = (s.queue || []).length;
+    return {
+      shellFilter: sun ? 'contrast(1.16) brightness(1.26) saturate(0.86)' : 'none',
+      shellBg: sun ? '#111820' : '#0E141B',
+      sunOn: sun,
+      sunToggle: () => { this.buzz('tick'); this.persist({ sun: !sun }); },
+      sunLabel: sun ? 'Sunlight on' : 'Sunlight',
+      sunColor: sun ? '#0E141B' : '#8d99a8',
+      sunBg: sun ? '#f2ede1' : 'transparent',
+      sunBorder: sun ? '#f2ede1' : 'rgba(255,255,255,0.14)',
+      wakeLabel: s.wake ? 'Screen locked awake' : 'Screen may sleep',
+      wakeColor: s.wake ? '#4fbf7c' : '#5b6573',
+      queueLabel: pend
+        ? pend + (pend === 1 ? ' session waiting to sync' : ' sessions waiting to sync')
+        : s.online ? 'All synced' : 'Offline · saving on device',
+      queueColor: pend ? '#c8a05e' : s.online ? '#4fbf7c' : '#8d99a8',
+      queueDot: pend ? '#c8a05e' : s.online ? '#4fbf7c' : '#8d99a8',
+      queueShow: pend || !s.online ? 'flex' : 'none'
+    };
+  }
+
+  countOf(k) {
+    const d = this.state.data[k];
+    return k === 'driving' ? d.tally.reduce((a, b) => a + b, 0) : d.shots.length;
+  }
+  totalShots() { return INDICES.reduce((a, i) => a + this.countOf(i.k), 0); }
+
+  score(k) {
+    const d = this.state.data[k];
+    if (k === 'chipping') {
+      if (!d.shots.length) return 0;
+      return +d.shots.reduce((a, x) => {
+        const o = CHIP_OUT[x && x.o];
+        return a + (o ? o.v : 0);
+      }, 0).toFixed(1);
+    }
+    if (k === 'approach2') { return 0; }
+    if (k === 'approach') {
+      if (!d.shots.length) return 0;
+      const avg = d.shots.reduce((a, i) => a + APP_B[i].ft, 0) / d.shots.length;
+      const missed = d.calls.filter(c => !c).length;
+      return +(((avg - 34) / 2.5) + missed * 0.8).toFixed(1);
+    }
+    if (k === 'putting') {
+      if (!d.shots.length) return 0;
+      return +d.shots.reduce((a, x) => {
+        const o = PUTT_OUT[typeof x === 'number' ? x : 0];
+        return a + (o ? o.v : 0);
+      }, 0).toFixed(1);
+    }
+    const hit = d.tally.reduce((a, b) => a + b, 0);
+    if (!hit) return 0;
+    const pen = d.tally.reduce((a, n, i) => a + n * CORRIDOR[i].pen, 0);
+    return +(pen - hit * 0.5).toFixed(1);
+  }
+
+  fmt(n) { return (n > 0 ? '+' : '') + n.toFixed(1); }
+  tone(n) { return n <= -1 ? STRONG : n <= 5 ? CAUTION : WEAK; }
+
+  // Haptics. A tally you can feel is a tally you don't have to look down to
+  // confirm — which is the whole point on a range in the sun.
+  buzz(kind) {
+    try {
+      if (!navigator.vibrate) return;
+      const P = { tick: 12, undo: [8, 40, 8], save: [18, 50, 34], level: [22, 60, 22, 60, 46] };
+      navigator.vibrate(P[kind] || 12);
+    } catch (e) {}
+  }
+
+  // Wake Lock: the screen must not sleep mid-index. Held while a drill screen
+  // is up, released everywhere else, re-acquired when the app comes back.
+  async holdWake(want) {
+    if (this._wakeBusy) return;
+    this._wakeBusy = true;
+    try {
+      if (!('wakeLock' in navigator)) return;
+      if (want && !this._wake) {
+        this._wake = await navigator.wakeLock.request('screen');
+        this._wake.addEventListener('release', () => { this._wake = null; });
+        this.setState({ wake: true });
+      } else if (!want && this._wake) {
+        await this._wake.release();
+        this._wake = null;
+        this.setState({ wake: false });
+      }
+    } catch (e) { this.setState({ wake: false }); }
+    finally { this._wakeBusy = false; }
+  }
+  componentDidUpdate() {
+    const capturing = ['capture', 'sga'].indexOf(this.state.screen) > -1;
+    if (capturing !== !!this._wake) this.holdWake(capturing);
+  }
+
+  logShot = (k, val) => () => {
+    this.buzz('tick');
+    const data = JSON.parse(JSON.stringify(this.state.data));
+    if (k === 'driving') {
+      if (data.driving.tally.reduce((a, b) => a + b, 0) >= 20) return;
+      data.driving.tally[val]++;
+    } else {
+      if (data[k].shots.length >= 20) return;
+      data[k].shots.push(val);
+    }
+    this.persist({ data: data });
+  };
+  logCall = held => () => {
+    const data = JSON.parse(JSON.stringify(this.state.data));
+    data.approach.calls.push(held);
+    this.persist({ data: data });
+  };
+  undoShot = () => {
+    const k = this.state.active;
+    if (!k) return;
+    this.buzz('undo');
+    const data = JSON.parse(JSON.stringify(this.state.data));
+    if (k === 'driving') {
+      for (let i = data.driving.tally.length - 1; i >= 0; i--) {
+        if (data.driving.tally[i] > 0) { data.driving.tally[i]--; break; }
+      }
+    } else {
+      if (!data[k].shots.length) return;
+      const n = data[k].shots.length - 1;
+      data[k].shots.pop();
+      if (k === 'approach' && CALL_AT.indexOf(n) > -1) data.approach.calls.pop();
+    }
+    this.persist({ data: data });
+  };
+
+  parseLm(text, fileName) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim().length);
+    if (lines.length < 3) return { error: 'That file has no rows Atlas can read.' };
+    const split = l => l.indexOf('\t') > -1 ? l.split('\t') : l.split(',');
+    let hi = -1, cCarry = -1, cSide = -1, sideFt = false, carryFt = false;
+    for (let i = 0; i < Math.min(8, lines.length); i++) {
+      const cells = split(lines[i]).map(c => c.replace(/"/g, '').trim().toLowerCase());
+      const ca = cells.findIndex(c => /carry|distance|total/.test(c));
+      const sd = cells.findIndex(c => /side|offline|lateral|deviation|left.*right/.test(c));
+      if (ca > -1 && sd > -1) {
+        hi = i; cCarry = ca; cSide = sd;
+        sideFt = /ft|feet/.test(cells[sd]); carryFt = /ft|feet/.test(cells[ca]);
+        break;
+      }
+    }
+    if (hi < 0) return { error: 'Atlas could not find a carry column and a side column in that file.' };
+
+    const shots = [];
+    for (let i = hi + 1; i < lines.length; i++) {
+      const cells = split(lines[i]).map(c => c.replace(/["']/g, '').trim());
+      if (cells.length <= Math.max(cCarry, cSide)) continue;
+      let carry = parseFloat(cells[cCarry]);
+      let side = parseFloat((cells[cSide] || '').replace(/^([LR])\s*/i, (m, d) => d.toUpperCase() === 'L' ? '-' : ''));
+      if (!isFinite(carry) || !isFinite(side)) continue;
+      if (carryFt) carry /= 3;
+      if (sideFt) side /= 3;
+      if (carry < 20) continue;
+      shots.push({ carry: carry, side: side });
+    }
+    if (shots.length < 5) return { error: 'Only ' + shots.length + ' usable shots in that file. Atlas needs at least five.' };
+
+    const club = LM_CLUBS.filter(c => c.k === this.state.lmClub)[0];
+    const n = shots.length;
+    const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+    const sd = a => { const m = mean(a); return Math.sqrt(mean(a.map(v => (v - m) * (v - m)))); };
+    const carries = shots.map(x => x.carry), sides = shots.map(x => x.side);
+    const mCarry = mean(carries), sdCarry = sd(carries);
+    const bSide = mean(sides), sdSide = sd(sides);
+    // Depth bias is measured against the player's own average carry, so a club
+    // that simply flies shorter than nominal is not scored as a miss.
+    const bDepth = mCarry - club.dist;
+    const hcp = this.state.hcp;
+    const exp = lmExpProx(club.dist, hcp);
+
+    let sg, biasLost, unitNote;
+    if (club.k === 'driver') {
+      const act = Math.sqrt(bSide * bSide + sdSide * sdSide);
+      const centred = sdSide;
+      sg = +(LM_PER_YD * (exp - act)).toFixed(2);
+      biasLost = +(LM_PER_YD * (act - centred)).toFixed(2);
+      unitNote = 'lateral only — depth is not a driver miss';
+    } else {
+      const act = lmProx(bSide, bDepth, sdSide, sdCarry);
+      const centred = lmProx(0, 0, sdSide, sdCarry);
+      sg = +(lmStrokes(exp) - lmStrokes(act)).toFixed(2);
+      biasLost = +(lmStrokes(act) - lmStrokes(centred)).toFixed(2);
+      unitNote = Math.round(act) + ' yd average proximity';
+    }
+    biasLost = Math.max(0, biasLost);
+
+    const sideWord = Math.abs(bSide) < 1.5 ? 'centred' : (bSide < 0 ? 'left' : 'right') + ' ' + Math.abs(bSide).toFixed(1) + ' yd';
+    const depthWord = Math.abs(bDepth) < 3 ? 'on number' : bDepth < 0 ? Math.abs(bDepth).toFixed(0) + ' yd short' : bDepth.toFixed(0) + ' yd long';
+    const read = biasLost >= 0.12
+      ? 'Your centre sits ' + sideWord + (club.k === 'driver' ? '' : ' and ' + depthWord) + '. That offset alone is ' + biasLost.toFixed(2) + ' strokes a shot — it is the cheapest thing here, because it is aim and start line, not a tighter pattern.'
+      : Math.abs(bSide) < 1.5
+        ? 'Your pattern is centred. What is left is spread, and spread is a build problem — a wider pattern does not get narrower by aiming somewhere else.'
+        : 'Your centre is ' + sideWord + ', close enough that bias is not what is costing you. The spread is the honest number to work on.';
+
+    return {
+      file: fileName, n: n, sg: sg, bias: biasLost, read: read,
+      rows: [
+        { label: 'Centre of pattern', value: sideWord + (club.k === 'driver' ? '' : ' · ' + depthWord) },
+        { label: 'Lateral spread, 1 SD', value: sdSide.toFixed(1) + ' yd' },
+        { label: 'Carry spread, 1 SD', value: sdCarry.toFixed(1) + ' yd' },
+        { label: 'Average carry', value: Math.round(mCarry) + ' yd' },
+        { label: 'Your standard', value: Math.round(exp) + ' yd · ' + unitNote }
+      ]
+    };
+  }
+
+  renderVals() {
+    const s = this.state, k = s.active;
+    const total = this.totalShots();
+    const savedKeys = Object.keys(s.saved).filter(x => s.saved[x]);
+    const allDone = savedKeys.length === 4;
+    const started = total > 0;
+
+    // ---- capture-surface values
+    const idx = k ? INDICES.filter(x => x.k === k)[0] : null;
+    const count = k ? this.countOf(k) : 0;
+    const full = count >= 20;
+    const d = k ? s.data[k] : null;
+    const callSlot = k === 'approach' ? CALL_AT.indexOf(count) : -1;
+    const needCall = k === 'approach' && callSlot > -1 && d.calls.length === callSlot && !full;
+    const live = k ? this.score(k) : 0;
+
+    let liveRead = '';
+    if (k === 'chipping' && count) { const v = this.score('chipping'); liveRead = (v > 0 ? '+' : '') + v + ' thru ' + count; }
+    else if (k === 'approach' && count) liveRead = (d.shots.reduce((a, i) => a + APP_B[i].ft, 0) / count).toFixed(0) + ' ft avg';
+    else if (k === 'putting' && count) liveRead = d.shots.filter(x => x === 0).length + ' made';
+    else if (k === 'driving' && count) liveRead = d.tally[2] + (d.tally[2] === 1 ? ' fairway' : ' fairways');
+    else liveRead = 'No shots yet';
+
+    const chipStep = CHIP_SEQ[Math.min(count, 19)];
+    const chipLie = (s.curLie === null || s.curLie === undefined) ? chipStep.lie : s.curLie;
+    const tier = CHIP_TIERS[s.chipTier] || CHIP_TIERS[2];
+    const bucketDefs = APP_B;
+
+    // ---- short game assessment
+    const g = s.sga && s.sga.shots ? s.sga : { cat: 0, shots: [[], [], [], [], [], []], done: false };
+    const gCat = g.cat || 0, gShots = g.shots[gCat] || [];
+    const gLogged = g.shots.reduce((a, arr) => a + arr.length, 0);
+    const catTotal = arr => arr.reduce((a, p) => a + p, 0);
+    const gTotal = g.shots.reduce((a, arr) => a + catTotal(arr), 0);
+    const gTarget = sgaTarget(s.hcp);
+    const gDiff = gTotal - gTarget;
+    const catScores = g.shots.map(catTotal);
+    const bestI = catScores.indexOf(Math.max.apply(null, catScores));
+    const worstI = catScores.indexOf(Math.min.apply(null, catScores));
+    const tierFor = df => df >= 8 ? 3 : df >= -4 ? 2 : 1;
+    const newTier = CHIP_TIERS[tierFor(gDiff)];
+    const catFull = gShots.length >= 5;
+    const lastCat = gCat === 5;
+    const buckets = bucketDefs.map((b, i) => {
+      const n = d && d.shots ? d.shots.filter(x => x === i).length : 0;
+      return {
+        label: b.label, count: n ? n + ' logged' : '—',
+        onClick: full ? () => {} : this.logShot(k, i),
+        border: n ? 'rgba(200,160,94,0.45)' : 'rgba(255,255,255,0.1)',
+        bg: n ? 'rgba(200,160,94,0.09)' : 'rgba(255,255,255,0.02)',
+        color: n ? GOLD : CREAM
+      };
+    });
+
+    const puttFt = PUTT_SEQ[Math.min(count, 19)];
+    const puttPosList = ['top of the slope', 'below the hole', 'left break', 'right break', 'straight uphill'];
+
+    // ---- result screen
+    const rk = s.last, rIdx = rk ? INDICES.filter(x => x.k === rk)[0] : null;
+    const rVal = rk ? this.score(rk) : 0;
+    const rd = rk ? s.data[rk] : null;
+    let rStats = [];
+    if (rk === 'chipping') rStats = [
+      { label: 'Birdies', value: rd.shots.filter(x => x && x.o === 0).length },
+      { label: 'Pars', value: rd.shots.filter(x => x && x.o === 1).length },
+      { label: 'Bogeys', value: rd.shots.filter(x => x && x.o === 2).length },
+      { label: 'Doubles', value: rd.shots.filter(x => x && x.o === 3).length },
+      { label: 'From bunker or heavy rough', value: rd.shots.filter(x => x && x.lie >= 2).length + ' of 20' },
+      { label: 'High shots', value: rd.shots.filter(x => x && x.high).length + ' of 20' }
+    ];
+    else if (rk === 'approach') rStats = [
+      { label: 'Average proximity', value: (rd.shots.reduce((a, i) => a + APP_B[i].ft, 0) / Math.max(rd.shots.length, 1)).toFixed(0) + ' ft' },
+      { label: 'Par', value: '34 ft' },
+      { label: 'Called shapes held', value: rd.calls.filter(Boolean).length + ' of ' + rd.calls.length },
+      { label: 'Greens missed', value: rd.shots.filter(i => i === 5).length }
+    ];
+    else if (rk === 'putting') rStats = [
+      { label: 'Putts made', value: rd.shots.filter(x => x === 0).length + ' of 20' },
+      { label: 'Good speed misses', value: rd.shots.filter(x => x === 1).length },
+      { label: 'Poor pace misses', value: rd.shots.filter(x => x === 2).length },
+      { label: 'Made inside 6 ft', value: rd.shots.filter((v, i) => v === 0 && PUTT_SEQ[i] === 6).length + ' of 6' }
+    ];
+    else if (rk === 'driving') rStats = [
+      { label: 'Fairways', value: rd.tally[2] + ' of 20' },
+      { label: 'Playable misses', value: (rd.tally[1] + rd.tally[3]) + '' },
+      { label: 'Big misses', value: (rd.tally[0] + rd.tally[4]) + '' }
+    ];
+
+    // ---- putting make-rate model (result screen)
+    let curve = null;
+    if (rk === 'putting' && rd && rd.shots.length) {
+      const shots = rd.shots.map((o, i) => ({ o: o, d: PUTT_SEQ[i] }));
+      const goodSpeed = shots.filter(x => x.o !== 2);
+      const q = goodSpeed.length / shots.length;
+      const kFit = fitLine(goodSpeed.map(x => ({ d: x.d, made: x.o === 0 })));
+      const pYou = dd => pLine(dd, kFit) * q;
+      const pTour = dd => pLine(dd, TOUR_K) * TOUR_Q;
+      const X0 = 34, X1 = 292, Y0 = 8, Y1 = 122, D0 = 3, D1 = 50;
+      const px = dd => X0 + (dd - D0) / (D1 - D0) * (X1 - X0);
+      const py = p => Y1 - p * (Y1 - Y0);
+      const build = fn => {
+        let s = '';
+        for (let dd = D0; dd <= D1; dd += 1) s += (dd === D0 ? 'M' : 'L') + px(dd).toFixed(1) + ' ' + py(fn(dd)).toFixed(1);
+        return s;
+      };
+      const youPath = build(pYou);
+      const bands = [6, 12, 20, 30, 40];
+      curve = {
+        youPath: youPath,
+        youArea: youPath + 'L' + px(D1).toFixed(1) + ' ' + Y1 + 'L' + px(D0).toFixed(1) + ' ' + Y1 + 'Z',
+        tourPath: build(pTour),
+        grid: [0.25, 0.5, 0.75].map(f => ({ y: py(f).toFixed(1) })),
+        ticks: ["3'", "15'", "25'", "38'", "50'"],
+        dots: bands.map(b => {
+          const att = shots.filter(x => x.d === b);
+          const madeN = att.filter(x => x.o === 0).length;
+          return {
+            x: px(b).toFixed(1), y: py(madeN / att.length).toFixed(1),
+            fill: madeN / att.length >= pTour(b) ? STRONG : CAUTION
+          };
+        }),
+        kFit: kFit, q: q,
+        table: bands.map(b => ({
+          dist: b + ' feet',
+          you: Math.round(pYou(b) * 100) + '%',
+          tour: 'tour ' + Math.round(pTour(b) * 100) + '%',
+          color: pYou(b) >= pTour(b) ? STRONG : pYou(b) >= pTour(b) * 0.6 ? CAUTION : WEAK
+        }))
+      };
+    }
+
+    // ---- composite
+    const scores = {};
+    INDICES.forEach(i => { scores[i.k] = this.score(i.k); });
+    // ---- dashboard: stats, weighted recommendation, calendar
+    const DOM_KEYS = ['driving', 'approach', 'chipping', 'putting'];
+    const lmr = (s.lm || {})[s.lmClub] || null;
+    const anySaved = DOM_KEYS.some(x => !!s.saved[x]);
+    // Until something real is logged, every figure on Today is seeded — say so.
+    const hasHistory = anySaved || !!(s.sga && s.sga.done);
+    const shown = {};
+    DOM_KEYS.forEach(x => { shown[x] = s.saved[x] ? this.score(x) : BASELINE[x]; });
+    const heroComp = +DOM_KEYS.reduce((a, x) => a + shown[x] * DOMAIN_META[x].w / 100, 0).toFixed(1);
+    const maxAbs = Math.max.apply(null, DOM_KEYS.map(x => Math.abs(shown[x] * DOMAIN_META[x].w / 100))) || 1;
+
+    const sgBy = {};
+    DOM_KEYS.forEach(x => { sgBy[x] = sgFor(x, shown[x], s.hcp); });
+    const sgTotal = +DOM_KEYS.reduce((a, x) => a + sgBy[x], 0).toFixed(2);
+    const playsLike = Math.max(-4, +(s.hcp - sgTotal).toFixed(1));
+    const gap = Math.max(0, +sgTotal.toFixed(1));
+
+    // Ranked by strokes gained — worst first. This is the same number the rows
+    // show, so the card and the table can never disagree.
+    const ranked = DOM_KEYS.map(x => ({
+      k: x, label: DOMAIN_META[x].label, color: DOMAIN_META[x].color,
+      w: DOMAIN_META[x].w, sg: sgBy[x]
+    })).sort((a, b) => a.sg - b.sg);
+    const recTop = ranked[0];
+    const sgHigh = ranked[ranked.length - 1].sg;
+    const deficits = ranked.map(r => (sgHigh - r.sg) + 0.15);
+    const defSum = deficits.reduce((a, b) => a + b, 0) || 1;
+    const BUDGET = 180;
+    const recMins = ranked.map((r, i) => ({
+      label: r.label, color: r.color, lead: i === 0,
+      mins: Math.round((30 + deficits[i] / defSum * (BUDGET - 120)) / 5) * 5
+    }));
+    const recMax = Math.max.apply(null, recMins.map(r => r.mins)) || 1;
+    const sgAbsMax = Math.max.apply(null, DOM_KEYS.map(x => Math.abs(sgBy[x]))) || 1;
+
+    // Empty by default because the seed is gone, not because the render hides
+    // it — anything the player logs here must show up immediately.
+    const practice = s.practice || {};
+    const selDoms = practice[s.calSel] || [];
+    const calDaysUsed = Object.keys(practice).filter(x => (practice[x] || []).length).length;
+    let calStreak = 0;
+    for (let dd = CAL_TODAY; dd >= 1; dd--) {
+      if ((practice[dd] || []).length) calStreak++;
+      else if (dd < CAL_TODAY) break;
+    }
+    const calCells = [];
+    for (let i = 0; i < CAL_OFFSET; i++) calCells.push({
+      num: '', cursor: 'default', border: 'transparent', bg: 'transparent',
+      numColor: 'transparent', dots: [], onClick: () => {}
+    });
+    for (let dnum = 1; dnum <= CAL_DAYS; dnum++) {
+      const doms = practice[dnum] || [];
+      const isSel = dnum === s.calSel, future = dnum > CAL_TODAY;
+      calCells.push({
+        num: String(dnum), cursor: 'pointer',
+        onClick: () => this.setState({ calSel: dnum }),
+        border: isSel ? GOLD : doms.length ? 'rgba(200,160,94,0.22)' : 'rgba(255,255,255,0.07)',
+        bg: isSel ? '#26303f' : future ? 'rgba(255,255,255,0.012)' : doms.length ? '#1e2733' : '#161d28',
+        numColor: isSel ? CREAM : future ? '#4d5765' : doms.length ? '#c3cdd9' : '#66717f',
+        dots: doms.map(x => ({ bg: DOMAIN_META[x].color, letter: DOMAIN_META[x].letter }))
+      });
+    }
+
+    // ---- 5-axis Practice DNA. Indices are handicap-style (lower is better),
+    // so they invert onto a 0–100 axis; speed/distance comes off driver carry.
+    const axisFrom = v => Math.max(8, Math.min(100, 70 - v * 2.2));
+    const carryPct = Math.max(8, Math.min(100, (s.carry - 150) / 170 * 100));
+    const DNA = [
+      { label: 'OFF THE TEE', v: axisFrom(shown.driving) },
+      { label: 'APPROACH', v: axisFrom(shown.approach) },
+      { label: 'SPEED / DIST', v: carryPct },
+      { label: 'PUTTING', v: axisFrom(shown.putting) },
+      { label: 'AROUND GREEN', v: axisFrom(shown.chipping) }
+    ];
+    const CX = 150, CY = 126, RR = 78, VBW = 300, VBH = 252;
+    const pt = (i, frac) => {
+      const a = -Math.PI / 2 + i * (2 * Math.PI / 5);
+      return [CX + Math.cos(a) * RR * frac, CY + Math.sin(a) * RR * frac];
+    };
+    const poly = frac => DNA.map((_, i) => pt(i, frac).map(n => n.toFixed(1)).join(',')).join(' ');
+    // Labels live as HTML over the SVG — text holes inside <text> collapse to zero width.
+    const TX = ['-50%', '0', '0', '-100%', '-100%'];
+    const TY = ['-100%', '-50%', '0', '0', '-50%'];
+    const dnaLabels = DNA.map((ax, i) => {
+      const [x, y] = pt(i, 1.30);
+      return {
+        label: ax.label, value: Math.round(ax.v),
+        left: (x / VBW * 100).toFixed(2) + '%',
+        top: (y / VBH * 100).toFixed(2) + '%',
+        tx: TX[i], ty: TY[i],
+        color: ax.v >= 62 ? STRONG : ax.v >= 45 ? CAUTION : WEAK
+      };
+    });
+
+    const dm = s.domain && DOMAIN_META[s.domain] ? s.domain : null;
+    const bf = s.brief ? BRIEFS[s.brief] : null;
+    const needs = s.brief ? (TEST_CONDS[s.brief] || []) : [];
+    const condsSet = needs.length > 0 && needs.every(n => !!s[n]);
+    const condLabel = { slope: 'slope', speed: 'green speed', wind: 'wind', firm: 'firmness' };
+    const missing = needs.filter(n => !s[n]).map(n => condLabel[n]);
+
+    const played = INDICES.filter(i => !!s.saved[i.k]);
+    const wSum = played.reduce((a, i) => a + i.w, 0) || 100;
+    const composite = +(played.reduce((a, i) => a + scores[i.k] * i.w / wSum, 0)).toFixed(1);
+    const leakPool = played.length ? played : INDICES;
+    const leak = leakPool.slice().sort((a, b) => (scores[b.k] * b.w) - (scores[a.k] * a.w))[0];
+    const leakReal = !!s.saved[leak.k] && scores[leak.k] > 0;
+
+    return {
+      ...this.fieldVals(),
+      netDot: s.online ? STRONG : GOLD,
+      netLabel: s.online ? 'Synced' : 'Offline · saved on device',
+
+      dnaRings: [0.25, 0.5, 0.75, 1].map(f => ({ pts: poly(f) })),
+      dnaSpokes: DNA.map((_, i) => {
+        const [x, y] = pt(i, 1);
+        return { x: x.toFixed(1), y: y.toFixed(1) };
+      }),
+      dnaBase: poly(0.62),
+      dnaYou: DNA.map((ax, i) => pt(i, ax.v / 100).map(n => n.toFixed(1)).join(',')).join(' '),
+      dnaDots: DNA.map((ax, i) => {
+        const [x, y] = pt(i, ax.v / 100);
+        return { x: x.toFixed(1), y: y.toFixed(1) };
+      }),
+      dnaLabels: dnaLabels,
+
+      todayDate: 'Sunday · 26 July',
+      todayTitle: anySaved ? 'Keep going.' : hasHistory ? 'One thing today.' : 'Nothing measured yet.',
+      todayBody: anySaved
+        ? 'You have indices logged this session. Finish the set and the composite updates.'
+        : hasHistory
+          ? recTop.label + ' is your thinnest margin and carries ' + recTop.w + '% of the composite. Fifteen minutes there beats an hour anywhere else.'
+          : 'Everything below is sample data until you run something. Start with the short game assessment — it takes twenty minutes and calibrates the rest.',
+      todayActionLabel: anySaved ? 'Resume the Forge' : hasHistory ? 'Test ' + recTop.label.toLowerCase() : 'Run the assessment',
+      todayActionMeta: anySaved ? total + '/80' : hasHistory ? '15 min' : '20 min',
+      todayAction: () => {
+        if (anySaved) return this.setState({ screen: 'roadmap' });
+        if (hasHistory) return this.setState({ brief: recTop.k, screen: 'brief' });
+        this.setState({ brief: 'sga', screen: 'brief' });
+      },
+      sampleShow: hasHistory ? 'none' : 'inline-block',
+      dnaOpacity: hasHistory ? '1' : '0.45',
+
+      heroValue: this.fmt(heroComp),
+      heroColor: this.tone(heroComp),
+      heroSource: anySaved ? 'live · this session' : 'Q3 baseline · 21 Jul',
+      sgTotalRead: fmtSg(sgTotal) + ' SG',
+      sgTotalColor: sgTone(sgTotal),
+      sgVsRead: 'vs your ' + s.hcp.toFixed(1) + ' handicap',
+      playsLikeRead: 'Plays like ' + playsLike.toFixed(1),
+
+      // The gap between the player practice says you are and the one your card
+      // says you are. A wide gap is the diagnosis, not an achievement.
+      gapValue: gap < 0.05 ? 'None' : gap.toFixed(1),
+      gapUnit: gap < 0.05 ? '' : (gap >= 0.95 && gap < 1.05 ? 'stroke better in practice' : 'strokes better in practice'),
+      gapColor: gap >= 1.5 ? WEAK : gap >= 0.5 ? CAUTION : STRONG,
+      gapVerdict: gap >= 1.5 ? 'Range hero' : gap >= 0.5 ? 'Some leakage' : 'Transfers clean',
+      gapBody: gap < 0.05
+        ? 'Practice and card agree. What you build on the range is what shows up on the course — the rarest result in this app.'
+        : 'Practice says ' + playsLike.toFixed(1) + '. Your card says ' + s.hcp.toFixed(1) + '. You are ' + gap.toFixed(1) + ' strokes better than your peers on the range than you are with a pencil in your hand, and closing that is the whole job.',
+      transferRead: 'Transfer gap 2.4 · range hero',
+      transferColor: GOLD, transferBorder: 'rgba(200,160,94,0.4)',
+      hcpRead: s.hcp.toFixed(1) + ' hcp · ' + s.carry + ' yd carry',
+
+      statRows: DOM_KEYS.map(kk => {
+        const m = DOMAIN_META[kk], v = shown[kk], g = sgBy[kk];
+        return {
+          label: m.label, weight: m.w + '%', value: this.fmt(v),
+          dot: m.color, letter: m.letter,
+          barW: Math.min(100, Math.max(2, Math.abs(g) / sgAbsMax * 100)) + '%',
+          barBg: sgTone(g),
+          sg: fmtSg(g) + ' SG',
+          sgColor: sgTone(g),
+          contrib: 'index ' + this.fmt(v) + ' · expected ' + this.fmt(+(SG_EXP[kk] * s.hcp).toFixed(1)),
+          onClick: () => this.setState({ screen: 'domain', domain: kk })
+        };
+      }),
+
+      recTitle: recTop.sg < -0.05
+        ? recTop.label + ' is costing you strokes'
+        : recTop.sg <= 0.05
+          ? recTop.label + ' is exactly at expectation'
+          : recTop.label + ' is your thinnest margin',
+      recBody: recTop.sg < -0.05
+        ? recTop.label + ' is running ' + fmtSg(recTop.sg) + ' SG against your ' + s.hcp.toFixed(1) + ' — the only domain below your own handicap. Weight the week toward it; the other three hold at maintenance.'
+        : recTop.sg <= 0.05
+          ? recTop.label + ' is level with what a ' + s.hcp.toFixed(1) + ' is expected to post, and it carries ' + recTop.w + '% of the composite. Level is not a problem, but it is the only domain giving you nothing back — so it is where the next stroke is cheapest.'
+          : recTop.label + ' is your weakest domain at ' + fmtSg(recTop.sg) + ' SG, and it carries ' + recTop.w + '% of the composite. Every domain is above your handicap, so this week is about widening the margin, not repairing it.',
+      recTotal: recMins.reduce((a, r) => a + r.mins, 0) + ' min',
+      recRows: recMins.map(r => ({
+        label: r.label, mins: r.mins + ' min',
+        w: (r.mins / recMax * 100) + '%',
+        bg: r.lead ? GOLD : 'rgba(200,160,94,0.28)',
+        color: r.lead ? CREAM : '#8d99a8'
+      })),
+
+      calDows: CAL_DOWS,
+      calCells: calCells,
+      calSummary: calDaysUsed > 0 ? calDaysUsed + ' of 26 days' : 'Nothing logged yet',
+      calSelTitle: 'July ' + s.calSel + (s.calSel === CAL_TODAY ? ' · today' : ''),
+      calSelNote: selDoms.length
+        ? selDoms.map(x => DOMAIN_META[x].label).join(' · ')
+        : s.calSel > CAL_TODAY ? 'Ahead of you — nothing logged yet.' : 'Nothing logged. Tap a domain to record what you practised.',
+      calClearShow: selDoms.length ? 'inline-block' : 'none',
+      calClearLabel: s.confirmClear ? 'Tap again' : 'Clear',
+      calClearColor: s.confirmClear ? WEAK : '#8d99a8',
+      calClear: () => {
+        if (!s.confirmClear) {
+          this.setState({ confirmClear: true });
+          window.setTimeout(() => this.setState({ confirmClear: false }), 4000);
+          return;
+        }
+        const pr = Object.assign({}, s.practice); delete pr[s.calSel];
+        this.persist({ practice: pr, confirmClear: false });
+      },
+      calChips: DOM_KEYS.map(kk => {
+        const m = DOMAIN_META[kk], on = selDoms.indexOf(kk) > -1;
+        return {
+          // Selection is an interaction, so it is gold — the same as every other
+          // picker in the app. Grey now only ever means "category".
+          label: m.label, dot: on ? '#0E141B' : '#5b6573',
+          color: on ? '#0E141B' : '#c3cdd9',
+          bg: on ? GOLD : 'rgba(255,255,255,0.02)',
+          border: on ? GOLD : 'rgba(255,255,255,0.12)',
+          onClick: () => {
+            const pr = Object.assign({}, s.practice);
+            const cur = (pr[s.calSel] || []).slice();
+            const i = cur.indexOf(kk);
+            if (i > -1) cur.splice(i, 1); else cur.push(kk);
+            if (cur.length) pr[s.calSel] = cur; else delete pr[s.calSel];
+            this.persist({ practice: pr });
+          }
+        };
+      }),
+
+      hcpChip: s.hcp.toFixed(1) + ' hcp',
+      sgChip: fmtSg(sgTotal) + ' SG',
+
+      onProfile: s.screen === 'profile',
+      goProfile: () => this.setState({ screen: 'profile' }),
+      profileBack: () => this.setState({ screen: 'home' }),
+      profileConds: [s.slope, s.speed, s.wind, s.firm].filter(Boolean).join(' · ') || 'None recorded yet',
+      rerunSetup: () => this.persist({ onboarded: false, screen: 'intro' }),
+
+      onBrief: s.screen === 'brief',
+      briefName: bf ? bf.name : '',
+      briefShots: bf ? bf.shots : '',
+      briefRules: bf ? bf.rules.map((t, i) => ({ n: String(i + 1).padStart(2, '0'), text: t })) : [],
+      briefBack: () => this.setState({ screen: s.brief === 'sga' ? 'home' : 'roadmap' }),
+      slopeChips: SLOPES.map(x => ({
+        label: x.label, deg: x.deg,
+        onClick: () => this.persist({ slope: x.label }),
+        color: s.slope === x.label ? '#0E141B' : '#c3cdd9',
+        bg: s.slope === x.label ? GOLD : 'rgba(255,255,255,0.02)',
+        border: s.slope === x.label ? GOLD : 'rgba(255,255,255,0.1)'
+      })),
+      speedChips: SPEEDS.map(x => ({
+        label: x.label, stimp: x.stimp,
+        onClick: () => this.persist({ speed: x.label }),
+        color: s.speed === x.label ? '#0E141B' : '#c3cdd9',
+        bg: s.speed === x.label ? GOLD : 'rgba(255,255,255,0.02)',
+        border: s.speed === x.label ? GOLD : 'rgba(255,255,255,0.1)'
+      })),
+      condsBlurb: s.brief ? COND_BLURB[s.brief] : '',
+      condsTitle: needs.length === 1 ? 'Conditions — required' : 'Conditions — required',
+      showSlope: needs.indexOf('slope') > -1 ? 'block' : 'none',
+      showSpeed: needs.indexOf('speed') > -1 ? 'block' : 'none',
+      showWind: needs.indexOf('wind') > -1 ? 'block' : 'none',
+      showFirm: needs.indexOf('firm') > -1 ? 'block' : 'none',
+      windChips: WINDS.map(x => ({
+        label: x.label, note: x.note,
+        onClick: () => this.persist({ wind: x.label }),
+        color: s.wind === x.label ? '#0E141B' : '#c3cdd9',
+        bg: s.wind === x.label ? GOLD : 'rgba(255,255,255,0.02)',
+        border: s.wind === x.label ? GOLD : 'rgba(255,255,255,0.1)'
+      })),
+      firmChips: FIRMS.map(x => ({
+        label: x.label, note: x.note,
+        onClick: () => this.persist({ firm: x.label }),
+        color: s.firm === x.label ? '#0E141B' : '#c3cdd9',
+        bg: s.firm === x.label ? GOLD : 'rgba(255,255,255,0.02)',
+        border: s.firm === x.label ? GOLD : 'rgba(255,255,255,0.1)'
+      })),
+      beginLabel: condsSet
+        ? 'Begin ' + (bf ? bf.name.toLowerCase() : '')
+        : 'Set ' + missing.join(' and ') + ' to begin',
+      beginCursor: condsSet ? 'pointer' : 'default',
+      beginColor: condsSet ? '#0E141B' : '#5b6573',
+      beginBg: condsSet ? GOLD : 'transparent',
+      beginBorder: condsSet ? GOLD : 'rgba(255,255,255,0.12)',
+      beginTest: () => {
+        if (!condsSet || !s.brief) return;
+        if (s.brief === 'sga') {
+          this.persist({ screen: 'sga', timers: this.stopped(), running: { k: 'sga', at: Date.now() }, now: Date.now() });
+        } else {
+          this.persist({
+            screen: 'capture', active: s.brief, timers: this.stopped(),
+            running: { k: s.brief, at: Date.now() }, now: Date.now()
+          });
+        }
+      },
+      condRead: condsSet ? needs.map(n => s[n]).join(' · ') : 'Conditions not set',
+
+      onIntro: s.screen === 'intro',
+      interests: [
+        { k: 'driving', label: 'Driving', w: '30% of composite' },
+        { k: 'approach', label: 'Approach', w: '35% of composite' },
+        { k: 'chipping', label: 'Chipping', w: '15% of composite' },
+        { k: 'putting', label: 'Putting', w: '20% of composite' }
+      ].map(x => {
+        const on = !!(s.interest && s.interest[x.k]);
+        return {
+          label: x.label, weight: x.w, tick: on ? '✓' : '',
+          onClick: () => {
+            const n = Object.assign({}, s.interest); n[x.k] = !on;
+            this.persist({ interest: n });
+          },
+          border: on ? 'rgba(200,160,94,0.45)' : 'rgba(255,255,255,0.09)',
+          bg: on ? 'rgba(200,160,94,0.07)' : 'rgba(255,255,255,0.02)',
+          boxBorder: on ? GOLD : 'rgba(255,255,255,0.18)',
+          boxBg: on ? GOLD : 'transparent',
+          color: on ? CREAM : '#c3cdd9'
+        };
+      }),
+      steppers: [
+        {
+          label: 'Current handicap index', value: s.hcp.toFixed(1),
+          dec: () => this.persist({ hcp: Math.max(-5, +(s.hcp - 0.5).toFixed(1)) }),
+          inc: () => this.persist({ hcp: Math.min(40, +(s.hcp + 0.5).toFixed(1)) })
+        },
+        {
+          label: 'Average driver carry', value: s.carry + ' yds',
+          dec: () => this.persist({ carry: Math.max(120, s.carry - 5) }),
+          inc: () => this.persist({ carry: Math.min(340, s.carry + 5) })
+        }
+      ],
+      introToSga: () => this.persist({ onboarded: true, brief: 'sga', screen: 'brief' }),
+      introSkip: () => this.persist({ onboarded: true, screen: 'home' }),
+
+      onSga: s.screen === 'sga', onSgaResult: s.screen === 'sgaResult',
+      openSga: g.done
+        ? () => this.setState({ screen: 'sgaResult' })
+        : () => this.setState({ brief: 'sga', screen: 'brief' }),
+      sgaCardBorder: g.done ? 'rgba(127,168,201,0.32)' : 'rgba(255,255,255,0.09)',
+      sgaCardBg: g.done ? 'rgba(127,168,201,0.05)' : '#12181f',
+      sgaState: g.done ? gTotal + ' pts' : gLogged ? gLogged + '/30' : 'Not run',
+      sgaStateColor: g.done ? '#7fa8c9' : gLogged ? GOLD : MUTE,
+      sgaProgress: gLogged + ' of 30 logged',
+      sgaPct: (gLogged / 30 * 100) + '%',
+      sgaRunning: gLogged ? gTotal + ' pts' : 'No shots yet',
+      sgaWarnShow: gCat >= 4 ? 'block' : 'none',
+      sgaCatNum: gCat + 1,
+      sgaCatName: SGA_CATS[gCat].name,
+      sgaCatNote: SGA_CATS[gCat].note,
+      sgaCatPts: catTotal(gShots) + ' pts',
+      sgaPips: [0, 1, 2, 3, 4].map(i => ({
+        bg: i < gShots.length ? (gShots[i] >= 2 ? STRONG : gShots[i] >= 0 ? GOLD : WEAK) : 'rgba(255,255,255,0.08)'
+      })),
+      sgaButtons: SGA_SCORES.map(x => ({
+        label: x.label, pts: (x.pts > 0 ? '+' : '') + x.pts + (Math.abs(x.pts) === 1 ? ' pt' : ' pts'),
+        onClick: catFull ? () => {} : () => {
+          const sg = JSON.parse(JSON.stringify(this.state.sga));
+          if (sg.shots[sg.cat].length >= 5) return;
+          sg.shots[sg.cat].push(x.pts);
+          this.persist({ sga: sg });
+        },
+        border: x.pts >= 2 ? 'rgba(79,191,124,0.35)' : x.pts < 0 ? 'rgba(229,83,61,0.3)' : 'rgba(255,255,255,0.1)',
+        bg: x.pts >= 2 ? 'rgba(79,191,124,0.06)' : x.pts < 0 ? 'rgba(229,83,61,0.05)' : 'rgba(255,255,255,0.02)',
+        color: x.pts >= 2 ? STRONG : x.pts < 0 ? WEAK : CREAM
+      })),
+      sgaUndo: () => {
+        const sg = JSON.parse(JSON.stringify(this.state.sga));
+        if (sg.shots[sg.cat].length) sg.shots[sg.cat].pop();
+        else if (sg.cat > 0) { sg.cat--; sg.shots[sg.cat].pop(); }
+        else return;
+        this.persist({ sga: sg });
+      },
+      sgaUndoCursor: gLogged ? 'pointer' : 'default',
+      sgaUndoColor: gLogged ? '#8d99a8' : '#3f4854',
+      sgaSaveLabel: !catFull ? (5 - gShots.length) + ' shots left' : lastCat ? 'See your result' : 'Next situation',
+      sgaSaveBg: catFull ? '#f2ede1' : 'transparent',
+      sgaSaveBorder: catFull ? '#f2ede1' : 'rgba(255,255,255,0.12)',
+      sgaSaveColor: catFull ? '#0E141B' : '#5b6573',
+      sgaFinish: () => {
+        if (!catFull) return;
+        const sg = JSON.parse(JSON.stringify(this.state.sga));
+        if (lastCat) {
+          sg.done = true;
+          this.persist({ sga: sg, chipTier: tierFor(gDiff), screen: 'sgaResult', timers: this.stopped(), running: null });
+        } else {
+          sg.cat++;
+          this.persist({ sga: sg });
+        }
+      },
+      sgaTotal: gTotal,
+      sgaTargetRead: gTarget,
+      sgaTotalColor: gDiff >= 3 ? STRONG : gDiff >= -2 ? CAUTION : WEAK,
+      sgaVerdict: gDiff >= 3 ? 'Ahead of your handicap · ' + (gDiff > 0 ? '+' : '') + gDiff + ' pts'
+        : gDiff >= -2 ? 'On your handicap · ' + (gDiff > 0 ? '+' : '') + gDiff + ' pts'
+        : 'Behind your handicap · ' + gDiff + ' pts',
+      sgaRows: SGA_CATS.map((c, i) => ({
+        name: c.name, pts: catScores[i] + ' pts',
+        barW: Math.max(0, (catScores[i] + 5) / 20 * 100) + '%',
+        barBg: catScores[i] >= 7 ? STRONG : catScores[i] >= 4 ? CAUTION : WEAK,
+        color: catScores[i] >= 7 ? STRONG : catScores[i] <= 3 ? WEAK : CREAM
+      })),
+      sgaBest: SGA_CATS[bestI < 0 ? 0 : bestI].name,
+      sgaWorst: SGA_CATS[worstI < 0 ? 0 : worstI].name,
+      tierName: newTier.name,
+      tierBody: newTier.body,
+      sgaReset: () => this.persist({ sga: { cat: 0, shots: [[], [], [], [], [], []], done: false }, screen: 'sga' }),
+
+      lmClubs: LM_CLUBS.map(c => ({
+        label: c.label, dist: c.dist + ' yd',
+        onClick: () => this.setState({ lmClub: c.k }),
+        color: s.lmClub === c.k ? '#0E141B' : '#c3cdd9',
+        sub: s.lmClub === c.k ? 'rgba(14,20,27,0.65)' : '#5b6573',
+        bg: s.lmClub === c.k ? GOLD : 'rgba(255,255,255,0.02)',
+        border: s.lmClub === c.k ? GOLD : 'rgba(255,255,255,0.12)'
+      })),
+      lmDropLabel: lmr ? 'Replace the file' : 'Choose a session file',
+      // An error must show even when an older result is still on screen, or a
+      // failed replace silently passes the previous session off as the new one.
+      lmHint: s.lmErr
+        ? s.lmErr
+        : lmr
+          ? lmr.n + ' shots read from ' + lmr.file
+          : 'CSV or TSV with a carry column and a side, offline or lateral column. A screenshot goes to your coach instead — Atlas cannot read pixels.',
+      lmHintColor: s.lmErr ? CAUTION : '#8d99a8',
+      lmHintGap: lmr ? '18px' : '0px',
+      lmResultShow: lmr ? 'block' : 'none',
+      lmSg: lmr ? fmtSg(lmr.sg) : '',
+      lmSgColor: lmr ? sgTone(lmr.sg) : CREAM,
+      lmHcp: s.hcp.toFixed(1),
+      lmBias: lmr ? '−' + lmr.bias.toFixed(2) : '',
+      lmBiasColor: lmr ? (lmr.bias >= 0.15 ? WEAK : lmr.bias >= 0.06 ? CAUTION : '#8d99a8') : CREAM,
+      lmRead: lmr ? lmr.read : '',
+      lmRows: lmr ? lmr.rows : [],
+      lmReset: () => {
+        const nx = Object.assign({}, s.lm); delete nx[s.lmClub];
+        this.persist({ lm: nx });
+      },
+      onLmFile: (e) => {
+        const f = e && e.target && e.target.files && e.target.files[0];
+        if (!f) return;
+        if (/^image\//.test(f.type)) {
+          this.setState({ lmErr: 'Screenshot queued for your coach. Atlas needs the data file to compute a pattern — most monitors export CSV from the same session menu.' });
+          return;
+        }
+        const rd = new FileReader();
+        rd.onload = () => {
+          const out = this.parseLm(String(rd.result || ''), f.name);
+          if (out.error) return this.setState({ lmErr: out.error });
+          const nx = Object.assign({}, s.lm);
+          nx[s.lmClub] = out;
+          this.persist({ lm: nx, lmErr: null });
+        };
+        rd.readAsText(f);
+      },
+
+      onToday: s.screen === 'home', onTransfer: s.screen === 'transfer',
+      onCalibrate: s.screen === 'calibrate', onBuild: s.screen === 'build',
+      onPerform: s.screen === 'perform', onCoach: s.screen === 'coach',
+      navShow: TABS.some(t => t.k === s.screen) ? 'block' : 'none',
+      nav: TABS.map(t => ({
+        label: t.label, num: t.num,
+        onClick: this.leave(t.k),
+        bg: s.screen === t.k ? 'rgba(200,160,94,0.12)' : 'transparent',
+        // Every label clears AA. "Coming" is signalled by the numeral, not by
+        // dimming the text below legibility.
+        numColor: s.screen === t.k ? GOLD : (t.soon ? '#5b6573' : '#8d99a8'),
+        color: s.screen === t.k ? CREAM : '#8d99a8'
+      })),
+      debriefItems: [
+        'Where your attention actually was over the ball — target, mechanics, or consequence.',
+        'Commitment. Did you pick a shot and hit it, or hedge between two.',
+        'The shot after the bad one. That is where rounds are lost, not on the bad one itself.',
+        'What you told yourself walking off a green, and whether it was true.',
+        'One thing to carry into the next round. Not five.'
+      ],
+
+      onDomain: s.screen === 'domain',
+      domName: dm ? DOMAIN_META[dm].label : '',
+      domWeight: dm ? DOMAIN_META[dm].w + '%' : '',
+      // The 52px slot is reserved for real figures; the empty case gets its own
+      // block at body scale rather than prose in a numeral.
+      domFigShow: hasHistory ? 'flex' : 'none',
+      domEmptyShow: hasHistory ? 'none' : 'block',
+      domSg: dm && hasHistory ? fmtSg(sgBy[dm]) + ' SG' : '',
+      domSgColor: dm && hasHistory ? sgTone(sgBy[dm]) : CREAM,
+      domSgNote: dm && hasHistory ? 'vs your ' + s.hcp.toFixed(1) + ' handicap' : '',
+      domStatsShow: hasHistory ? 'grid' : 'none',
+      domReadShow: hasHistory ? 'block' : 'none',
+      domStats: dm && hasHistory ? [
+        { label: 'Your index', value: this.fmt(shown[dm]), color: CREAM },
+        { label: 'Expected', value: this.fmt(+(SG_EXP[dm] * s.hcp).toFixed(1)), color: '#8d99a8' },
+        { label: 'Last run', value: s.saved && s.saved[dm] ? this.clock(this.elapsed(dm)) : '—', color: '#8d99a8' }
+      ] : [],
+      domWhat: dm ? DOMAIN_DEEP[dm].what : '',
+      domRead: dm && hasHistory ? (sgBy[dm] >= 0.25 ? DOMAIN_DEEP[dm].strong : DOMAIN_DEEP[dm].weak) : '',
+      domBack: () => this.setState({ screen: 'home' }),
+      domTest: () => { if (dm) this.setState({ brief: dm, screen: 'brief' }); },
+      domTestLabel: dm ? (s.saved && s.saved[dm] ? 'Run it again' : 'Test ' + DOMAIN_META[dm].label.toLowerCase() + ' now') : '',
+      domTestNote: 'Twenty shots, about fifteen minutes. You can run one index on its own — it does not have to be a full Forge.',
+      tierBirdie: tier.birdie.toLowerCase(),
+      tierPar: tier.par.toLowerCase(),
+      puttModelState: s.saved && s.saved.putting ? 'Fitted from your last twenty' : 'Not yet fitted',
+      goCoach: this.leave('coach'),
+      coachCardTitle: hasHistory ? 'Dr. Benoit replied yesterday' : 'Your team is waiting on a number',
+      coachCardNote: hasHistory ? 'Open the thread' : 'Run something and the thread starts',
+      buildBarShow: hasHistory ? 'flex' : 'none',
+      buildEmptyShow: hasHistory ? 'none' : 'block',
+      buildPct: '57%',
+      buildCount: '12 / 21',
+      threadEmptyShow: hasHistory ? 'none' : 'block',
+      coachBack: () => this.setState({ screen: 'home' }),
+      // No prescription off numbers the player has not posted.
+      recShow: hasHistory ? 'block' : 'none',
+      buildSteps: (hasHistory ? BUILD_STEPS : []).map(b => ({
+        title: b.title, cond: b.cond, count: b.count, state: b.state,
+        accent: b.done ? STRONG : b.live ? GOLD : MUTE,
+        border: b.done ? 'rgba(79,191,124,0.28)' : b.live ? 'rgba(200,160,94,0.45)' : 'rgba(255,255,255,0.08)',
+        bg: b.done ? 'rgba(79,191,124,0.05)' : b.live ? '#1e2733' : '#12181f',
+        node: b.done ? '✓' : b.live ? String(b.n) : '·',
+        nodeBg: b.done ? STRONG : 'transparent',
+        nodeColor: b.done ? '#0E141B' : b.live ? GOLD : '#4d5765',
+        nodeBorder: b.done ? STRONG : b.live ? 'rgba(200,160,94,0.5)' : 'rgba(255,255,255,0.1)'
+      })),
+      messages: hasHistory ? THREAD : [],
+
+      onHome: s.screen === 'home', onRoadmap: s.screen === 'roadmap',
+      onCapture: s.screen === 'capture', onResult: s.screen === 'result',
+      onComplete: s.screen === 'complete',
+      goHome: this.leave('home'),
+      goRoadmap: this.leave('roadmap'),
+      capTimer: k ? this.clock(this.elapsed(k)) : '0:00',
+      capPace: k ? (this.elapsed(k) > 15 * 60000 ? 'Over 15 min' : 'Target 15 min') : '',
+      capPaceColor: k && this.elapsed(k) > 15 * 60000 ? GOLD : '#5b6573',
+      sgaTimer: this.clock(this.elapsed('sga')),
+
+      homeKicker: allDone ? 'Session complete' : started ? 'Session in progress' : 'The Forge session',
+      primaryLabel: allDone ? 'See your composite' : started ? 'Resume — ' + total + ' of 80 logged' : 'Start Forge session',
+      primaryAction: () => this.setState({ screen: allDone ? 'complete' : 'roadmap' }),
+      goForgeTab: this.leave('forge'),
+      discardShow: started ? 'block' : 'none',
+      discardLabel: s.confirmDiscard ? 'Tap again to wipe this session' : 'Discard and start over',
+      discardColor: s.confirmDiscard ? WEAK : '#66717f',
+      discardRun: () => {
+        if (!s.confirmDiscard) {
+          this.setState({ confirmDiscard: true });
+          window.setTimeout(() => this.setState({ confirmDiscard: false }), 4000);
+          return;
+        }
+        this.persist({
+          data: empty(), saved: {}, last: null, synced: false,
+          timers: {}, running: null, confirmDiscard: false, screen: 'transfer'
+        });
+      },
+
+      kitList: SETUP,
+      kitShow: s.kitOpen ? 'block' : 'none',
+      toggleKit: () => this.setState({ kitOpen: !s.kitOpen }),
+      kitBorder: s.kitOpen ? GOLD : 'rgba(255,255,255,0.14)',
+      kitBg: s.kitOpen ? 'rgba(200,160,94,0.1)' : 'transparent',
+      kitColor: s.kitOpen ? GOLD : '#8d99a8',
+      installShow: s.canInstall ? 'block' : 'none',
+      iosHintShow: s.canInstall ? 'none' : 'block',
+      install: () => {
+        if (this._deferred) { this._deferred.prompt(); this._deferred = null; this.setState({ canInstall: false }); }
+      },
+
+      shotsRead: total + ' of 80 shots',
+      sessionPct: (total / 80 * 100) + '%',
+      roadmap: INDICES.map(i => {
+        const c = this.countOf(i.k), done = !!s.saved[i.k];
+        const v = this.score(i.k);
+        return {
+          step: i.step, name: i.name, shots: i.shots, note: i.note,
+          value: done ? this.fmt(v) : c ? c + '/20' : '—',
+          valueColor: done ? this.tone(v) : c ? GOLD : '#3f4854',
+          state: done ? 'Logged' : c ? 'In progress' : 'Not started',
+          stateColor: done ? this.tone(v) : c ? GOLD : MUTE,
+          color: done ? '#c3cdd9' : CREAM,
+          border: done ? 'rgba(79,191,124,0.28)' : c ? 'rgba(200,160,94,0.45)' : 'rgba(255,255,255,0.09)',
+          bg: done ? 'rgba(79,191,124,0.06)' : c ? '#161d28' : '#12181f',
+          time: (c > 0 || done) ? this.clock(this.elapsed(i.k)) : '~15 min',
+          timeColor: (c > 0 || done) ? GOLD : '#5b6573',
+          onClick: () => this.setState({ brief: i.k, screen: 'brief' })
+        };
+      }),
+      sessionTime: this.clock(INDICES.reduce((a, i) => a + this.elapsed(i.k), 0)),
+      finishShow: allDone ? 'block' : 'none',
+      finishHint: allDone ? 'none' : 'block',
+      finishSession: () => this.setState({ screen: 'complete' }),
+
+      capName: idx ? idx.name : '',
+      capRules: k && BRIEFS[k] ? BRIEFS[k].rules.map((t, i) => ({ n: String(i + 1).padStart(2, '0'), text: t })) : [],
+      drillOpen: !!s.drillOpen,
+      openDrill: () => this.setState({ drillOpen: true }),
+      closeDrill: () => this.setState({ drillOpen: false }),
+      stopClick: ev => ev.stopPropagation(),
+      capProgress: (k === 'driving' ? count : count) + ' of 20 logged',
+      capPct: (count / 20 * 100) + '%',
+      capLive: liveRead,
+      showCall: !!needCall,
+      showChip: k === 'chipping',
+      showBuckets: k === 'approach' && !needCall,
+      chipStation: full ? 'All twenty logged' : 'Station ' + (count + 1) + ' of 20 · left to right',
+      chipYds: full ? '—' : chipStep.yds,
+      chipShape: full ? '' : (chipStep.high || 'Your shot — any trajectory'),
+      chipLies: LIES.map((label, i) => ({
+        label: label,
+        onClick: full ? () => {} : () => this.setState({ curLie: i }),
+        color: i === chipLie ? '#0E141B' : '#8d99a8',
+        bg: i === chipLie ? GOLD : 'transparent',
+        border: i === chipLie ? GOLD : 'rgba(255,255,255,0.13)'
+      })),
+      chipTierName: tier.name,
+      chipTierSource: g.done ? 'From your assessment' : 'Default — run assessment',
+      chipOutcomes: CHIP_OUT.map((o, i) => ({
+        label: o.label,
+        rule: i === 0 ? tier.birdie : i === 1 ? tier.par : i === 2 ? tier.bogey : o.rule,
+        count: d && d.shots ? (d.shots.filter(x => x && x.o === i).length || '—') : '—',
+        onClick: full ? () => {} : () => {
+          const data = JSON.parse(JSON.stringify(this.state.data));
+          if (data.chipping.shots.length >= 20) return;
+          data.chipping.shots.push({ o: i, lie: chipLie, yds: chipStep.yds, high: !!chipStep.high });
+          this.persist({ data: data, curLie: null });
+        },
+        border: o.label === 'Birdie' ? 'rgba(79,191,124,0.4)' : o.label === 'Double' ? 'rgba(229,83,61,0.35)' : 'rgba(255,255,255,0.1)',
+        bg: o.label === 'Birdie' ? 'rgba(79,191,124,0.07)' : o.label === 'Double' ? 'rgba(229,83,61,0.06)' : 'rgba(255,255,255,0.02)',
+        color: o.tone
+      })),
+      showPutt: k === 'putting',
+      showDriving: k === 'driving',
+      callShape: callSlot > -1 ? CALL_SHAPES[callSlot] : '',
+      callHeld: this.logCall(true),
+      callMissed: this.logCall(false),
+      buckets: buckets,
+      puttDist: full ? '—' : puttFt + ' ft',
+      puttPos: full ? 'All twenty logged' : 'Position ' + (count + 1) + ' · ' + puttPosList[count % 5],
+      puttButtons: PUTT_OUT.map((o, i) => ({
+        label: o.label, note: o.note, val: (o.v > 0 ? '+' : '') + o.v,
+        onClick: full ? () => {} : this.logShot('putting', i),
+        border: i === 0 ? 'rgba(79,191,124,0.4)' : i === 2 ? 'rgba(229,83,61,0.32)' : 'rgba(255,255,255,0.12)',
+        bg: i === 0 ? 'rgba(79,191,124,0.07)' : i === 2 ? 'rgba(229,83,61,0.05)' : 'rgba(255,255,255,0.02)',
+        color: o.tone
+      })),
+      corridor: CORRIDOR.map((c, i) => ({
+        label: c.label, count: d && d.tally ? d.tally[i] : 0,
+        pen: c.pen === 0 ? 'PAR' : '+' + c.pen,
+        onClick: full ? () => {} : this.logShot('driving', i),
+        border: i === 2 ? 'rgba(79,191,124,0.4)' : 'rgba(255,255,255,0.1)',
+        bg: i === 2 ? 'rgba(79,191,124,0.07)' : 'rgba(255,255,255,0.02)',
+        color: d && d.tally && d.tally[i] ? (i === 2 ? STRONG : GOLD) : '#3f4854'
+      })),
+      undo: this.undoShot,
+      undoCursor: count ? 'pointer' : 'default',
+      undoColor: count ? '#8d99a8' : '#3f4854',
+      saveLabel: full ? 'Save index' : (20 - count) + ' shots left',
+      saveBg: full ? '#f2ede1' : 'transparent',
+      saveBorder: full ? '#f2ede1' : 'rgba(255,255,255,0.12)',
+      saveColor: full ? '#0E141B' : '#5b6573',
+      saveIndex: () => {
+        if (!full) return;
+        this.buzz('save');
+        const sv = Object.assign({}, s.saved); sv[k] = true;
+        const q = s.online ? (s.queue || []) : (s.queue || []).concat([{ k: k, at: Date.now() }]);
+        this.persist({ saved: sv, last: k, screen: 'result', queue: q, timers: this.stopped(), running: null });
+      },
+
+      resName: rIdx ? rIdx.name : '',
+      resValue: this.fmt(rVal),
+      resColor: this.tone(rVal),
+      resVerdict: rVal <= -1 ? 'Beating the standard' : rVal <= 5 ? 'At the standard' : 'Below the standard',
+      resBody: rVal <= -1
+        ? 'This domain is not where your strokes are going. Log it and move on — the leak is somewhere else.'
+        : rVal <= 5
+          ? 'Par for your level. Holding here while another domain improves is a real gain.'
+          : 'This is costing you shots. If it stays the worst index next quarter, it becomes the build.',
+      resStats: rk ? [
+        { label: 'Strokes gained vs your ' + s.hcp.toFixed(1), value: fmtSg(sgFor(rk, rVal, s.hcp)) + ' SG' },
+        { label: 'Time on this index', value: this.clock(this.elapsed(rk)) }
+      ].concat(rStats) : rStats,
+
+      showCurve: !!curve,
+      curveNote: curve
+        ? 'Fitted from all twenty putts at once — line error and pace control together predict your make rate at any distance, not just the five you hit.'
+        : '',
+      youPath: curve ? curve.youPath : '',
+      youArea: curve ? curve.youArea : '',
+      tourPath: curve ? curve.tourPath : '',
+      curveGrid: curve ? curve.grid : [],
+      curveTicks: curve ? curve.ticks : [],
+      curveDots: curve ? curve.dots : [],
+      lineVal: curve ? '±' + curve.kFit.toFixed(2) + '"' : '',
+      lineTag: 'per foot · tour ±0.30"',
+      lineColor: curve ? (curve.kFit <= 0.34 ? STRONG : curve.kFit <= 0.5 ? CAUTION : WEAK) : CREAM,
+      paceVal: curve ? Math.round(curve.q * 100) + '%' : '',
+      paceTag: 'speed held · tour 97%',
+      paceColor: curve ? (curve.q >= 0.9 ? STRONG : curve.q >= 0.75 ? CAUTION : WEAK) : CREAM,
+      makeTable: curve ? curve.table : [],
+      curveCaveat: curve
+        ? 'Twenty putts is a small sample — treat the curve as a direction, not a decimal. It sharpens every time you run the index.'
+        : '',
+
+      compValue: this.fmt(composite),
+      compColor: this.tone(composite),
+      compRead: composite <= 0
+        ? 'You are beating the standard across the board. The work now is holding it under tournament pressure.'
+        : composite < 8
+          ? 'A normal composite for your handicap. One domain is carrying most of the loss — fix that one and the number moves.'
+          : 'The strokes are real and they are findable. Four indices, one obvious leak.',
+      compRows: INDICES.map(i => {
+        const done = !!s.saved[i.k];
+        const isLeak = done && leakReal && i.k === leak.k;
+        return {
+          label: i.name.replace(' Index', ''), weight: i.w + '%',
+          value: done ? fmtSg(sgFor(i.k, scores[i.k], s.hcp)) : '—',
+          color: !done ? '#3f4854' : isLeak ? WEAK : sgTone(sgFor(i.k, scores[i.k], s.hcp)),
+          tag: !done ? 'Not logged' : 'Index ' + this.fmt(scores[i.k]) + (isLeak ? ' · primary leak' : '')
+        };
+      }),
+      leakName: leakReal ? leak.name : 'None — nothing is leaking',
+      leakColor: leakReal ? WEAK : STRONG,
+      leakBorder: leakReal ? 'rgba(229,83,61,0.35)' : 'rgba(79,191,124,0.32)',
+      leakBg: leakReal ? 'rgba(229,83,61,0.07)' : 'rgba(79,191,124,0.06)',
+      leakBody: leakReal
+        ? 'Weighted at ' + leak.w + '% of the composite, this is where the strokes actually are. Dr. Benoit sets the next block from this number, not from your handicap.'
+        : 'Every logged domain is at or under the standard. There is no obvious leak to chase — the next block is about holding this under pressure.',
+      syncLabel: s.synced ? 'Sent to Atlas ✓' : s.online ? 'Send to Atlas' : 'Offline — will send when connected',
+      syncColor: s.synced ? STRONG : '#0E141B',
+      syncBg: s.synced ? 'transparent' : GOLD,
+      syncBorder: s.synced ? 'rgba(79,191,124,0.4)' : GOLD,
+      sync: () => this.setState({ synced: true })
+    };
+  }
+}
+
+</script>
+</body>
+</html>
