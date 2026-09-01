@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-01 11:28 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-01 11:59 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **7 file(s)** | **7 ahead** |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **2 file(s)** | pushed |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | **1 file(s)** | **1 ahead** |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-01 11:28 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.18.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.18.0.tgz`
-- **Atlas HEAD:** `1ce47ed Record the browser findings, and log the Railway hosting task`
+- **Atlas HEAD:** `0b65731 One source of truth for the widened profile bounds -- juniors were locked out`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -64,6 +64,9 @@ Each line here was observed working. Do not rebuild any of it.
 | `POST /api/intake/start` unauthenticated → 401 | ✅ verified | smoke test 2026-08-31 |
 | **Practice DNA intake, API** | ✅ verified | 18/18 smoke assertions, 2026-09-01 |
 | **signup → quiz → result → home, in a browser** | ✅ verified | driven end to end 2026-09-01; `golf.player_profile` written by the quiz (4.2, right-handed), not the seed |
+| **Deployed to Railway** | ✅ live | `https://atlas.ryptest.com` — project `proactive-comfort`, service `Atlas`. Health 200, SPA serves, API 404s as JSON, unauth 401 |
+| Atlas auto-grant is gated | ✅ verified | `ATLAS_SIGNUP_ALLOWLIST=@rypgolf.com`; an account outside it gets 403, inside gets 200 |
+| Juniors (13+) can complete the intake | ✅ verified live | ages 13/14/17/85 and a 45 mph swing all save; 12 and 90 refused |
 | `npm run seed` resets the intake | ✅ verified | row back to `in_progress` / tier 0, confirmed in the DB |
 
 ## 3. What is BROKEN — top blocker
@@ -112,6 +115,41 @@ argument for keeping a browser pass in the loop.
 | **B-4** | The quiz could never leave the volume stage | `stages.ts` keyed "volume done?" on `answers.ALLOC`, which the server **by design** never persists. A permanent loop: save succeeds, same screen returns. |
 | **B-5** | Every real handicap was rejected | `PROFILE_FIELDS` types `PRO_HCP_NOW` as a select of whole numbers; the UI is a free-text box reading "8.4 — plus side: +2.1". The route enforced membership; **tgt's own validator never does**. Both demo players (4.2, 17.8) 400'd on the last screen. |
 | **B-6** | No way out of the result screen | Its only control sold the next tier, and the gate is read once at sign-in. A finished golfer's sole escape was a page reload. Added "Go to my Atlas". |
+
+### 🔴 B-7 · OPEN · Google sign-in needs one Firebase console click
+
+`atlas.ryptest.com` is **not** in Firebase → Authentication → Settings → **Authorised domains**.
+The browser console says so directly. This blocks `signInWithPopup` / `signInWithRedirect` only —
+**email+password is unaffected**, which is why the deployed site logs in fine today. Nothing in the
+code can fix this; it is a console setting. Tracked as **T-29**.
+
+### 🟢 B-8 · Four client/server validation mismatches — FIXED 2026-09-01
+
+All four were the same shape: **the server was stricter than its own UI**, so the quiz accepted a
+value and the save then 400'd with a bare `invalid_profile_value` naming no field.
+
+| Field | Client accepts | Server accepted | Who it locked out |
+| --- | --- | --- | --- |
+| `PRO_HCP_NOW/3YR` | `-2.1` (plus handicaps are normalised to negative) | no leading minus | **every better-than-scratch golfer** |
+| `PRO_HCP_NOW/3YR` | unbounded decimals | 2 dp | anyone typing `8.456` |
+| `PRO_SPEED` | ≥ 40 mph | ≥ 60 (items.ts) | juniors |
+| `PRO_AGE` | ≥ 13 | ≥ 18 (items.ts) | **every academy junior, on the first question** |
+
+Fixed at the root: `shared/profile-bounds.ts` holds `WIDENED_BOUNDS` and is imported by **both**
+the quiz UI and the intake route, and every numeric check reads `effectiveBounds()` rather than
+`field.min`. Mirroring them one at a time is how the age one survived the speed fix.
+
+### 🟢 B-9 · Quiz contrast and divider alignment — FIXED 2026-09-01
+
+Atlas styles the bare `button` **element** (gold pill, `color: var(--ink)`), which reached into the
+ported quiz and repainted every button it did not explicitly override — tgt's unselected options
+became near-black text on a near-black pill. Scoped reset inside `.quiz-root`, written with
+`:where()` so it scores `(0,0,1)`: enough to cancel the element rule on source order, not enough to
+beat the utility classes. Without `:where()` it also flattened the primary CONTINUE.
+
+`AllocBar`'s `-ml-5.5` (centring a 44px handle) compiled to nothing — Tailwind v3's spacing scale
+has no `5.5` step — so every divider sat **+22px** right of its colour boundary. Registered the
+step; handle centres now measure 112/224/336 against boundaries of 112/224/336.
 
 ### 🟡 B-3 · Silent-looking PATCH — FIXED 2026-09-01
 
