@@ -160,6 +160,26 @@ const profileFieldByCode = new Map(PROFILE_FIELDS.map((f) => [f.code, f]))
 // what `Profile` actually declares.
 const NUMERIC_WIRE_FIELDS = new Set(['PRO_AGE'])
 
+// The two handicap fields carry an `options` list that is a PICKER SUGGESTION, not a vocabulary.
+// PROFILE_FIELDS types them as `select` with options ['0'…'54', "I don't have one"] — whole numbers
+// — but a handicap index is a decimal, and plus handicaps are negative and written with a leading
+// '+'. The lifted UI renders both as a FREE TEXT box whose own placeholder reads
+// "8.4 — plus side: +2.1", and the instrument's own fixtures use '11.2' and '12.0'
+// (tgt/server/{service,email,ai-read,routes}.test.ts).
+//
+// Decisive: tgt's own validator (tgt/server/validation.ts:79-88) checks select fields as
+// `z.string().trim().min(1).max(40)` and NEVER tests membership in `options`. This route was
+// stricter than the instrument it ports, and that strictness rejected every real handicap — the
+// seeded demo players are 4.2 and 17.8, so the intake 400'd for both of them on the last screen.
+// (Found by driving the quiz in a browser, 2026-09-01.)
+//
+// Membership IS still enforced for every other select, because those vocabularies really are
+// closed and the UI renders them as buttons: PRO_HAND, PRO_SHAPE, PRO_SHAPE_PREF.
+const HANDICAP_FIELDS = new Set(['PRO_HCP_NOW', 'PRO_HCP_3YR'])
+
+// '4.2', '17.8', '0', '+2.1', '54'. Two decimal places tolerated; the governing bodies publish one.
+const HANDICAP_PATTERN = /^\+?\d{1,2}(\.\d{1,2})?$/
+
 function validateProfilePartial(input: Record<string, unknown>): string | null {
   for (const [code, value] of Object.entries(input)) {
     const field = profileFieldByCode.get(code)
@@ -176,8 +196,19 @@ function validateProfilePartial(input: Record<string, unknown>): string | null {
       if (!Number.isFinite(n)) return `invalid_profile_value:${code}`
       if (field.min !== undefined && n < field.min) return `invalid_profile_value:${code}`
       if (field.max !== undefined && n > field.max) return `invalid_profile_value:${code}`
+    } else if (HANDICAP_FIELDS.has(code)) {
+      // A sentinel from the options list ("I don't have one", "Wasn't playing", …) OR a real
+      // handicap index. See the note on HANDICAP_FIELDS above.
+      if (typeof value !== 'string') return `invalid_profile_value:${code}`
+      const v = value.trim()
+      if (field.options?.includes(v)) continue
+      if (!HANDICAP_PATTERN.test(v)) return `invalid_profile_value:${code}`
+      // A '+' prefix means BETTER than scratch, so it reads as a negative index.
+      const n = v.startsWith('+') ? -Number(v.slice(1)) : Number(v)
+      if (!Number.isFinite(n) || n < -10 || n > 54) return `invalid_profile_value:${code}`
     } else {
-      // 'select'
+      // 'select' with a genuinely closed vocabulary — the UI renders these as buttons, so anything
+      // off the list did not come from the product.
       if (typeof value !== 'string' || (field.options && !field.options.includes(value))) {
         return `invalid_profile_value:${code}`
       }

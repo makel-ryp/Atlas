@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { AuthProvider, useAuth } from './lib/authContext'
 import { Login } from './components/Login'
 import { Profile } from './components/Profile'
@@ -23,7 +23,7 @@ import { QuizApiError } from './quiz/contract'
  */
 type IntakeGate = 'checking' | 'needed' | 'satisfied' | 'unknown'
 
-function useIntakeGate(active: boolean): IntakeGate {
+function useIntakeGate(active: boolean): [IntakeGate, () => void] {
   const [gate, setGate] = useState<IntakeGate>('checking')
 
   useEffect(() => {
@@ -46,13 +46,17 @@ function useIntakeGate(active: boolean): IntakeGate {
     }
   }, [active])
 
-  return gate
+  // The gate is read once, when the session starts. Finishing the quiz in THIS session changes
+  // the answer and nothing re-asks the server, so the golfer stayed on the result screen until
+  // they reloaded. This lets the intake say "done" directly rather than making the reload the
+  // only way out.
+  return [gate, useCallback(() => setGate('satisfied'), [])]
 }
 
 function Routes() {
   const { status, error, me, logout } = useAuth()
   const [tab, setTab] = useState<'profile' | 'admin'>('profile')
-  const intakeGate = useIntakeGate(status === 'signed_in')
+  const [intakeGate, satisfyIntakeGate] = useIntakeGate(status === 'signed_in')
 
   switch (status) {
     case 'loading':
@@ -69,7 +73,7 @@ function Routes() {
         return <main className="shell"><p className="muted">Loading…</p></main>
       }
       if (intakeGate === 'needed') {
-        return <IntakeShell api={intakeApi} />
+        return <IntakeShell api={intakeApi} onEnterAtlas={satisfyIntakeGate} />
       }
 
       // Gate is on the atlas row specifically, same reasoning as isCoach in Profile — a

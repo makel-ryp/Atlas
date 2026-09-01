@@ -79,12 +79,21 @@ export function ResultScreen({
   result,
   nextLabel,
   onNext,
+  onEnterAtlas,
 }: {
   run: QuizRun;
   result: PracticeDnaResult;
   /** Null once every level is done — there is nothing left to sell. */
   nextLabel: string | null;
   onNext: () => void;
+  /**
+   * Leave the intake and go to Atlas proper. Absent in the standalone instrument, which had no
+   * host app to return to — a result screen WAS the destination there. In Atlas the quiz is the
+   * stretch between signing up and the dashboard, so without this the golfer finishes, sees their
+   * read, and has nowhere to go: the only control on the page sells the next tier, and refreshing
+   * was the sole escape. (Found by driving the flow in a browser, 2026-09-01.)
+   */
+  onEnterAtlas?: () => void;
 }) {
   const archetype = ARCHETYPES[result.archetype];
   const tendency = TENDENCIES[result.tendencyLabel];
@@ -184,15 +193,28 @@ export function ResultScreen({
         instalment, not the destination, and the line under the button says so. Every later level
         keeps its button at the foot of the page, where it follows the read it is selling.
       */}
-      {isBaseline && nextLabel && (
+      {isBaseline && (nextLabel || onEnterAtlas) && (
         <section className="mb-10">
-          <button
-            type="button"
-            onClick={onNext}
-            className="w-full rounded-lg bg-ink px-5 py-3 font-medium text-paper"
-          >
-            Click here to continue the diagnosis →
-          </button>
+          {nextLabel && (
+            <button
+              type="button"
+              onClick={onNext}
+              className="w-full rounded-lg bg-ink px-5 py-3 font-medium text-paper"
+            >
+              Click here to continue the diagnosis →
+            </button>
+          )}
+          {/* Secondary on purpose: the diagnosis is what the screen is selling, and this is the
+              door out for a golfer who has had enough for now. Their read is saved either way. */}
+          {onEnterAtlas && (
+            <button
+              type="button"
+              onClick={onEnterAtlas}
+              className="mt-3 w-full rounded-lg border border-ink/25 px-5 py-3 font-medium text-ink"
+            >
+              Go to my Atlas →
+            </button>
+          )}
           <p className="mt-3 text-sm leading-relaxed text-ink/60">
             Here's what we've learned so far
           </p>

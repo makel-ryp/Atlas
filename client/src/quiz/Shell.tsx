@@ -33,7 +33,7 @@ const DONE_LABELS: Record<'tier1A' | 'tier1B' | 'tier2' | 'tier3', string> = {
   tier3: 'Finish',
 };
 
-export function Shell({ api }: { api: QuizApi }) {
+export function Shell({ api, onEnterAtlas }: { api: QuizApi; onEnterAtlas?: () => void }) {
   const quiz = useQuizRun(api);
   const { run } = quiz;
 
@@ -213,6 +213,7 @@ export function Shell({ api }: { api: QuizApi }) {
             result={run.result}
             nextLabel={next ? STAGE_LABELS[next] : null}
             onNext={() => next && setOverride(next)}
+            onEnterAtlas={onEnterAtlas}
           />
         );
       }

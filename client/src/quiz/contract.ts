@@ -57,8 +57,16 @@ export interface QuizRun {
   tierCompleted: TierCompleted;
   /** `{}` until saved — never null; the server always returns an object (see `toEnvelope`). */
   profile: Partial<Profile>;
-  /** `{}` until saved — includes the derived `ALLOC` entry once the volume stage is done. */
+  /**
+   * `{}` until saved. NOTE it does NOT contain `ALLOC`: the server derives the allocation at
+   * score time into a throwaway copy and never persists it here, so do not use `answers.ALLOC`
+   * as evidence of anything. `volume` and `alloc` below are the real record.
+   */
   answers: Answers;
+  /** The two raw volume answers, or null before the volume stage is saved. */
+  volume: VolumeInput | null;
+  /** The four practice-time shares, or null before the volume stage is saved. */
+  alloc: AllocInput | null;
   /** Null until enough is answered to score (Tier 1A complete + full profile). */
   result: PracticeDnaResult | null;
   createdAt: string;

@@ -28,16 +28,18 @@ export type Stage = 'volume' | 'profile' | 'tier1A' | 'tier1B' | 'tier2' | 'tier
  * sells the next level), so after Tier 1A the default landing spot is always the
  * result — the golfer chooses to go further from there.
  *
- * `answers.ALLOC === undefined` is a PROXY for "the volume stage is done," not the real
- * signal tgt used (`!run.volume || !run.alloc`). Atlas's `QuizRun` has no `volume`/`alloc`
- * fields — see `contract.ts` — because `atlas.intake_submissions` has no column for the two
- * raw volume answers yet. `ALLOC` is the one piece of that stage's output the server DOES
- * persist (the derived allocation, folded into `answers`), so it's the nearest available
- * evidence the stage was completed. This becomes wrong the day raw volume gets its own
- * storage and a golfer could theoretically have one without the other — replace it then.
+ * The volume check uses the REAL signal, `!run.volume || !run.alloc`, matching tgt.
+ *
+ * It used to proxy on `answers.ALLOC === undefined`, written when `QuizRun` had no volume/alloc
+ * fields. That was a DEADLOCK, not an approximation: the server derives ALLOC at score time into
+ * a throwaway copy and deliberately never writes it into `answers`, so the proxy was waiting on a
+ * key that by design can never appear. Every golfer got the volume stage, saved it successfully,
+ * and was handed the volume stage again — forever. Found by driving the quiz in a browser on
+ * 2026-09-01; the API smoke suite could not see it, because both sides were individually correct.
+ * `atlas.intake_submissions.volume` and `.alloc` are real columns and `toEnvelope` returns them.
  */
 export function defaultStage(run: QuizRun): Stage {
-  if (run.answers.ALLOC === undefined) return 'volume';
+  if (!run.volume || !run.alloc) return 'volume';
   if (!isProfileFilled(run.profile)) return 'profile';
   if (run.tierCompleted === 0) return 'tier1A';
   return 'result';
