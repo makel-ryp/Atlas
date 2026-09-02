@@ -1,5 +1,6 @@
 import { Router, type RequestHandler } from 'express'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { z } from 'zod'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { verifyToken, attachUser, requireApp } from '@ryp/eco/auth'
 import { withRls } from '@ryp/eco/db'
 import {
@@ -9,11 +10,13 @@ import {
   organizations,
   golfPlayerProfile,
   golfHandicapHistory,
+  golfDrillProgress,
 } from '@ryp/eco/schema'
 import { pool } from '../db'
 import { ensureAtlasAccess } from '../ensureAtlasAccess'
 
 const schema = {
+  golfDrillProgress,
   users,
   userRelationships,
   orgMemberships,
@@ -165,3 +168,142 @@ coachRouter.get('/coach/students', ...identityChain, async (req, res, next) => {
     next(err)
   }
 })
+
+
+/**
+ * ── DRILL SIGN-OFF ────────────────────────────────────────────────────────────────────────────
+ * The Parallax loop, without a Parallax integration.
+ *
+ * A player submits a swing video in Parallax. The coach watches it THERE, then ticks it here.
+ * Atlas never fetches, stores or renders the video — `videoRef` is a string the coach keeps for
+ * their own record, and nothing reads it. That is deliberate (METRIC-MAP: "Parallax video stays
+ * an external videoRef string, not modelled") and it is why this ships without an API contract
+ * with a third party.
+ *
+ * COACH-INITIATED. There is no submission queue and no player-facing surface: the coach opens a
+ * student's file, sees the drills, and ticks what they have watched. The alternative — the player
+ * records "submitted, here is the ref" — needs a player screen in an intake we deliberately cut
+ * down to three sections, so it is not this change.
+ *
+ * ⚠️ The writes below use EXPLICIT-COLUMN SQL, not db.insert()/db.update(). `atlas_app` holds
+ * column-level grants here — it may write the verified / signed_off / video_ref / verify_note columns and must
+ * NEVER write ticked_at/watched_at, which are the player's own claim and belong to forge_app.
+ * Drizzle names every column of a table in an INSERT, passing `default` for unset ones, which
+ * with column grants is refused as `42501 permission denied for table drill_progress`. That is
+ * the bug that 403'd every call to /api/intake/start on 2026-09-01.
+ */
+
+const verifyBodySchema = z
+  .object({
+    verified: z.boolean(),
+    videoRef: z.string().trim().max(500).nullish(),
+    note: z.string().trim().max(500).nullish(),
+  })
+  .strict()
+
+/** A student's drill sign-off state. RLS decides whether the caller may see it at all. */
+coachRouter.get('/coach/students/:userId/drills', ...identityChain, async (req, res, next) => {
+  try {
+    const me = (req as any).user as typeof users.$inferSelect
+    const subjectId = req.params.userId as string
+
+    const rows = await withRls(
+      pool,
+      { userId: me.id, firebaseUid: me.firebaseUid, app: 'atlas' },
+      schema,
+      (db) =>
+        db
+          .select({
+            drillId: golfDrillProgress.drillId,
+            tickedAt: golfDrillProgress.tickedAt,
+            watchedAt: golfDrillProgress.watchedAt,
+            verifiedAt: golfDrillProgress.verifiedAt,
+            verifiedByUserId: golfDrillProgress.verifiedByUserId,
+            videoRef: golfDrillProgress.videoRef,
+            verifyNote: golfDrillProgress.verifyNote,
+            updatedAt: golfDrillProgress.updatedAt,
+          })
+          .from(golfDrillProgress)
+          .where(eq(golfDrillProgress.userId, subjectId)),
+    )
+
+    // An empty list is a legitimate answer — a student a coach has never ticked anything for. It is
+    // NOT distinguishable from "not your student", and that is on purpose: drill_progress_select
+    // filters rows the caller may not read, so a stranger gets [] rather than a 403 that confirms
+    // the account exists.
+    res.json({ drills: rows })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** Tick or untick one drill for one student. Idempotent — re-ticking updates the row. */
+coachRouter.post(
+  '/coach/students/:userId/drills/:drillId/verify',
+  ...identityChain,
+  async (req, res, next) => {
+    try {
+      const parsed = verifyBodySchema.safeParse(req.body ?? {})
+      if (!parsed.success) {
+        res.status(400).json({ error: 'invalid_body', issues: parsed.error.issues })
+        return
+      }
+      const { verified, videoRef, note } = parsed.data
+      const me = (req as any).user as typeof users.$inferSelect
+      const subjectId = req.params.userId as string
+      const drillId = req.params.drillId as string
+
+      const row = await withRls(
+        pool,
+        { userId: me.id, firebaseUid: me.firebaseUid, app: 'atlas' },
+        schema,
+        async (db) => {
+          // Explicit columns, and `verified_by_user_id` is the CALLER — never taken from the body.
+          // The insert policy pins it to current_user_id() as well, so a forged verifier is
+          // refused by the database and not merely by this line.
+          const out = await db.execute(sql`
+            insert into golf.drill_progress
+              (user_id, drill_id, verified_at, verified_by_user_id, video_ref, verify_note, updated_at)
+            values
+              (${subjectId}, ${drillId},
+               ${verified ? sql`now()` : sql`null`},
+               ${verified ? me.id : null},
+               ${videoRef ?? null}, ${note ?? null}, now())
+            on conflict (user_id, drill_id) do update set
+              verified_at         = ${verified ? sql`now()` : sql`null`},
+              verified_by_user_id = ${verified ? me.id : null},
+              video_ref           = coalesce(${videoRef ?? null}, golf.drill_progress.video_ref),
+              verify_note         = ${note ?? null},
+              updated_at          = now()
+            returning drill_id, verified_at, verified_by_user_id, video_ref, verify_note
+          `)
+          return (out.rows as Record<string, unknown>[])[0] ?? null
+        },
+      )
+
+      // RLS matched no row and permitted no insert — the caller does not coach this student. An
+      // RLS-filtered write matches zero rows SILENTLY, so this is the only place that failure is
+      // visible; returning 200 here would report a sign-off that never happened.
+      if (!row) {
+        res.status(403).json({ error: 'not_your_student' })
+        return
+      }
+      res.json(row)
+    } catch (err) {
+      // 42501 here is the INSERT policy refusing the row, and it is the normal way this endpoint
+      // says no — a coach ticking a student they do not coach, or anyone trying to sign off their
+      // own work. Left to the global handler it came back as a 500 carrying the raw Postgres text
+      // ("new row violates row-level security policy for table \"drill_progress\""), which is both
+      // the wrong status and a leak of the policy and table names.
+      //
+      // `!row` above covers the OTHER shape of the same refusal: an UPDATE filtered to zero rows,
+      // which is silent rather than thrown. Both paths have to be handled or one of them reports a
+      // sign-off that never happened.
+      if ((err as { code?: string }).code === '42501') {
+        res.status(403).json({ error: 'not_your_student' })
+        return
+      }
+      next(err)
+    }
+  },
+)
