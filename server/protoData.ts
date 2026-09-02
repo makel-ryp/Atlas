@@ -77,10 +77,34 @@ export type RosterRow = {
 }
 
 /**
- * Sections the served prototype does not show. One list, one place to change it — put a key back
- * and the section and its nav item both return.
+ * WHICH SECTIONS EACH ROLE SEES. This is the bifurcation — one list per audience, no second app.
+ *
+ * Luke's file is the whole product: twelve rail-routed player views plus a three-screen coach
+ * triad (Roster -> Player file -> Intake) in the same shell. Serving it unfiltered gave a coach
+ * eleven screens about their own golf and buried the one thing they came for. Building a separate
+ * coach app would fork his design. Every section is `sc-if`-guarded, so filtering is a list.
+ *
+ * A COACH gets the roster and the player file. Nothing else: a coach signing in to see who needs
+ * them does not need a tempo ladder, a fitness log or their own four-zone build (Makel,
+ * 2026-09-01: "there doesn't need to be so much clutter for the coach").
+ *
+ * A PLAYER gets their own app, minus the roster they have no business seeing.
+ *
+ * BOTH lose 'intake' and 'evidence' — the ten-shots-one-7-iron video test. Four measured reads,
+ * four self-estimates and a 3x3 strike map, all read by a coach off a filmed set. No
+ * video-capture or coach-measurement pipeline exists and none is planned: "this whole 10 shots
+ * one 7 iron section is unachievable".
+ *
+ * ⚠️ The player file (Luke's line 357) ALSO renders "Ten shots, one 7-iron", the strike map and
+ * an awareness score — that content is inside the profile section, not inside 'evidence', so
+ * hiding those two did not remove it. Tracked separately; see docs/TASKS.md.
  */
-export const HIDDEN_SECTIONS = ['intake', 'evidence', 'roster'] as const satisfies readonly string[]
+const VIDEO_TEST_SECTIONS = ['intake', 'evidence'] as const
+
+const PLAYER_ONLY = ['today', 'cal', 'plan', 'build', 'fitness', 'transfer', 'perf', 'thread'] as const
+
+export const HIDDEN_FOR_COACH: readonly string[] = [...VIDEO_TEST_SECTIONS, ...PLAYER_ONLY]
+export const HIDDEN_FOR_PLAYER: readonly string[] = [...VIDEO_TEST_SECTIONS, 'roster']
 
 export type AtlasData = {
   /**
@@ -102,7 +126,7 @@ export type AtlasData = {
    * video-capture or coach-measurement pipeline and there is not going to be one
    * (Makel, 2026-09-01: "this whole 10 shots one 7 iron section is unachievable").
    */
-  hidden: string[]
+  hidden: readonly string[]
   roster: RosterRow[]
   /** The signed-in coach. `hcp` is the raw `numeric` string here — see the type note below. */
   me: { name: string | null; hcp: string | null }
@@ -233,6 +257,8 @@ export async function buildAtlasData(
    * behaves the way the file does standalone.
    */
   view: AtlasData['view'] = 'today',
+  /** Sections to withhold. Pass HIDDEN_FOR_COACH or HIDDEN_FOR_PLAYER. */
+  hidden: readonly string[] = HIDDEN_FOR_PLAYER,
 ): Promise<AtlasData> {
   const schema = {
     users,
@@ -345,7 +371,7 @@ export async function buildAtlasData(
     const ids = [...candidates.keys()]
     // The empty roster is a real, common answer — a coach with no students, or a player who opened
     // the page. It renders as an empty screen, which is correct.
-    if (ids.length === 0) return { view, hidden: [...HIDDEN_SECTIONS], roster: [], me: meBlock }
+    if (ids.length === 0) return { view, hidden, roster: [], me: meBlock }
 
     // ── 3. Identity tier ───────────────────────────────────────────────────────────────────────
     // Anything RLS refuses simply does not come back, so an edge pointing at an account the caller
@@ -403,6 +429,6 @@ export async function buildAtlasData(
       }
     })
 
-    return { view, hidden: [...HIDDEN_SECTIONS], roster, me: meBlock }
+    return { view, hidden, roster, me: meBlock }
   })
 }

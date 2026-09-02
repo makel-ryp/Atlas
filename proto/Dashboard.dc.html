@@ -60,26 +60,46 @@
     </div>
 
     <div style="padding:0 18px; display:flex; flex-direction:column; gap:3px;">
+      <sc-if value="{{ showToday }}" hint-placeholder-val="{{ true }}">
       <div onClick="{{ goToday }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cToday }}; background: {{ bToday }};"><span>Today</span></div>
+      </sc-if>
+      <sc-if value="{{ showCal }}" hint-placeholder-val="{{ true }}">
       <div onClick="{{ goCal }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cCal }}; background: {{ bCal }};"><span>Calendar</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#c8a05e;">{{ weekRead }}</span></div>
+      </sc-if>
+      <sc-if value="{{ showPlan }}" hint-placeholder-val="{{ true }}">
       <div onClick="{{ goPlan }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cPlan }}; background: {{ bPlan }};"><span>Plan</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#c8a05e;">{{ tierName }}</span></div>
+      </sc-if>
       <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.2em; text-transform:uppercase; color:#4d5765; padding:18px 14px 7px;">The four zones</div>
+      <sc-if value="{{ showBuild }}" hint-placeholder-val="{{ true }}">
       <div onClick="{{ goBuild }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cBuild }}; background: {{ bBuild }};"><span>01 Construction</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#c8a05e;">{{ zoneBuild }}</span></div>
+      </sc-if>
+      <sc-if value="{{ showEvidence }}" hint-placeholder-val="{{ true }}">
       <div onClick="{{ goEvidence }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cEvidence }}; background: {{ bEvidence }};"><span>02 Calibration</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#c8a05e;">{{ zoneCal }}</span></div>
+      </sc-if>
+      <sc-if value="{{ showTransfer }}" hint-placeholder-val="{{ true }}">
       <div onClick="{{ goTransfer }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cTransfer }}; background: {{ bTransfer }};"><span>03 Transfer</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#c8a05e;">{{ zoneTransfer }}</span></div>
+      </sc-if>
+      <sc-if value="{{ showPerf }}" hint-placeholder-val="{{ true }}">
       <div onClick="{{ goPerf }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cPerf }}; background: {{ bPerf }};"><span>04 Performance</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#c8a05e;">{{ zonePerf }}</span></div>
+      </sc-if>
       <div style="height:1px; background:rgba(255,255,255,0.07); margin:14px 14px 7px;"></div>
+      <sc-if value="{{ showFitness }}" hint-placeholder-val="{{ true }}">
       <div onClick="{{ goFitness }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cFitness }}; background: {{ bFitness }};"><span>Fitness</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#7fa8c9;">{{ liftCompliance }}</span></div>
+      </sc-if>
       <div style="height:1px; background:rgba(255,255,255,0.07); margin:11px 14px;"></div>
+      <sc-if value="{{ showThread }}" hint-placeholder-val="{{ true }}">
       <div onClick="{{ goThread }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cThread }}; background: {{ bThread }};"><span>Team</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#7fa8c9;">{{ sessionsLeft }}</span></div>
+      </sc-if>
+      <sc-if value="{{ showProfile }}" hint-placeholder-val="{{ true }}">
       <div onClick="{{ goProfile }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cProfile }}; background: {{ bProfile }};"><span>Profile</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#c8a05e;">{{ pfAware }}</span></div>
-      <sc-if value="{{ showIntake }}" hint-placeholder-val="{{ false }}">
+      </sc-if>
+      <sc-if value="{{ showIntake }}" hint-placeholder-val="{{ true }}">
       <div onClick="{{ goIntake }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cIntake }}; background: {{ bIntake }};"><span>Intake form</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#c8a05e;">{{ inPct }}</span></div>
       </sc-if>
       <!-- TUCKED 2026-09-01 (Makel): the roster is empty for most accounts and the coach
            product is not the focus yet. Flagged, not deleted — set showRoster in
            __ATLAS_DATA__ (server/protoData.ts) to bring the tab straight back. -->
-      <sc-if value="{{ showRoster }}" hint-placeholder-val="{{ false }}">
+      <sc-if value="{{ showRoster }}" hint-placeholder-val="{{ true }}">
       <div onClick="{{ goRoster }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cRoster }}; background: {{ bRoster }};"><span>Roster</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#d9885e;">{{ rosterFlagged }}</span></div>
       </sc-if>
     </div>
@@ -4909,7 +4929,11 @@ class Component extends DCLogic {
       // Injected, default false — see the TUCKED note on the nav item above.
       // Nav visibility comes off the SAME `hidden` list the sections use — one list, so a
       // section and its way in can never disagree.
-      showRoster: !isHidden('roster'), showIntake: !isHidden('intake'),
+      // ── RAIL VISIBILITY ────────────────────────────────────────────────────────────────
+      // Hiding a section closes its content but leaves its rail entry, which then navigates
+      // to a blank screen. One flag per nav item off the same injected list, so a coach's rail
+      // is the two screens they came for instead of eleven about their own golf.
+      showToday: !isHidden('today'), showCal: !isHidden('cal'), showPlan: !isHidden('plan'), showBuild: !isHidden('build'), showEvidence: !isHidden('evidence'), showTransfer: !isHidden('transfer'), showPerf: !isHidden('perf'), showFitness: !isHidden('fitness'), showThread: !isHidden('thread'), showProfile: !isHidden('profile'), showIntake: !isHidden('intake'), showRoster: !isHidden('roster'),
       cRoster: r.roster.c, bRoster: r.roster.b,
       isProfile: view === 'profile' && !isHidden('profile'), goProfile: this.nav('profile'),
       cProfile: r.profile.c, bProfile: r.profile.b,
