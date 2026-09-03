@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-03 10:50 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-03 11:02 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **2 file(s)** | **1 ahead** |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **2 file(s)** | pushed |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | pushed |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-03 10:50 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.19.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.19.0.tgz`
-- **Atlas HEAD:** `b7d17c9 Coach sign-off UI: tick a Parallax video in Luke's player file`
+- **Atlas HEAD:** `5a64745 Remove the ten-shot video test from the player file`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -93,11 +93,17 @@ it for coaches — not to strip `state.forge`. **I attempted this once and put t
 the wrong line** (walked back to an inner span instead of the card's opening `div`), then reverted.
 It needs doing deliberately. Tracked as T-32.
 
-### 🟠 B-11 · OPEN · The ten-shot video test survives inside the Player file
+### 🟢 B-11 · The ten-shot video test — REMOVED 2026-09-03
 
-`intake` and `evidence` are hidden, but the **profile** section renders its own copy: "Ten shots,
-one 7-iron.", the strike map, an awareness score, and four self-estimate rows reading "No read
-until the ten shots are filmed." That section is now a coach's main destination. Tracked as T-33.
+Deleted from the profile section, along with the 33 lines of `profileVals` that fed it
+(`pfTestStatus*`, `pfRows`, `pfAware*`, `pfCells`) and one orphaned rail badge that would have
+rendered `undefined`. Boundaries were asserted from content before cutting — the block had to
+contain the strike map and must NOT contain "Handicap history" or "The interview".
+
+A second copy remains inside the `intake` section, which is hidden from both roles and therefore
+never renders. Left alone on purpose.
+
+The player file now reads: Handicap history → The interview → the coach sign-off list.
 
 ### ✅ B-1 · FIXED and VERIFIED 2026-09-01. Kept here as the record.
 
