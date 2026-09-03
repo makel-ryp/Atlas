@@ -20,12 +20,12 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-01 14:50 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-03 10:50 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **2 file(s)** | pushed |
-| eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | **1 file(s)** | **1 ahead** |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **2 file(s)** | **1 ahead** |
+| eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | pushed |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
 | locker-room | `~/Desktop/ATR/apps/locker-room` | makel-ryp/locker-room | feature | clean | pushed |
@@ -33,8 +33,8 @@ _Regenerated 2026-09-01 14:50 CDT by `docs/refresh-status.sh`._
 | practice-dna | `~/Desktop/ATR/apps/practice-dna` | **not a git repo** | — | — | — |
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
-- **@ryp/eco version:** `0.18.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.18.0.tgz`
-- **Atlas HEAD:** `c111bb9 Hide sections by injected key: cut the video test, tuck the roster`
+- **@ryp/eco version:** `0.19.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.19.0.tgz`
+- **Atlas HEAD:** `b7d17c9 Coach sign-off UI: tick a Parallax video in Luke's player file`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -68,6 +68,9 @@ Each line here was observed working. Do not rebuild any of it.
 | Atlas auto-grant is gated | ✅ verified | `ATLAS_SIGNUP_ALLOWLIST=@rypgolf.com`; an account outside it gets 403, inside gets 200 |
 | **No profile answer refuses an account** | ✅ verified live | 9 and 95 year olds, 38 mph, a 60 and a 108 handicap, plus handicaps and "I don't have one" all save |
 | Google sign-in on the login screen | ✅ live | domain authorised; popup path accepted |
+| **Coach view, bifurcated by role** | ✅ verified | coach lands on the roster with a 2-item rail (Profile, Roster); player keeps their own 12-view app. One list per role — `HIDDEN_FOR_COACH` / `HIDDEN_FOR_PLAYER` |
+| **`golf.drill_progress` + coach sign-off** | ✅ verified | 17 assertions + a leak test. Per-COLUMN grants proven: `atlas_app` gets `42501` writing `ticked_at` |
+| **Ticking a Parallax video in the browser** | ✅ verified | NOT SIGNED OFF → ✓ SIGNED OFF, persisted, `verified_by` = the coach, `ticked_at` still null |
 | **Luke's design IS the app now** | ✅ live | sign-in lands on `Dashboard.dc.html`, fed from ryp-core. Not a React rebuild |
 | Plus handicaps store and display | ✅ verified | `-2.1` stored, `+2.1` shown; was written to neither golf table before |
 | Intake trimmed to 3 sections | ✅ live | 23 answers, not 100 — Tiers 1B/2/3 cut from the flow |
@@ -77,6 +80,24 @@ Each line here was observed working. Do not rebuild any of it.
 | `npm run seed` resets the intake | ✅ verified | row back to `in_progress` / tier 0, confirmed in the DB |
 
 ## 3. What is BROKEN — top blocker
+
+### 🟠 B-10 · OPEN · The rail's baseline card is fabricated, on a coach's screen
+
+The left rail shows **"5 HANDICAP"** and **"TOTAL SG −2.0"**, plus "PRACTICE 7.0" and "REAL 11.4".
+`railHcp` is `state.targetHcp` (default 5 — nobody's real index) and `railSG` is computed entirely
+from `state.forge.{driving,approach,chipping,putting}` literals. Avery is 4.2 and Total SG has no
+producer at all.
+
+It is a PLAYER's own reference block and it means nothing on a roster screen, so the fix is to hide
+it for coaches — not to strip `state.forge`. **I attempted this once and put the `sc-if` wrapper on
+the wrong line** (walked back to an inner span instead of the card's opening `div`), then reverted.
+It needs doing deliberately. Tracked as T-32.
+
+### 🟠 B-11 · OPEN · The ten-shot video test survives inside the Player file
+
+`intake` and `evidence` are hidden, but the **profile** section renders its own copy: "Ten shots,
+one 7-iron.", the strike map, an awareness score, and four self-estimate rows reading "No read
+until the ten shots are filmed." That section is now a coach's main destination. Tracked as T-33.
 
 ### ✅ B-1 · FIXED and VERIFIED 2026-09-01. Kept here as the record.
 

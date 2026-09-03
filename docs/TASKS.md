@@ -17,6 +17,9 @@
 | --- | --- | --- | --- | --- |
 | T-02 | ✅ done | Repin Atlas to `@ryp/eco#v0.18.0` | AI | Done 2026-08-31, typecheck clean. Was **not** related to T-01 (v0.18.0 is a SQL-only change). |
 | T-24 | ✅ done | **Host on Railway so nothing is demoed from localhost** | AI | Project `proactive-comfort`, service `Atlas`. Env vars set from `.env` via the CLI; `railway.json` added; eco vendored to fix the build. Live at `https://atlas.ryptest.com`, verified end to end. |
+| T-32 | ⚪ open | **Hide the fabricated baseline card from coaches** | AI | `railHcp`/`railSG` are a default slider and `state.forge` literals. A wrong number in front of a coach. One failed attempt — the wrapper must go on the card's real opening div, proven by tag balance, not eyeballed. |
+| T-33 | ⚪ open | **Strip the ten-shot video test from the profile section** | AI | Hiding `intake`+`evidence` did not remove it; the profile section has its own copy, and that section is the coach's main destination. |
+| T-34 | ⚪ open | `golf.drill_library` so `drill_id` has a referent | AI | `drill_id` is free text today. The three ids come from Luke's `DRILL_DEFS`. Add the FK when the library lands — making it one now would block the feature on a table Luke owns. |
 | T-27 | ⚪ open | Publish `@ryp/eco` to a private registry | AI | It is currently vendored into Atlas as a committed `.tgz` because the GitHub SSH form breaks Railway's builder. Works, but every eco release needs a manual repack. GitHub Packages + an `NPM_TOKEN` is the real fix. |
 | T-28 | ⚪ open | Migrate `railway.json` to the new config format | AI | Railway CLI warns the old file format stops working **2026-12-01**. `railway config migrate`. |
 | T-25 | ⚪ open | Rewrite the demo runbook around the intake | AI | The runbook was written 26 Aug and has 4 steps; it predates Practice DNA and Luke's prototype entirely. Its "cold start" also still says localhost. |
@@ -91,10 +94,14 @@
 | D-23 *(closes T-26)* | 2026-09-01 | `handicap_history` appends only on a real change | 3 rehearsals at 17.8 append nothing; 15.2 then 16.0 each do |
 | D-24 | 2026-09-01 | **Full intake driven end to end on the LIVE site** | Sign-in → 2 volume screens → allocation → 7 profile → 12 items → review → result → "Go to my Atlas" → dashboard. `golf.player_profile` written by the quiz |
 | D-25 | 2026-09-01 | Cleaned 6 test rows out of `handicap_history` | Deleted by explicit id via the Neon owner connection, after Makel confirmed; each player left with their one seeded point |
+| D-26 | 2026-09-03 | **Coach view bifurcated by role** | Coach rail is Profile + Roster; 12 items → 2. One list per audience, no second app |
+| D-27 | 2026-09-03 | **`golf.drill_progress` applied** | 3 policies, RLS forced, per-COLUMN grants — `atlas_app` cannot write `ticked_at`/`watched_at` (`42501` proven) |
+| D-28 | 2026-09-03 | **Coach sign-off works end to end in a browser** | Tick persists, `verified_by` = the coach. Browser caught 3 bugs API tests structurally could not — chief among them: the served page authenticates by cookie, and the routes were bearer-only |
+| D-29 | 2026-09-03 | Intake tier-2 rejection confirmed fixed on live | The exact 17-slider payload that broke the demo run now returns 200; and the tier is unreachable anyway |
 
 ---
 **Retired IDs** (closed, kept so no ID is ever reused): T-01 → D-12 · T-03 → D-12 · T-04 → D-16 · T-23 → D-14.
 
 **Retired IDs:** T-26 → D-23 · T-29 → D-21 · T-30 → D-21 · T-31 → D-21.
 
-_Next free ID: **T-32** / **D-26**._
+_Next free ID: **T-35** / **D-30**._
