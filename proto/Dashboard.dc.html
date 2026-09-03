@@ -351,6 +351,7 @@
         </div>
       </div>
 
+
       <div style="padding:34px 0 30px; border-bottom:1px solid rgba(20,25,31,0.18);">
         <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.22em; text-transform:uppercase; color:#8a6a2f; margin-bottom:10px;">Section 03</div>
         <h2 style="font-family:'Newsreader',serif; font-size:clamp(23px,4.2vw,30px); color:#14191f; margin:0 0 8px;">Ten balls, one 7-iron, one camera.</h2>
@@ -500,6 +501,36 @@
         </div>
       </div>
     </div>
+    <!-- ============ COACH SIGN-OFF · Parallax videos, ticked here ============ -->
+    <!-- Added 2026-09-01. The only NEW surface in this file: the coach watches a submitted swing
+         video in Parallax, then ticks it here. Atlas never fetches or renders the video, which is
+         exactly why there is no Parallax integration to build. Styled to the block above it —
+         mono eyebrow, serif heading, paper background — rather than introducing a new idiom. -->
+    <sc-if value="{{ pfDrillsShow }}" hint-placeholder-val="{{ true }}">
+    <div style="padding:34px 0 30px; border-bottom:1px solid rgba(20,25,31,0.18);">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.22em; text-transform:uppercase; color:#8a6a2f; margin-bottom:8px;">Sign-off</div>
+      <h2 style="font-family:'Newsreader',serif; font-size:clamp(23px,4.2vw,30px); color:#14191f; margin:0 0 8px;">What you have watched.</h2>
+      <p style="font-family:'Newsreader',serif; font-size:17px; line-height:1.5; color:#6f7681; margin:0 0 22px; max-width:62ch;">Watch the submission in Parallax, then tick it here. A tick is your judgement that the rep happened — it is not the player&rsquo;s claim, which is theirs to make and lives elsewhere.</p>
+
+      <div style="display:none; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; color:#a8422f; background:rgba(168,66,47,0.08); border:1px solid rgba(168,66,47,0.3); border-radius:8px; padding:9px 12px; margin-bottom:16px;" data-err="{{ tickErrShow }}">{{ tickErr }}</div>
+
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <sc-for list="{{ pfDrills }}" as="d" hint-placeholder-count="3">
+        <div onClick="{{ d.toggle }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 16px; border:1px solid rgba(20,25,31,0.14); border-radius:10px; background:rgba(255,255,255,0.5);">
+          <div style="min-width:0;">
+            <div style="font-family:'Archivo'; font-weight:700; font-size:15px; color:#14191f;">{{ d.name }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#8a9099; margin-top:4px;">{{ d.domain }} &middot; {{ d.shots }}</div>
+            <div style="font-family:'Newsreader',serif; font-size:13.5px; color:#6f7681; margin-top:6px;">{{ d.ref }}</div>
+          </div>
+          <div style="flex:none; text-align:right;">
+            <div style="display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; padding:6px 11px; border-radius:999px; color: {{ d.markColor }}; background: {{ d.markBg }};">{{ d.mark }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.1em; color:#8a9099; margin-top:6px;">{{ d.when }}</div>
+          </div>
+        </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
     </sc-if>
 
     <!-- ============ ROSTER ============ -->
@@ -3766,7 +3797,46 @@ class Component extends DCLogic {
       { k: 'goal', label: 'Why you are here', hint: 'In one sentence, in your own words.' }
     ];
     const t = self ? (s.targetHcp === undefined ? 5 : s.targetHcp) : who.target;
+    // ── COACH SIGN-OFF LIST ──────────────────────────────────────────────────────────────────
+    // The loop: the player submits a swing video in Parallax, the coach watches it THERE, then
+    // ticks it here. Atlas never fetches or renders the video — that is the whole point, it means
+    // there is no Parallax integration to build or keep in sync (METRIC-MAP: "Parallax video stays
+    // an external videoRef string, not modelled").
+    //
+    // `who.drills` is real: golf.drill_progress, injected per roster row and already scoped by
+    // `drill_progress_select` to students this coach actually coaches. A pending student's rows do
+    // not come back at all, so this list is simply empty for them rather than wrong.
+    //
+    // Only the three drills the file actually defines. DRILL_DEFS is the authority; inventing a
+    // fourth here would put a drill on screen that no session can run.
+    const pfDrills = ['sga30', 'chip20', 'ryp20'].map(id => {
+      const def = DRILL_DEFS[id] || {};
+      const got = (who.drills || {})[id] || {};
+      const on = !!got.verifiedAt;
+      return {
+        id,
+        name: def.name || id,
+        domain: def.domain || '',
+        shots: def.shots || '',
+        on,
+        // A tick is a coach's judgement with a date on it. Unticked says "not signed off", NOT
+        // "the player did not do it" — that claim is ticked_at, which is Forge's column and which
+        // atlas_app has no grant to write.
+        mark: on ? '✓ Signed off' : 'Not signed off',
+        when: on ? new Date(got.verifiedAt).toLocaleDateString() : '',
+        ref: got.videoRef || '',
+        note: got.verifyNote || '',
+        markColor: on ? '#2f6b47' : '#8a9099',
+        markBg: on ? 'rgba(47,107,71,0.10)' : 'rgba(20,25,31,0.05)',
+        toggle: () => this.tickDrill(who.id, id, !on),
+      };
+    });
+
     return {
+      pfDrills,
+      tickErr: this.state.tickErr || '',
+      tickErrShow: this.state.tickErr ? 'block' : 'none',
+      pfDrillsShow: ROSTER.length > 0 && !!who.id,
       pfName: who.n,
       pfInitials: who.n.split(' ').map(w => w[0]).join(''),
       // GUARDED: was string concatenation, so a missing tier/zone/days rendered the literal text
@@ -4072,6 +4142,54 @@ class Component extends DCLogic {
         : 'no strokes-gained reads exist yet'
     };
   }
+  /**
+   * Tick or untick a drill for a student. THE FIRST NETWORK CALL IN THIS FILE.
+   *
+   * Everything else here is a pure function of injected data or local state — the page is
+   * server-rendered once and never talks back. This has to, because a sign-off is a coach's action
+   * taken now, not something known at render time.
+   *
+   * Optimistic, and deliberately so: the ROSTER row is updated in place before the request
+   * resolves, so the tick responds immediately on a coach's phone at the range. On failure it is
+   * put back and an error is surfaced — a tick that silently did not save is worse than one that
+   * visibly failed, because the coach believes the student is cleared to move on.
+   *
+   * The session cookie carries the auth (this is a server-rendered page, not the SPA, so there is
+   * no bearer token to hand); `credentials: 'same-origin'` is what sends it.
+   */
+  tickDrill(userId, drillId, on) {
+    if (!userId || !drillId) return;
+    const row = ROSTER.filter(p => p.id === userId)[0];
+    if (!row) return;
+    row.drills = row.drills || {};
+    const before = row.drills[drillId];
+
+    row.drills[drillId] = on
+      ? { verifiedAt: new Date().toISOString(), videoRef: (before && before.videoRef) || null,
+          verifyNote: (before && before.verifyNote) || null }
+      : { verifiedAt: null, videoRef: (before && before.videoRef) || null,
+          verifyNote: (before && before.verifyNote) || null };
+    this.setState({ tickErr: '' });
+
+    fetch('/api/coach/students/' + userId + '/drills/' + drillId + '/verify', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verified: !!on })
+    }).then(r => {
+      if (r.ok) return;
+      // 403 is the ordinary no — a student this coach does not coach. Anything else is unexpected.
+      return r.json().catch(() => null).then(j => {
+        throw new Error(j && j.error === 'not_your_student'
+          ? 'Not your student.'
+          : 'Could not save that sign-off.');
+      });
+    }).catch(err => {
+      if (before === undefined) delete row.drills[drillId]; else row.drills[drillId] = before;
+      this.setState({ tickErr: err.message || 'Could not save that sign-off.' });
+    });
+  }
+
   pick = d => () => this.setState({ view: 'cal', sel: d });
 
   entry(d) { return this.state.log[d] || {}; }

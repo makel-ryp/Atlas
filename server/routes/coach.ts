@@ -1,7 +1,7 @@
 import { Router, type RequestHandler } from 'express'
 import { z } from 'zod'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
-import { verifyToken, attachUser, requireApp } from '@ryp/eco/auth'
+import { attachUser, requireApp, verifySessionCookieMiddleware, verifyToken } from '@ryp/eco/auth'
 import { withRls } from '@ryp/eco/db'
 import {
   users,
@@ -27,6 +27,35 @@ const schema = {
 
 const identityChain: RequestHandler[] = [
   verifyToken,
+  attachUser(pool),
+  ensureAtlasAccess(pool),
+  requireApp('atlas'),
+]
+
+/**
+ * Accept EITHER a session cookie or a bearer token.
+ *
+ * The SPA holds a Firebase ID token and sends `Authorization: Bearer`. The served prototype does
+ * not — it is a plain server-rendered page, and a browser navigation cannot carry an Authorization
+ * header, so it authenticates with the httpOnly session cookie minted by POST /api/session.
+ *
+ * The drill sign-off is called from BOTH: eventually from the SPA, and today from Luke's page,
+ * which is the only surface a coach actually ticks a drill on. Bearer-only meant every tick from
+ * that page returned 401 while the POST body and URL were perfectly correct — the UI rolled the
+ * tick back and said "Could not save that sign-off", which is honest but not the bug. Found by
+ * clicking the row in a browser on 2026-09-01; no amount of API testing could see it, because
+ * every API test sends a bearer token.
+ */
+const cookieOrBearer: RequestHandler = (req, res, next) => {
+  const hasBearer = req.headers.authorization?.startsWith('Bearer ')
+  // Both middlewares set `req.firebaseUid` and nothing else, so whichever runs, the rest of the
+  // chain is identical. Cookie first: a page-served request is the common case for this route.
+  if (hasBearer) return verifyToken(req, res, next)
+  return verifySessionCookieMiddleware(req, res, next)
+}
+
+const pageOrApiChain: RequestHandler[] = [
+  cookieOrBearer,
   attachUser(pool),
   ensureAtlasAccess(pool),
   requireApp('atlas'),
@@ -202,8 +231,18 @@ const verifyBodySchema = z
   .strict()
 
 /** A student's drill sign-off state. RLS decides whether the caller may see it at all. */
-coachRouter.get('/coach/students/:userId/drills', ...identityChain, async (req, res, next) => {
+coachRouter.get('/coach/students/:userId/drills', ...pageOrApiChain, async (req, res, next) => {
   try {
+    // A path param goes straight into SQL, so it is validated here rather than trusted. Without
+    // this, `/drills/undefined/verify` reached Postgres and came back 500 with
+    // `22P02 invalid input syntax for type uuid: "undefined"` — the wrong status for a malformed
+    // request, and it leaks the column type. Caught by a test script of my own that guessed the
+    // wrong response shape, 2026-09-01.
+    const userId = req.params.userId as string
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+      res.status(400).json({ error: 'invalid_user_id' })
+      return
+    }
     const me = (req as any).user as typeof users.$inferSelect
     const subjectId = req.params.userId as string
 
@@ -240,9 +279,19 @@ coachRouter.get('/coach/students/:userId/drills', ...identityChain, async (req, 
 /** Tick or untick one drill for one student. Idempotent — re-ticking updates the row. */
 coachRouter.post(
   '/coach/students/:userId/drills/:drillId/verify',
-  ...identityChain,
+  ...pageOrApiChain,
   async (req, res, next) => {
     try {
+    // A path param goes straight into SQL, so it is validated here rather than trusted. Without
+    // this, `/drills/undefined/verify` reached Postgres and came back 500 with
+    // `22P02 invalid input syntax for type uuid: "undefined"` — the wrong status for a malformed
+    // request, and it leaks the column type. Caught by a test script of my own that guessed the
+    // wrong response shape, 2026-09-01.
+    const userId = req.params.userId as string
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+      res.status(400).json({ error: 'invalid_user_id' })
+      return
+    }
       const parsed = verifyBodySchema.safeParse(req.body ?? {})
       if (!parsed.success) {
         res.status(400).json({ error: 'invalid_body', issues: parsed.error.issues })

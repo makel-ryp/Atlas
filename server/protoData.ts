@@ -1,11 +1,12 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { withRls } from '@ryp/eco/db'
 import {
-  users,
-  userRelationships,
+  golfDrillProgress,
+  golfPlayerProfile,
   orgMemberships,
   organizations,
-  golfPlayerProfile,
+  userRelationships,
+  users,
 } from '@ryp/eco/schema'
 import { pool } from './db'
 
@@ -74,6 +75,12 @@ export type RosterRow = {
   grid: number[]
   /** Intake file prose. No producer. */
   file: Record<string, string>
+  /**
+   * Coach sign-off state, keyed by drill id. REAL — golf.drill_progress, written by a coach after
+   * they watch the swing video in Parallax. `verifiedAt` null (or the key absent) means not yet
+   * signed off; it never means the player did not do it, which is `tickedAt` and belongs to Forge.
+   */
+  drills: Record<string, { verifiedAt: string | null; videoRef: string | null; verifyNote: string | null }>
 }
 
 /**
@@ -395,6 +402,35 @@ export async function buildAtlasData(
 
     const profileBy = new Map(profiles.map((p) => [p.userId, p]))
 
+    // Sign-off state for everyone on the roster, in one read. Injected per row rather than fetched
+    // when a student is opened: the roster is small, the page is server-rendered once, and Luke's
+    // file has no loading state to render into. `drill_progress_select` already scopes this to
+    // students this coach actually coaches, so an unapproved student's rows simply do not come
+    // back — the same reason the roster itself needs no ownership filter here.
+    const progressRows = ids.length
+      ? await db
+          .select({
+            userId: golfDrillProgress.userId,
+            drillId: golfDrillProgress.drillId,
+            verifiedAt: golfDrillProgress.verifiedAt,
+            videoRef: golfDrillProgress.videoRef,
+            verifyNote: golfDrillProgress.verifyNote,
+          })
+          .from(golfDrillProgress)
+          .where(inArray(golfDrillProgress.userId, ids))
+      : []
+
+    const progressBy = new Map<string, RosterRow['drills']>()
+    for (const r of progressRows) {
+      const bucket = progressBy.get(r.userId) ?? {}
+      bucket[r.drillId] = {
+        verifiedAt: r.verifiedAt ? r.verifiedAt.toISOString() : null,
+        videoRef: r.videoRef,
+        verifyNote: r.verifyNote,
+      }
+      progressBy.set(r.userId, bucket)
+    }
+
     const roster: RosterRow[] = people.map((person) => {
       const meta = candidates.get(person.id)!
       const profile = profileBy.get(person.id) ?? null
@@ -409,6 +445,7 @@ export async function buildAtlasData(
         carry: profile?.driverCarryYds ? `${profile.driverCarryYds} yd driver carry` : '',
         hand: handLabel(profile?.handedness),
         intake: intakeLine(meta),
+        drills: progressBy.get(person.id) ?? {},
 
         // ── no producer. 44 of the 81 metrics on these screens are Forge outputs and Forge has not
         //    shipped, so most of his UI going quiet is the CORRECT outcome, not a regression. ──
