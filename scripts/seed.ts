@@ -48,6 +48,7 @@ interface SeedPerson {
   role: 'user' | 'coach' | 'admin'
   profile?: {
     handicapIndex: string
+    targetHandicap?: string
     driverCarryYds: number
     handedness: 'left' | 'right'
     ghinNumber: string
@@ -61,18 +62,24 @@ const PEOPLE: SeedPerson[] = [
     email: 'demo.player1@rypgolf.com',
     displayName: 'Avery Lane',
     role: 'user',
-    profile: { handicapIndex: '4.2', driverCarryYds: 268, handedness: 'right', ghinNumber: '8801234' },
+    // `targetHandicap` is what every benchmark on the coach dashboard reads against. Seeded so
+    // the rail shows a real reference instead of the 5 it used to hardcode.
+    profile: { handicapIndex: '4.2', targetHandicap: '2.0', driverCarryYds: 268, handedness: 'right', ghinNumber: '8801234' },
   },
   {
     email: 'demo.player2@rypgolf.com',
     displayName: 'Jordan Reyes',
     role: 'user',
-    profile: { handicapIndex: '17.8', driverCarryYds: 212, handedness: 'left', ghinNumber: '8809876' },
+    profile: { handicapIndex: '17.8', targetHandicap: '12.0', driverCarryYds: 212, handedness: 'left', ghinNumber: '8809876' },
   },
   {
     email: 'demo.coach@rypgolf.com',
     displayName: 'Coach Sam Ellis',
     role: 'coach',
+    // A coach plays golf too, and the served prototype's rail is THEIR own reference block — it
+    // prints their target and index on every screen. Without a profile it renders '—' throughout,
+    // which is honest but makes the feature look unbuilt during a demo.
+    profile: { handicapIndex: '6.8', targetHandicap: '3.0', handedness: 'right' },
   },
   // The ops account. Needed because `user_app_roles` writes are bypass-only, so the FIRST admin
   // cannot be created by any request path — it has to come from here or from raw SQL. No golf

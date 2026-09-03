@@ -2736,6 +2736,24 @@ class Component extends DCLogic {
       '7-iron': { cx: 50, cy: 48, rl: 14, rr: 12, rt: 14, rb: 17, rot: 11.3 },
       Driver: { cx: 50, cy: 48, rl: 14, rr: 12, rt: 14, rb: 17, rot: 11.3 }
     },
+    // ── SEEDED FROM REAL DATA, 2026-09-03 ────────────────────────────────────────────────────
+    // Six separate places in this file read `s.targetHcp === undefined ? 5` and
+    // `s.realHcp === undefined ? 11.4`. Seeding the state here fixes all six at once rather than
+    // patching each — and patching each is how a number gets missed.
+    //
+    // targetHcp ← golf.player_profile.target_handicap (added to eco 0.20.0 for exactly this).
+    // realHcp   ← golf.player_profile.handicap_index, which Atlas has had all along; the rail was
+    //             printing 11.4 next to a student whose index is 4.2.
+    // Both stay `undefined` when nothing is recorded, so the guards downstream still fire and the
+    // display shows '—'. A number is never substituted for a missing one.
+    targetHcp: (() => {
+      const v = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.me || {}).target;
+      return v === null || v === undefined ? undefined : Number(v);
+    })(),
+    realHcp: (() => {
+      const v = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.me || {}).hcp;
+      return v === null || v === undefined ? undefined : Number(v);
+    })(),
     hand: 'R', pivot: 'cannon', impactOpp: [],
     stake: { active: true, amount: 25, dest: 'charity', pledged: true, misses: 2 },
     session: { open: false, screen: 'roadmap', open_dom: 'chipping', drill: 'drive20', tally: [0, 0, 0, 0, 0] },
@@ -4442,39 +4460,82 @@ class Component extends DCLogic {
   // Target handicap. Every benchmark on every screen reads against this, so it
   // lives in the rail and can be moved mid-session.
   buildTarget() {
-    const t = this.state.targetHcp === undefined ? 5 : this.state.targetHcp;
+    const t = this.state.targetHcp === undefined ? NaN : this.state.targetHcp;
     return {
-      targetHcp: t <= 0 ? (t === 0 ? 'Scratch' : '+' + Math.abs(t)) : String(t),
+      // '—' when nobody has set one. The slider still works; it just does not pretend a value.
+      targetHcp: !isFinite(t) ? '—' : (t <= 0 ? (t === 0 ? 'Scratch' : '+' + Math.abs(t)) : String(t)),
       targetRaw: t,
       targetSet: e => this.setState({ targetHcp: Number(e.target.value) }),
-      targetNote: t <= 0 ? 'Every benchmark reads against scratch or better.'
-        : 'Benchmarks read against a ' + t + ' handicap.',
+      targetNote: !isFinite(t)
+        ? 'No target set. Set one and every benchmark on this page reads against it.'
+        : (t <= 0 ? 'Every benchmark reads against scratch or better.'
+                  : 'Benchmarks read against a ' + t + ' handicap.'),
 
       // Practice handicap is earned, not entered — it is the composite index.
-      practiceHcp: (() => {
-        const d = this.state.forge;
-        return hcpLabel(d.driving * 0.30 + d.approach * 0.35 + d.chipping * 0.15 + d.putting * 0.20);
-      })(),
+      //
+      // BLANK, 2026-09-03. The composite is `driving·0.30 + approach·0.35 + chipping·0.15 +
+      // putting·0.20` — Luke's weights, kept — but its four inputs are Forge's
+      // `golf.practice_index_results`, which does not exist. It was reading `state.forge`'s
+      // literals (14.0 / 8.0 / −3.0 / 2.0) and printing 7.0 under whoever was signed in.
+      //
+      // "Earned, not entered" is the copy directly beneath it, which is exactly why a placeholder
+      // here is worse than a dash: it claims the number was earned.
+      practiceHcp: '—',
       // The reference handicap sits at the top of the rail on every screen, so
       // no strokes-gained figure anywhere is ever read without its baseline.
+      //
+      // ── REWIRED 2026-09-03. Half of this is now real; the other half is honestly blank. ──
+      //
+      // TARGET: `golf.player_profile.target_handicap`, injected as __ATLAS_DATA__.me.target. It
+      // used to default to the literal 5, which made "Benchmarks read against a 5 handicap" true
+      // of the code and false of the player — a benchmark computed against a target nobody set.
+      // Null now renders '—'. The slider still moves it for the session; persisting a drag is a
+      // route away (PATCH /api/users/me already owns this row) and is not wired yet.
+      //
+      // TOTAL SG: BLANK, and this is the honest answer rather than a missing feature.
+      //
+      // What the formula below computes is `target − (driving·0.30 + approach·0.35 +
+      // chipping·0.15 + putting·0.20)`. That is NOT strokes gained — real SG is per-shot,
+      // E[from here] − E[from there] − 1, summed. It is "the gap between your target and your
+      // composite practice index", which is a legitimate metric under a misleading name.
+      //
+      // Its four inputs are Forge's `golf.practice_index_results`, which does not exist. They were
+      // being read from `state.forge`'s hardcoded literals — driving 14.0, approach 8.0, chipping
+      // −3.0, putting 2.0 — which produce a composite of 6.95 and, against a target of 5, the
+      // −2.0 that has been sitting under Avery's name. The weights are Luke's model and are kept;
+      // the inputs are not ours to invent.
+      //
+      // METRIC-MAP already ruled who computes this: `forge.index_expected` is Luke's
+      // expected-value model, "only the sg it produces is promoted" — to
+      // `golf.player_metrics(metric_type='strokes_gained')`. So Atlas must never compute SG, only
+      // read it. Two SG figures for one player is worse than none.
       ...(() => {
-        const d = this.state.forge;
-        const t = this.state.targetHcp === undefined ? 5 : this.state.targetHcp;
-        const comp = d.driving * 0.30 + d.approach * 0.35 + d.chipping * 0.15 + d.putting * 0.20;
-        const sg = t - comp;
+        const injected = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.me) || {};
+        const stored = injected.target === null || injected.target === undefined
+          ? undefined
+          : Number(injected.target);
+        const t = this.state.targetHcp !== undefined ? this.state.targetHcp : stored;
+        const known = typeof t === 'number' && isFinite(t);
         return {
-          railHcp: t <= 0 ? (t === 0 ? 'Scratch' : '+' + Math.abs(t)) : String(t),
-          railSG: fmtSG(sg),
-          railSGColor: sgColor(sg)
+          railHcp: !known ? '—' : (t <= 0 ? (t === 0 ? 'Scratch' : '+' + Math.abs(t)) : String(t)),
+          // No producer. Blank means not measured, never zero — the same rule the roster obeys.
+          railSG: '—',
+          // The literal, not MUTE: that const is local to another method (line ~3748) and is not
+          // in scope here. Referencing it threw `MUTE is not defined` inside renderVals(), which
+          // took the ENTIRE page down to a red error bar — his framework has no error boundary,
+          // so one bad reference in a computed value loses every screen.
+          railSGColor: '#6f7681'
         };
       })(),
 
       // Real handicap is self-reported until it can be pulled from a handicap
       // service. Asked once a week, one number.
-      realHcp: this.state.realHcp === undefined ? '11.4' : this.state.realHcp.toFixed(1),
+      // Real index from golf.player_profile.handicap_index via the seeded state. '—' when the
+      // player has not recorded one — never the 11.4 literal this used to print.
+      realHcp: this.state.realHcp === undefined ? '—' : this.state.realHcp.toFixed(1),
       realHcpDown: () => this.setState(st => ({ realHcp: Math.round(((st.realHcp === undefined ? 11.4 : st.realHcp) - 0.1) * 10) / 10 })),
       realHcpUp: () => this.setState(st => ({ realHcp: Math.round(((st.realHcp === undefined ? 11.4 : st.realHcp) + 0.1) * 10) / 10 })),
-      realHcpNote: this.state.realHcp === undefined ? 'Self-reported · asked every Sunday' : 'Updated just now',
+      realHcpNote: this.state.realHcp === undefined ? 'Not recorded' : 'Self-reported',
 
       // Transfer gap: what the range says minus what the card says. The whole
       // programme is judged on closing it.

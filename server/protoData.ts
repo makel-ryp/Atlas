@@ -136,7 +136,7 @@ export type AtlasData = {
   hidden: readonly string[]
   roster: RosterRow[]
   /** The signed-in coach. `hcp` is the raw `numeric` string here — see the type note below. */
-  me: { name: string | null; hcp: string | null }
+  me: { name: string | null; hcp: string | null; target: string | null }
 }
 
 /*
@@ -307,7 +307,10 @@ export async function buildAtlasData(
     // for: `me.hcp` is the raw numeric STRING, while `RosterRow.hcp` is a number. His header prints
     // it verbatim; his roster does arithmetic on it.
     const myProfile = await db
-      .select({ handicapIndex: golfPlayerProfile.handicapIndex })
+      .select({
+        handicapIndex: golfPlayerProfile.handicapIndex,
+        targetHandicap: golfPlayerProfile.targetHandicap,
+      })
       .from(golfPlayerProfile)
       .where(eq(golfPlayerProfile.userId, me.id))
       .limit(1)
@@ -315,6 +318,13 @@ export async function buildAtlasData(
     const meBlock = {
       name: me.displayName ?? me.email ?? null,
       hcp: myProfile[0]?.handicapIndex ?? null,
+      /**
+       * The caller's own target handicap, or null. The rail prints this as the reference every
+       * benchmark on the page is read against, and it used to be the literal 5 baked into
+       * `state.targetHcp`'s default — so "Benchmarks read against a 5 handicap" was true of the
+       * code and false of the player. Null renders as '—'; nothing substitutes a number here.
+       */
+      target: myProfile[0]?.targetHandicap ?? null,
     }
 
     // ── 2. Candidates, by both paths ────────────────────────────────────────────────────────────
@@ -393,6 +403,7 @@ export async function buildAtlasData(
         .select({
           userId: golfPlayerProfile.userId,
           handicapIndex: golfPlayerProfile.handicapIndex,
+          targetHandicap: golfPlayerProfile.targetHandicap,
           driverCarryYds: golfPlayerProfile.driverCarryYds,
           handedness: golfPlayerProfile.handedness,
         })
@@ -451,7 +462,11 @@ export async function buildAtlasData(
         //    shipped, so most of his UI going quiet is the CORRECT outcome, not a regression. ──
         tier: '',
         zone: '',
-        target: null, // no `target_handicap` column exists to read
+        // REAL as of 2026-09-03. `golf.player_profile.target_handicap` — the handicap this student
+        // is working toward, and the denominator of every benchmark on this dashboard. Null when
+        // nobody has set one, which renders as '—' rather than as a default: a benchmark computed
+        // against a target the coach never chose is the fabrication this column exists to end.
+        target: toHcp(profile?.targetHandicap),
         days: null, // needs a practice_days producer
         leak: '', // Forge
         sg: [], // Forge

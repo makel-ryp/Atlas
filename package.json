@@ -12,7 +12,7 @@
     "seed": "sh -c 'f=.env.local; [ -f \"$f\" ] || f=.env; exec node --env-file=\"$f\" --import tsx/esm scripts/seed.ts'"
   },
   "dependencies": {
-    "@ryp/eco": "file:vendor/ryp-eco-0.19.0.tgz",
+    "@ryp/eco": "file:vendor/ryp-eco-0.20.0.tgz",
     "drizzle-orm": "^0.39.3",
     "express": "^5.0.1",
     "firebase": "^10.14.1",
