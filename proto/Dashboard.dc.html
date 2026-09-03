@@ -91,7 +91,7 @@
       <div onClick="{{ goThread }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cThread }}; background: {{ bThread }};"><span>Team</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#7fa8c9;">{{ sessionsLeft }}</span></div>
       </sc-if>
       <sc-if value="{{ showProfile }}" hint-placeholder-val="{{ true }}">
-      <div onClick="{{ goProfile }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cProfile }}; background: {{ bProfile }};"><span>Profile</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#c8a05e;">{{ pfAware }}</span></div>
+      <div onClick="{{ goProfile }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cProfile }}; background: {{ bProfile }};"><span>Profile</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#c8a05e;"></span></div>
       </sc-if>
       <sc-if value="{{ showIntake }}" hint-placeholder-val="{{ true }}">
       <div onClick="{{ goIntake }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 14px; border-radius:9px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ cIntake }}; background: {{ bIntake }};"><span>Intake form</span><span style="flex:none; white-space:nowrap; font-size:9px; letter-spacing:0.06em; color:#c8a05e;">{{ inPct }}</span></div>
@@ -412,52 +412,23 @@
         </div>
       </div>
 
-      <div style="padding:34px 0 30px; border-bottom:1px solid rgba(20,25,31,0.18);">
-        <div style="display:flex; flex-wrap:wrap; gap:14px 20px; align-items:baseline; justify-content:space-between; margin-bottom:8px;">
-          <h2 style="font-family:'Newsreader',serif; font-size:clamp(23px,4.2vw,30px); color:#14191f; margin:0;">Ten shots, one 7-iron.</h2>
-          <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color: {{ pfTestStatusColor }};">{{ pfTestStatus }}</span>
-        </div>
-        <p style="font-family:'Newsreader',serif; font-size:17px; line-height:1.5; color:#6f7681; margin:0 0 26px; max-width:62ch;">The intake test. Ten balls off grass, filmed from one angle, and four things read off that single video. What matters here is not the read — it is the distance between the read and what you thought you were doing.</p>
+      <!-- ============ REMOVED 2026-09-03: the ten-shot video test ============
+           "Ten shots, one 7-iron." — four measured reads (path, face, contact, low point) off a
+           filmed set, four player self-estimates, an awareness-of-contact score and a 3x3 strike
+           map. All of it needs a coach watching video through a measurement pipeline that does not
+           exist and is not planned. Makel, 2026-09-03: "we cant complete it properly".
 
-        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr)); gap:0 34px;">
-          <div>
-            <sc-for list="{{ pfRows }}" as="r" hint-placeholder-count="4">
-              <div style="display:flex; flex-wrap:wrap; gap:10px 18px; align-items:baseline; justify-content:space-between; padding:15px 0; border-bottom:1px solid rgba(20,25,31,0.1);">
-                <div style="flex:1 1 150px; min-width:0;">
-                  <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.2em; text-transform:uppercase; color:#6f7681; margin-bottom:6px;">{{ r.label }}</div>
-                  <div style="font-family:'Newsreader',serif; font-size:20px; color: {{ r.readColor }}; margin-bottom:3px;">{{ r.read }}</div>
-                  <div style="font-family:'Newsreader',serif; font-size:14.5px; line-height:1.4; color:#6f7681;">{{ r.note }}</div>
-                </div>
-                <div style="flex:0 0 auto; text-align:right;">
-                  <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#6f7681; margin-bottom:6px;">You said</div>
-                  <div style="font-family:'Newsreader',serif; font-size:16px; color: {{ r.yoursColor }}; margin-bottom:7px;">{{ r.yours }}</div>
-                  <span style="display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color: {{ r.verdictColor }}; background: {{ r.verdictBg }}; border:1px solid {{ r.verdictBorder }}; padding:5px 11px; border-radius:999px;">{{ r.verdict }}</span>
-                </div>
-              </div>
-            </sc-for>
-          </div>
+           It rendered "No read until the ten shots are filmed" four times on what is now a
+           coach's main destination. Hiding the 'intake' and 'evidence' SECTIONS did not remove
+           it, because the profile section carried its own copy.
 
-          <div>
-            <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.2em; text-transform:uppercase; color:#6f7681; margin:15px 0 12px;">Strike map · heel to toe</div>
-            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:5px; max-width:190px; margin-bottom:26px;">
-              <sc-for list="{{ pfCells }}" as="c" hint-placeholder-count="9">
-                <div style="aspect-ratio:1; border: {{ c.border }}; background: {{ c.bg }}; border-radius:4px; display:grid; place-items:center; font-family:'IBM Plex Mono',monospace; font-size:13px; color: {{ c.color }};">{{ c.n }}</div>
-              </sc-for>
-            </div>
+           Deleted rather than flagged, unlike 'intake'/'evidence': this is a product decision, not
+           a data gap waiting on a producer. The pristine file is recoverable —
+             git show 27b7d4a:proto/Dashboard.dc.html
+           and the untouched export is in ~/Desktop/ATR/websites/atlas/handoff/.
 
-            <div style="border:1.5px solid #14191f; border-radius:14px; padding:22px 24px;">
-              <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.2em; text-transform:uppercase; color:#8a6a2f; margin-bottom:10px;">Awareness of contact</div>
-              <div style="display:flex; align-items:baseline; flex-wrap:wrap; gap:6px 12px; margin-bottom:12px;">
-                <span style="display: {{ pfAwareShow }}; font-family:'Archivo'; font-weight:900; font-size:clamp(34px,7vw,44px); line-height:1; color:#14191f;">{{ pfAware }}</span>
-                <span style="display: {{ pfAwareEmptyShow }}; font-family:'Newsreader',serif; font-size:24px; line-height:1.1; color:#8f8778;">Not yet estimated</span>
-                <span style="display: {{ pfAwareShow }}; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#6f7681;">{{ pfAwareCount }}</span>
-              </div>
-              <div style="height:4px; border-radius:3px; background:rgba(20,25,31,0.12); overflow:hidden; margin-bottom:14px;"><div style="height:100%; background:#8a6a2f; width: {{ pfAwareBar }};"></div></div>
-              <div style="font-family:'Newsreader',serif; font-size:16px; line-height:1.5; color:#14191f;">{{ pfAwareVerdict }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
+           The bindings it consumed are now dead and removed from profileVals(): pfRows, pfCells,
+           pfAware*, pfTestStatus*. ============================================================ -->
 
       <div style="padding:32px 0 30px; border-bottom:1px solid rgba(20,25,31,0.18);">
         <div style="display:flex; flex-wrap:wrap; gap:14px 20px; align-items:baseline; justify-content:space-between; margin-bottom:8px;">
@@ -3909,39 +3880,11 @@ class Component extends DCLogic {
       pfBack: () => this.setState({ view: 'roster', profileOf: null }),
       pfEditable: self,
 
-      pfTestStatus: done ? 'Ten shots filmed · read complete' : 'Ten shots not yet filmed',
-      pfTestStatusColor: done ? TONE.good : MUTE,
-      pfRows: CATS.map(c => {
-        const e = est[c.k];
-        const picked = e !== undefined;
-        const right = picked && e === c.answer;
-        const close = picked && !right && Math.abs(e - c.answer) === 1;
-        return {
-          label: c.label,
-          read: done ? c.read : '—',
-          readColor: done ? TONE[c.tone] : MUTE,
-          note: done ? c.note : 'No read until the ten shots are filmed.',
-          yours: picked ? NAMES[c.k][e] : 'Not estimated',
-          yoursColor: picked ? INK : '#a09789',
-          verdict: !picked ? '—' : right ? 'Matched' : close ? 'One step off' : 'Missed',
-          verdictColor: !picked ? '#a09789' : right ? TONE.good : close ? TONE.warn : TONE.bad,
-          verdictBg: !picked ? 'transparent' : right ? 'rgba(74,122,78,0.1)' : close ? 'rgba(150,112,31,0.1)' : 'rgba(168,82,47,0.09)',
-          verdictBorder: !picked ? 'rgba(20,25,31,0.12)' : right ? 'rgba(74,122,78,0.35)' : close ? 'rgba(150,112,31,0.35)' : 'rgba(168,82,47,0.3)'
-        };
-      }),
-      pfAware: answered.length ? aware + '%' : '—',
-      pfAwareShow: answered.length ? 'inline-block' : 'none',
-      pfAwareEmptyShow: answered.length ? 'none' : 'inline-block',
-      pfAwareVerdict: awareVerdict,
-      pfAwareCount: matched.length + ' of ' + CATS.length + ' read correctly',
-      pfAwareBar: (answered.length ? aware : 0) + '%',
-      // Ink-on-paper version of the strike map. Same ten shots, inverted.
-      pfCells: who.grid.map((n, i) => ({
-        n: done && n ? String(n) : '',
-        bg: done && n ? 'rgba(138,106,47,' + (0.1 + n * 0.16) + ')' : 'transparent',
-        border: i === 4 ? '1px solid rgba(138,106,47,0.6)' : '1px solid rgba(20,25,31,0.13)',
-        color: done && n ? INK : '#bdb4a4'
-      })),
+      // The ten-shot video test's bindings were removed with its markup on 2026-09-03
+      // (pfTestStatus, pfTestStatusColor, pfRows, pfAware*, pfCells). They computed a filmed-shot
+      // read, an awareness score and a 3x3 strike grid off `who.grid` and `who.answer` — all of
+      // which arrive empty, because nothing measures them and nothing will. See the REMOVED note
+      // in the markup above for the decision and how to recover the original.
 
       pfFields: FIELDS.map(f => {
         const v = P[f.k] === undefined ? (who.file[f.k] || '') : P[f.k];
