@@ -17,7 +17,8 @@
 | --- | --- | --- | --- | --- |
 | T-02 | ✅ done | Repin Atlas to `@ryp/eco#v0.18.0` | AI | Done 2026-08-31, typecheck clean. Was **not** related to T-01 (v0.18.0 is a SQL-only change). |
 | T-24 | ✅ done | **Host on Railway so nothing is demoed from localhost** | AI | Project `proactive-comfort`, service `Atlas`. Env vars set from `.env` via the CLI; `railway.json` added; eco vendored to fix the build. Live at `https://atlas.ryptest.com`, verified end to end. |
-| T-32 | ⚪ open | **Hide the fabricated baseline card from coaches** | AI | `railHcp`/`railSG` are a default slider and `state.forge` literals. A wrong number in front of a coach. One failed attempt — the wrapper must go on the card's real opening div, proven by tag balance, not eyeballed. |
+| T-35 | ⚪ open | Persist a target-handicap slider drag | AI | The slider moves the value for the session but does not save. `PATCH /api/users/me` already owns that row; it needs `targetHandicap` added to its schema and the slider wired to it. |
+| T-36 | 🔵 waiting | Read strokes gained from `golf.player_metrics` | Luke | Atlas must not compute SG — `forge.index_expected` is Luke's model and only its output is promoted. `TOTAL SG` stays a dash until Forge writes the metric. |
 | T-34 | ⚪ open | `golf.drill_library` so `drill_id` has a referent | AI | `drill_id` is free text today. The three ids come from Luke's `DRILL_DEFS`. Add the FK when the library lands — making it one now would block the feature on a table Luke owns. |
 | T-27 | ⚪ open | Publish `@ryp/eco` to a private registry | AI | It is currently vendored into Atlas as a committed `.tgz` because the GitHub SSH form breaks Railway's builder. Works, but every eco release needs a manual repack. GitHub Packages + an `NPM_TOKEN` is the real fix. |
 | T-28 | ⚪ open | Migrate `railway.json` to the new config format | AI | Railway CLI warns the old file format stops working **2026-12-01**. `railway config migrate`. |
@@ -96,6 +97,7 @@
 | D-26 | 2026-09-03 | **Coach view bifurcated by role** | Coach rail is Profile + Roster; 12 items → 2. One list per audience, no second app |
 | D-27 | 2026-09-03 | **`golf.drill_progress` applied** | 3 policies, RLS forced, per-COLUMN grants — `atlas_app` cannot write `ticked_at`/`watched_at` (`42501` proven) |
 | D-28 | 2026-09-03 | **Coach sign-off works end to end in a browser** | Tick persists, `verified_by` = the coach. Browser caught 3 bugs API tests structurally could not — chief among them: the served page authenticates by cookie, and the routes were bearer-only |
+| D-31 *(closes T-32)* | 2026-09-03 | **Rail rewired — no fabricated numbers left** | `target_handicap` added to eco 0.20.0 and wired; index read from the profile; the two Forge-derived figures show honest dashes |
 | D-30 *(closes T-33)* | 2026-09-03 | **Removed the ten-shot video test** | Deleted from the profile section + its 33 lines of bindings + an orphaned rail badge. Player file now reads Handicap history → The interview → sign-off |
 | D-29 | 2026-09-03 | Intake tier-2 rejection confirmed fixed on live | The exact 17-slider payload that broke the demo run now returns 200; and the tier is unreachable anyway |
 
@@ -104,6 +106,6 @@
 
 **Retired IDs:** T-26 → D-23 · T-29 → D-21 · T-30 → D-21 · T-31 → D-21.
 
-**Retired IDs:** T-33 → D-30.
+**Retired IDs:** T-32 → D-31 · T-33 → D-30.
 
-_Next free ID: **T-35** / **D-31**._
+_Next free ID: **T-37** / **D-32**._

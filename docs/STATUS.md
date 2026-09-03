@@ -20,7 +20,7 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-03 11:02 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-03 11:25 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
@@ -33,8 +33,8 @@ _Regenerated 2026-09-03 11:02 CDT by `docs/refresh-status.sh`._
 | practice-dna | `~/Desktop/ATR/apps/practice-dna` | **not a git repo** | — | — | — |
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
-- **@ryp/eco version:** `0.19.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.19.0.tgz`
-- **Atlas HEAD:** `5a64745 Remove the ten-shot video test from the player file`
+- **@ryp/eco version:** `0.20.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.20.0.tgz`
+- **Atlas HEAD:** `4f5f64c Make the rail real: target_handicap wired, fabricated numbers retired`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -81,17 +81,35 @@ Each line here was observed working. Do not rebuild any of it.
 
 ## 3. What is BROKEN — top blocker
 
-### 🟠 B-10 · OPEN · The rail's baseline card is fabricated, on a coach's screen
+### 🟢 B-10 · The rail's fabricated numbers — FIXED 2026-09-03
 
-The left rail shows **"5 HANDICAP"** and **"TOTAL SG −2.0"**, plus "PRACTICE 7.0" and "REAL 11.4".
-`railHcp` is `state.targetHcp` (default 5 — nobody's real index) and `railSG` is computed entirely
-from `state.forge.{driving,approach,chipping,putting}` literals. Avery is 4.2 and Total SG has no
-producer at all.
+Every number in the rail is now read from ryp-core or shows a dash:
 
-It is a PLAYER's own reference block and it means nothing on a roster screen, so the fix is to hide
-it for coaches — not to strip `state.forge`. **I attempted this once and put the `sc-if` wrapper on
-the wrong line** (walked back to an inner span instead of the card's opening `div`), then reverted.
-It needs doing deliberately. Tracked as T-32.
+| shown | source | was |
+| --- | --- | --- |
+| `EVERY NUMBER VS n HANDICAP` | `golf.player_profile.target_handicap` | `5` |
+| `TARGET HANDICAP n` + slider | same | `5` |
+| `Benchmarks read against n` | same, in the copy | "a 5 handicap" |
+| `REAL n` | `golf.player_profile.handicap_index` | `11.4` |
+| `PRACTICE` | **dash** — Forge's composite has no producer | `7.0` |
+| `TOTAL SG` | **dash** — see below | `−2.0` |
+
+**Why TOTAL SG is a dash and not a number.** The formula was
+`target − (driving·0.30 + approach·0.35 + chipping·0.15 + putting·0.20)`. That is **not strokes
+gained** — real SG is per-shot, `E[from here] − E[from there] − 1`, summed. It is "the gap between
+your target and your composite practice index": a legitimate metric under a misleading name. Its
+four inputs are Forge's `golf.practice_index_results`, which does not exist; they were being read
+from `state.forge`'s literals (14.0 / 8.0 / −3.0 / 2.0), giving a composite of 6.95 and, against a
+target of 5, the −2.0 that sat under Avery's name.
+
+The weights are Luke's model and are kept. METRIC-MAP already ruled who computes the result:
+`forge.index_expected` is his expected-value model, *"only the sg it produces is promoted"* — to
+`golf.player_metrics`. **Atlas must never compute SG, only read it.** Two SG figures for one player
+is worse than none.
+
+`target_handicap` (eco 0.20.0) is **player-writable only**: RLS scopes rows not columns, so a
+coach-write policy on `player_profile` would also let a coach rewrite the student's index, carry,
+handedness and GHIN. A coach *prescribing* a target is `atlas.prescriptions`.
 
 ### 🟢 B-11 · The ten-shot video test — REMOVED 2026-09-03
 
