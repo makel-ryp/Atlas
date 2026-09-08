@@ -88,6 +88,30 @@ protoRouter.post('/api/session', ...bearerChain, async (req, res, next) => {
   }
 })
 
+/**
+ * End the browser's session. Called by `logout()` in client/src/lib/authContext.tsx.
+ *
+ * ── WHAT THIS DOES AND DOES NOT DO, because the difference matters ──────────────────────────
+ * It clears the cookie from THE BROWSER. It does not revoke the session cookie's underlying
+ * credential, so a cookie VALUE that someone had already extracted would keep working until it
+ * expires (8h). Measured, not assumed: replaying a captured cookie after this call still returns
+ * 200 from /proto/dashboard.
+ *
+ * That gap is deliberate. `verifySessionCookie` is called with checkRevoked=true
+ * (eco/src/auth/verifySessionCookie.ts:41), so real revocation IS available — one call to
+ * `revokeRefreshTokens(uid)` would kill this cookie immediately. It is not made because
+ * `rypstick-ios` is SHARED with the live RYP Stick iOS app: revoking a user's refresh tokens
+ * signs them out of every RYP app on every device they own. A coach tidying up after a lesson
+ * would silently log themselves out of their phone.
+ *
+ * The threat this actually addresses is the shared laptop — a coach signs out, the next person
+ * navigates to /proto/dashboard and reads the roster. `clearCookie` closes that completely,
+ * because the browser no longer has the cookie to send. The residual risk is an attacker who has
+ * already exfiltrated an httpOnly cookie, at which point they have a bigger foothold than this.
+ *
+ * If per-app revocation becomes possible (a session store, or Atlas getting its own Firebase
+ * project), revoke here.
+ */
 protoRouter.post('/api/session/end', (_req, res) => {
   res.clearCookie(SESSION_COOKIE_NAME)
   res.json({ ok: true })
@@ -132,8 +156,19 @@ function injectBanner(html: string, liveCount: number): string {
   // added to his markup, same reasoning as the banner it sits in: it is a statement about how
   // Atlas hosts this page, not part of Luke's design.
   const home = `<a href="/" style="color:#13110b;font-weight:700;text-decoration:none;border-bottom:1px solid rgba(19,17,11,0.4);margin-right:14px;">&larr; Atlas</a>`
+  // ── SIGN OUT. Not optional here, and it is not a duplicate of the SPA's button. ─────────────
+  // A coach LANDS on this page — App.tsx redirects them here on sign-in — and this page is a
+  // standalone document with no React and no sign-out of its own. The "← Atlas" link above goes
+  // to `/`, which redirects a coach straight back to this page, so a coach had no way to sign out
+  // AT ALL: the only escape was clearing cookies. Which also made the sign-out fix that ends the
+  // session cookie unreachable for the one role that has a session cookie.
+  //
+  // `?signout=1` rather than a POST from here: signing out has a Firebase half that only the SPA
+  // can do (it owns the auth instance), so the SPA has to be the one to run it. App.tsx reads the
+  // param, calls the same logout() as the button, and strips it from the URL.
+  const signout = `<a href="/?signout=1" style="color:#13110b;font-weight:700;text-decoration:none;border-bottom:1px solid rgba(19,17,11,0.4);float:right;margin-left:14px;">Sign out</a>`
   const banner = `<div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#c8a05e;color:#13110b;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;padding:7px 14px;text-align:center;">
-${home}Live from ryp-core: ${liveCount} student${liveCount === 1 ? '' : 's'} &mdash; name · handicap index · driver carry · handedness (where recorded) · coaching relationship &nbsp;·&nbsp; Empty, no producer app: strokes gained, strike grid, shot reads, coach notes, tier, zone, target, practice log, intake answers. Blank means not measured, not zero.
+${home}${signout}Live from ryp-core: ${liveCount} student${liveCount === 1 ? '' : 's'} &mdash; name · handicap index · driver carry · handedness (where recorded) · coaching relationship &nbsp;·&nbsp; Empty, no producer app: strokes gained, strike grid, shot reads, coach notes, tier, zone, target, practice log, intake answers. Blank means not measured, not zero.
 </div><div style="height:29px"></div>`
   return html.replace(/<body([^>]*)>/i, `<body$1>${banner}`)
 }

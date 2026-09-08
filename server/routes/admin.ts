@@ -47,6 +47,27 @@ const scopedWriteSchema = { userAppRoles, adminAudit }
 // entitled has to stay refused, not get quietly granted a role on their way to the admin check.
 const adminChain: RequestHandler[] = [verifyToken, attachUser(pool), requireAdmin('atlas')]
 
+/**
+ * A uuid from a path param, lower-cased — or null if it is not a uuid.
+ *
+ * ⚠️ THE LOWER-CASING IS THE SECURITY CONTROL, not tidiness. Postgres compares `uuid` values
+ * case-insensitively; JavaScript compares strings case-sensitively. Every guard in this file that
+ * asks "is this row mine?" does it in JavaScript against a value that then reaches Postgres, so an
+ * admin passing their OWN id in uppercase failed the JS check and matched the DB row anyway.
+ *
+ * Verified exploitable 2026-09-03: `POST /api/admin/users/<OWN-ID-UPPERCASED>/app-roles` with
+ * {app:'atlas', role:'user'} returned 200 and demoted the admin, while the lower-case form
+ * correctly returned 400 cannot_modify_own_admin_role. That guard exists precisely so a real
+ * escalation cannot be made to look ordinary in the audit trail, and case defeated it.
+ *
+ * Returns null rather than throwing so each route answers 400 in its own shape.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+function normaliseUuid(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !UUID_RE.test(raw)) return null
+  return raw.toLowerCase()
+}
+
 export const adminRouter = Router()
 
 // ─── audited write helper ─────────────────────────────────────────────────────────────────────
@@ -232,13 +253,17 @@ adminRouter.post('/admin/users/:userId/app-roles', ...adminChain, async (req, re
     }
     const { app, role, reason } = parsed.data
     const actor = (req as any).user as typeof users.$inferSelect
-    const userId = req.params.userId as string
+    const userId = normaliseUuid(req.params.userId)
+    if (!userId) {
+      res.status(400).json({ error: 'invalid_user_id' })
+      return
+    }
 
     // The caller already holds ('atlas','admin') to have reached this route, so their own atlas
     // row IS the admin row. Editing it here is either a mistake made under one's own credentials
     // or a way to make a real escalation look ordinary in the audit trail — a second admin should
     // be the one to touch it.
-    if (userId === actor.id && app === 'atlas') {
+    if (userId === actor.id.toLowerCase() && app === 'atlas') {
       res.status(400).json({ error: 'cannot_modify_own_admin_role' })
       return
     }
@@ -293,10 +318,14 @@ adminRouter.delete(
       }
       const { reason } = parsed.data
       const actor = (req as any).user as typeof users.$inferSelect
-      const userId = req.params.userId as string
+      const userId = normaliseUuid(req.params.userId)
+    if (!userId) {
+      res.status(400).json({ error: 'invalid_user_id' })
+      return
+    }
       const app = req.params.app as string
 
-      if (userId === actor.id && app === 'atlas') {
+      if (userId === actor.id.toLowerCase() && app === 'atlas') {
         res.status(400).json({ error: 'cannot_modify_own_admin_role' })
         return
       }
@@ -483,7 +512,11 @@ adminRouter.delete(
       }
       const { reason } = parsed.data
       const orgId = req.params.orgId as string
-      const userId = req.params.userId as string
+      const userId = normaliseUuid(req.params.userId)
+    if (!userId) {
+      res.status(400).json({ error: 'invalid_user_id' })
+      return
+    }
       const actor = (req as any).user as typeof users.$inferSelect
 
       const result = await auditedWrite(

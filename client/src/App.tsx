@@ -102,10 +102,43 @@ function CoachDashboardRedirect() {
   )
 }
 
+/**
+ * Honour `/?signout=1`, the served prototype's only way out.
+ *
+ * A coach is redirected to /proto/dashboard on sign-in. That page is a standalone document with no
+ * React, so it cannot call Firebase's signOut itself, and its "← Atlas" link lands on `/` — which
+ * redirects a coach straight back. Before this, a coach could not sign out at all.
+ *
+ * The param is stripped with replaceState so a refresh, or the back button, does not sign the next
+ * person out the moment they arrive.
+ */
+function useSignoutParam(logout: () => Promise<void>, active: boolean): boolean {
+  // Read the param during the FIRST render, not in the effect. A coach arriving at /?signout=1 is
+  // still signed in for a moment, and `CoachDashboardRedirect` navigates away in its own effect —
+  // it won the race and cancelled the in-flight /api/session/end, so the cookie survived and the
+  // next person still reached the roster. Measured, not assumed: calling the endpoint by hand
+  // cleared the cookie, the same call via the sign-out link did not.
+  //
+  // Returning `pending` lets Routes suppress that redirect until the sign-out finishes.
+  const [pending, setPending] = useState(
+    () => new URLSearchParams(window.location.search).get('signout') === '1',
+  )
+
+  useEffect(() => {
+    if (!pending || !active) return
+    // Strip the param first so a refresh or a back-button press does not sign the NEXT person out.
+    window.history.replaceState({}, '', window.location.pathname)
+    void logout().finally(() => setPending(false))
+  }, [pending, active, logout])
+
+  return pending
+}
+
 function Routes() {
   const { status, error, me, logout } = useAuth()
   const [tab, setTab] = useState<'profile' | 'admin'>('profile')
   const [intakeGate, satisfyIntakeGate] = useIntakeGate(status === 'signed_in')
+  const signingOut = useSignoutParam(logout, status === 'signed_in')
 
   switch (status) {
     case 'loading':
@@ -150,8 +183,13 @@ function Routes() {
       // Admins keep the SPA, because the admin panel has no prototype and the tab strip is how
       // they reach it. A coach who is also an admin therefore stays here — the narrower role does
       // not get to hijack the wider one's only entry point.
-      if (isCoach && !isAtlasAdmin) {
+      // `!signingOut`: a coach arriving at /?signout=1 must not be bounced back to the prototype
+      // before their sign-out completes — that race is what left the session cookie alive.
+      if (isCoach && !isAtlasAdmin && !signingOut) {
         return <CoachDashboardRedirect />
+      }
+      if (signingOut) {
+        return <main className="shell"><p className="muted">Signing out…</p></main>
       }
       return (
         <>

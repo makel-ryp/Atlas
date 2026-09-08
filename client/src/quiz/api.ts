@@ -80,10 +80,20 @@ export const intakeApi: QuizApi = {
    *    stay empty (see `ResultScreen.tsx`'s `breakdown` comment) until this lands.
    */
   async saveVolume(id: string, volume: VolumeInput, alloc: AllocInput): Promise<QuizRun> {
-    const breakdown = computeVolumeBreakdown(volume, alloc);
     let run: QuizRun;
     try {
-      run = await patchIntake(id, { kind: 'alloc', alloc: breakdown.alloc, tierCompleted: 0 });
+      // Send the bar VERBATIM — the raw AllocInput including `messy`, not a derived AllocValue.
+      //
+      // This used to send `computeVolumeBreakdown(volume, alloc).alloc`, i.e. the DERIVED shape,
+      // into a column the route calls "the RAW alloc" and re-derives from at score time. The
+      // adapter therefore ran twice on the same answer. With 120 practice minutes, 4 course hours
+      // and the bar at 25/25/25/25, the golfer's allocation was stored as 11.11/11.11/11.11 rather
+      // than their actual split, and `messy` — which AllocValue has no key for — reached the
+      // database nowhere at all.
+      //
+      // Deriving is the SERVER's job precisely once, on read (intake.ts's toEnvelope). The client's
+      // job is to report what the golfer set.
+      run = await patchIntake(id, { kind: 'alloc', alloc, tierCompleted: 0 });
     } catch (err) {
       throw toQuizApiError(err, "We couldn't save your practice week. Please try again.");
     }

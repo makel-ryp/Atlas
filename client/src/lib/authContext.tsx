@@ -90,9 +90,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // a signed-in person without access should see what to do about it, not get bounced back to a
   // login form that will succeed and bounce them again.
   const logout = useCallback(async () => {
-    await signOut(auth)
-    setMe(null)
-    setStatus('signed_out')
+    // ── END THE SERVER SESSION, NOT JUST THE CLIENT ONE ──────────────────────────────────────
+    // Firebase's signOut clears the ID token this tab holds. It does NOT touch the httpOnly
+    // session cookie that POST /api/session mints for the served prototype — that cookie lives 8
+    // hours, is sameSite 'lax' (so a top-level navigation sends it), and by itself authenticates
+    // both /proto/dashboard and every /api/coach/* route via `cookieOrBearer`.
+    //
+    // So before this, a coach signing out of a shared laptop left the next person able to type
+    // /proto/dashboard and read their whole roster — real student names, emails and handicaps.
+    // The endpoint to close it has existed since the session was introduced and had zero callers.
+    //
+    // Order matters: end the server session FIRST, while the ID token is still valid. The reverse
+    // order leaves nothing to authenticate the request with.
+    //
+    // Failure here must not strand the user on a signed-in screen, so it is caught — but it is
+    // caught LOUDLY into the error slot rather than swallowed, because a cookie that outlived a
+    // sign-out is exactly the thing someone needs to know about.
+    let sessionEnded = true
+    try {
+      await apiFetch('/api/session/end', { method: 'POST' })
+    } catch {
+      sessionEnded = false
+    }
+
+    try {
+      await signOut(auth)
+    } finally {
+      // `finally`, not the happy path: if signOut rejects — offline, token already expired — the
+      // old code left status 'signed_in' and the button did nothing at all, silently. Locally
+      // signed out is the honest state either way; Firebase reconciles on reconnect.
+      setMe(null)
+      setError(sessionEnded ? null : 'Signed out here, but the dashboard session may still be open on this device.')
+      setStatus('signed_out')
+    }
   }, [])
 
   return (

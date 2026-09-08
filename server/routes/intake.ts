@@ -251,19 +251,41 @@ function validateProfilePartial(input: Record<string, unknown>): string | null {
 }
 
 // ── ANSWERS value validation, sourced from ITEM_BY_CODE (items.ts) ──────────────────────────────
-function isAllocValue(v: unknown): v is { construction: number; calibration: number; transfer: number; performance: number } {
+/**
+ * The RAW allocation the golfer set on the four-segment bar: `AllocInput` — construction,
+ * calibration, transfer and MESSY. Not `AllocValue`.
+ *
+ * ── The two shapes, and why this validator had the wrong one ────────────────────────────────
+ *   AllocInput  {construction, calibration, transfer, messy}       ← what the bar produces
+ *   AllocValue  {construction, calibration, transfer, performance} ← what the adapter DERIVES
+ * `performance` is deliberately absent from the input: it is computed from `courseHours`, not
+ * self-reported (shared/contract.ts:38).
+ *
+ * This function used to require the DERIVED keys, while the column it guards is documented three
+ * lines from its own assignment as "The RAW alloc column — the engine's ALLOC is derived from this
+ * at score time". The client had no choice but to satisfy the validator, so `saveVolume` ran
+ * `computeVolumeBreakdown` and sent the RESULT — and the server then re-derived from that already
+ * derived value.
+ *
+ * Measured 2026-09-03 with 120 practice minutes, 4 course hours and the bar at 25/25/25/25:
+ *   golfer sets   {25, 25, 25, messy 25}
+ *   client sent   {16.67, 16.67, 16.67, performance 33.33}   ← derived once
+ *   server stored {11.11, 11.11, 11.11, performance 33.33}   ← derived twice
+ * The three practice zones were cut by a third, and `messy` — the whole reason the fourth segment
+ * exists — reached the database nowhere at all, because AllocValue has no such key. Archetype,
+ * zone grades, the practice map and the Skill Band are all computed downstream of it.
+ *
+ * `messy` is REQUIRED, not optional: a missing key here is what silently became "no messy time",
+ * and that is a claim about the golfer nobody made. Bounds are each share 0..100 with NO SUM
+ * CONSTRAINT — copied from the instrument's own authority, `tgt/server/validation.ts:23-29`.
+ */
+function isAllocValue(v: unknown): v is { construction: number; calibration: number; transfer: number; messy: number } {
   if (typeof v !== 'object' || v === null) return false
   const o = v as Record<string, unknown>
-  const keys = ['construction', 'calibration', 'transfer', 'performance']
-  // Each share bounded 0..100 and NO SUM CONSTRAINT — copied from the instrument's own authority,
-  // `tgt/server/validation.ts:23-29`, not inferred.
-  //
-  // ⚠️ An earlier version here required the four to sum to 99..101 "because the spec says sum to
-  // 100". The spec says no such thing and the shares legitimately do not sum to 100: the allocation
-  // is DERIVED by the volume adapter from practice time, and time spent in the Messy Middle is
-  // counted in none of the four zones. With `messy: 20` the adapter returns a total of 83.33, and
-  // TGT's own conformance fixture stores {25, 12.5, 0, 50} = 87.5. That rule would have rejected
-  // every golfer who reported any messy time — a 400 on the most common answer.
+  // Reject the derived shape explicitly rather than letting it through as "messy missing" — a
+  // caller sending `performance` is sending the wrong thing and should be told so.
+  if ('performance' in o) return false
+  const keys = ['construction', 'calibration', 'transfer', 'messy']
   return keys.every((k) => {
     const n = o[k]
     return typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 100
@@ -279,7 +301,9 @@ function isAllocValue(v: unknown): v is { construction: number; calibration: num
  * one and lost the lot. (Found in a user test, 2026-09-01.)
  *
  * Validated as bipolar sliders (0–100), which is what `SliderControl` emits and what
- * `zoneEffectiveness()` clamps to when it scores them.
+ * `zoneEffectiveness()` clamps to when it scores them. Kept even though the intake now ends at
+ * Tier 1A: `TierRunner` can still render any tier on request, and re-introducing the tiers must
+ * not re-introduce the bug.
  */
 const ZONE_PRIOR_CODES = new Set(ZONE_PRIOR_ITEMS.map((i) => i.code))
 

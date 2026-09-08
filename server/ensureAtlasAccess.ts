@@ -50,12 +50,43 @@ function signupAllowlist(): string[] {
     .filter(Boolean)
 }
 
+/**
+ * May this email be auto-granted Atlas on first sign-in?
+ *
+ * ── EXACT ADDRESSES ONLY. Domain suffixes are NOT supported, and that is the security control. ──
+ *
+ * This gate stands in front of `rypstick-ios`, a Firebase project shared with the live RYP Stick
+ * iOS app: 28,428 real customer accounts as of 2026-09-03. The email it checks is a token claim
+ * (`decoded.email`) that nobody verifies — only 7.2% of that project's accounts have a verified
+ * address, so REQUIRING verification is not available to us either; it would lock out every demo
+ * account and most real customers.
+ *
+ * A suffix rule like `@rypgolf.com` was therefore a hole: `anyone@rypgolf.com` is an UNCLAIMED
+ * address, and any client of the shared project that lets a person choose their own email — the
+ * live iOS sign-up does — could register it and be auto-granted. Self-asserted claim, no
+ * verification, whole company domain.
+ *
+ * An exact address closes that without needing verification, because Firebase enforces email
+ * uniqueness: an address already belonging to an account CANNOT be registered by someone else. So
+ * allowlisting addresses that already exist is safe even though the claim is unverified. The cost
+ * is that inviting someone is a deliberate act — which for an invite-only pre-launch is the point,
+ * not a regression.
+ *
+ * FAILS CLOSED in production: unset means nobody is auto-granted. Open in development.
+ */
 function mayBeAutoGranted(email: string | null | undefined): boolean {
   const list = signupAllowlist()
   if (list.length === 0) return process.env.NODE_ENV !== 'production'
   const e = (email ?? '').trim().toLowerCase()
   if (!e) return false
-  return list.some((rule) => (rule.startsWith('@') ? e.endsWith(rule) : e === rule))
+  // Deliberately NOT `endsWith`. See the note above — a suffix match is the vulnerability.
+  if (list.some((rule) => rule.startsWith('@'))) {
+    // Loud, because a stale deploy could otherwise silently keep a domain rule alive.
+    console.warn(
+      '[ensureAtlasAccess] ATLAS_SIGNUP_ALLOWLIST contains a domain rule; domain rules are ignored. Use exact addresses.',
+    )
+  }
+  return list.includes(e)
 }
 
 export function ensureAtlasAccess(pool: Pool): RequestHandler {
