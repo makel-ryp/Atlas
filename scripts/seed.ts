@@ -46,6 +46,17 @@ interface SeedPerson {
   email: string
   displayName: string
   role: 'user' | 'coach' | 'admin'
+  /**
+   * What state to leave this person's Practice DNA run in.
+   *
+   * 'fresh'     — reset to in_progress with every answer blanked. They land IN the intake.
+   * 'completed' — marked complete. They land on their dashboard instead.
+   *
+   * This exists so the three demo entry points are ALL ready after one `npm run seed`, rather
+   * than each needing the database nudged into a different state before it can be shown. Whoever
+   * is demoing should never have to remember which account is in which condition.
+   */
+  intake?: 'fresh' | 'completed'
   profile?: {
     handicapIndex: string
     targetHandicap?: string
@@ -65,12 +76,16 @@ const PEOPLE: SeedPerson[] = [
     // `targetHandicap` is what every benchmark on the coach dashboard reads against. Seeded so
     // the rail shows a real reference instead of the 5 it used to hardcode.
     profile: { handicapIndex: '4.2', targetHandicap: '2.0', driverCarryYds: 268, handedness: 'right', ghinNumber: '8801234' },
+    // The PLAYER DASHBOARD entry point. Completed, so the intake gate lets her through.
+    intake: 'completed',
   },
   {
     email: 'demo.player2@rypgolf.com',
     displayName: 'Jordan Reyes',
     role: 'user',
     profile: { handicapIndex: '17.8', targetHandicap: '12.0', driverCarryYds: 212, handedness: 'left', ghinNumber: '8809876' },
+    // The INTAKE entry point. Left fresh so signing in drops straight into question one.
+    intake: 'fresh',
   },
   {
     email: 'demo.coach@rypgolf.com',
@@ -200,16 +215,23 @@ async function main() {
       await withRls(appPool, { userId, firebaseUid, app: 'atlas' }, schema, (db) =>
         db
           .update(atlasIntakeSubmissions)
-          .set({
-            status: 'in_progress',
-            tierCompleted: 0,
-            profile: null,
-            volume: null,
-            alloc: null,
-            answers: {},
-            completedAt: null,
-            updatedAt: new Date(),
-          })
+          .set(
+            person.intake === 'completed'
+              ? // Completed, but the ANSWERS are still cleared: this account exists to show the
+                // dashboard, and leaving a half-finished run behind it would make the result
+                // screen render against stale input if anyone navigated back to it.
+                { status: 'completed', completedAt: new Date(), updatedAt: new Date() }
+              : {
+                  status: 'in_progress',
+                  tierCompleted: 0,
+                  profile: null,
+                  volume: null,
+                  alloc: null,
+                  answers: {},
+                  completedAt: null,
+                  updatedAt: new Date(),
+                },
+          )
           .where(eq(atlasIntakeSubmissions.userId, userId)),
       )
 
