@@ -23,7 +23,28 @@ cd ~/dev/ATR/atlas && npm run seed
 ```
 
 Then open the site in a **private window** — a remembered session skips the login screen, and step 1
-is the login screen.
+is the login screen. (From inside the coach dashboard there is now a **Sign out** link in the top
+banner; before it existed a coach had no way out at all.)
+
+### The three entry points
+
+Each URL lands in ONE view. A single `npm run seed` leaves all three ready at the same time — you
+never have to put the database into a different state between them.
+
+| Show | URL | Why it lands there |
+| --- | --- | --- |
+| **Practice DNA intake** | `atlas.ryptest.com/?as=demo.player2@rypgolf.com` | Jordan's run is seeded **fresh**, so signing in drops straight into question one |
+| **Player dashboard** | `atlas.ryptest.com/?as=demo.player1@rypgolf.com` | Avery's run is seeded **completed**, so the intake gate lets her through |
+| **Coach dashboard** | `atlas.ryptest.com/?as=demo.coach@rypgolf.com` | Sam holds the `coach` role, so he is routed to Luke's roster |
+
+The link fills in the address and names the view under the heading. **You still type the password.**
+That is deliberate: the site is public and these accounts hold real entitlements against the
+Firebase project shared with the live iOS app, so a self-signing link would let in anyone who saw
+it.
+
+⚠️ Which view an account reaches is decided by the APP, not asserted by the link — the gate reads
+the run's status and the role picks coach vs player. So if an entry point lands in the wrong place,
+the fix is `npm run seed`, not the URL.
 
 | Account | Password | Who |
 | --- | --- | --- |

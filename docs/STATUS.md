@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-03 11:25 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-08 14:31 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **2 file(s)** | pushed |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **3 file(s)** | pushed |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | pushed |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-03 11:25 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.20.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.20.0.tgz`
-- **Atlas HEAD:** `4f5f64c Make the rail real: target_handicap wired, fabricated numbers retired`
+- **Atlas HEAD:** `e8f9a5f Three demo entry points, each landing in one view`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -70,6 +70,8 @@ Each line here was observed working. Do not rebuild any of it.
 | Google sign-in on the login screen | ✅ live | domain authorised; popup path accepted |
 | **Coach view, bifurcated by role** | ✅ verified | coach lands on the roster with a 2-item rail (Profile, Roster); player keeps their own 12-view app. One list per role — `HIDDEN_FOR_COACH` / `HIDDEN_FOR_PLAYER` |
 | **`golf.drill_progress` + coach sign-off** | ✅ verified | 17 assertions + a leak test. Per-COLUMN grants proven: `atlas_app` gets `42501` writing `ticked_at` |
+| **Three demo entry points** | ✅ verified | `/?as=<email>` — intake / player dashboard / coach dashboard, all three ready after one `npm run seed` |
+| **Sign-out ends the server session** | ✅ verified | `/proto/dashboard` answers `missing_session` afterwards; it used to serve the previous coach's roster |
 | **Ticking a Parallax video in the browser** | ✅ verified | NOT SIGNED OFF → ✓ SIGNED OFF, persisted, `verified_by` = the coach, `ticked_at` still null |
 | **Luke's design IS the app now** | ✅ live | sign-in lands on `Dashboard.dc.html`, fed from ryp-core. Not a React rebuild |
 | Plus handicaps store and display | ✅ verified | `-2.1` stored, `+2.1` shown; was written to neither golf table before |
@@ -80,6 +82,25 @@ Each line here was observed working. Do not rebuild any of it.
 | `npm run seed` resets the intake | ✅ verified | row back to `in_progress` / tier 0, confirmed in the DB |
 
 ## 3. What is BROKEN — top blocker
+
+### 🟢 Five security/correctness fixes — 2026-09-08
+
+From a six-agent review of every surface. Each was reproduced before fixing and re-tested on live.
+
+| | was | now |
+| --- | --- | --- |
+| **Sign-out left the session cookie live** | next person on a shared laptop typed `/proto/dashboard` and got the coach's roster — `/api/session/end` had **zero callers** | ends the session; `missing_session` |
+| **Uppercase uuid defeated the admin self-guard** | `UPPERCASE own id` → **200**, admin demoted; the guard exists so an escalation can't look ordinary in the audit trail | `normaliseUuid()`; → 400 |
+| **Allocation derived twice** | golfer's 25/25/25/messy-25 stored as `11.11/11.11/11.11`, and `messy` stored **nowhere** | raw shape stored; `actualAlloc` = `{20,20,20,40}` |
+| **Allowlist trusted a self-asserted email** | `@rypgolf.com` suffix over a project with 28,428 live iOS accounts | exact addresses only |
+| **A coach could not sign out at all** | my own bug — the prototype has no sign-out and `← Atlas` bounced them back | `Sign out` in the banner |
+
+⚠️ `/api/session/end` clears the cookie from the **browser**; it does not revoke it. Revocation is
+available (`checkRevoked` is already on) but `revokeRefreshTokens` would sign the user out of RYP
+Stick on their phone — the Firebase project is shared. Written up in `server/routes/proto.ts`.
+
+**Discarded from the review as false:** "no INSERT grant on `user_app_roles`; signup 500s".
+`atlas_app` holds INSERT, SELECT, UPDATE and signup demonstrably works.
 
 ### 🟢 B-10 · The rail's fabricated numbers — FIXED 2026-09-03
 

@@ -17,6 +17,8 @@
 | --- | --- | --- | --- | --- |
 | T-02 | ✅ done | Repin Atlas to `@ryp/eco#v0.18.0` | AI | Done 2026-08-31, typecheck clean. Was **not** related to T-01 (v0.18.0 is a SQL-only change). |
 | T-24 | ✅ done | **Host on Railway so nothing is demoed from localhost** | AI | Project `proactive-comfort`, service `Atlas`. Env vars set from `.env` via the CLI; `railway.json` added; eco vendored to fix the build. Live at `https://atlas.ryptest.com`, verified end to end. |
+| T-37 | ⚪ open | Remaining review findings | AI | `ProfileForm` handedness defaults to 'right'; a completed run stays PATCHable so an edited handicap never re-reconciles; `isPlausibleIndex` has no caller; `Admin.tsx` grant button demotes, shared reason box, no revoke; `ErrorBoundary` falsely claims answers are saved. |
+| T-38 | ⚪ open | Player-side "ready for review" tick | AI | Decision recorded in `eco/sql/rls_core.sql`: a player-owned table, not a column on `drill_progress`. Needs a player-facing surface, which does not exist. |
 | T-35 | ⚪ open | Persist a target-handicap slider drag | AI | The slider moves the value for the session but does not save. `PATCH /api/users/me` already owns that row; it needs `targetHandicap` added to its schema and the slider wired to it. |
 | T-36 | 🔵 waiting | Read strokes gained from `golf.player_metrics` | Luke | Atlas must not compute SG — `forge.index_expected` is Luke's model and only its output is promoted. `TOTAL SG` stays a dash until Forge writes the metric. |
 | T-34 | ⚪ open | `golf.drill_library` so `drill_id` has a referent | AI | `drill_id` is free text today. The three ids come from Luke's `DRILL_DEFS`. Add the FK when the library lands — making it one now would block the feature on a table Luke owns. |
@@ -97,6 +99,9 @@
 | D-26 | 2026-09-03 | **Coach view bifurcated by role** | Coach rail is Profile + Roster; 12 items → 2. One list per audience, no second app |
 | D-27 | 2026-09-03 | **`golf.drill_progress` applied** | 3 policies, RLS forced, per-COLUMN grants — `atlas_app` cannot write `ticked_at`/`watched_at` (`42501` proven) |
 | D-28 | 2026-09-03 | **Coach sign-off works end to end in a browser** | Tick persists, `verified_by` = the coach. Browser caught 3 bugs API tests structurally could not — chief among them: the served page authenticates by cookie, and the routes were bearer-only |
+| D-34 | 2026-09-08 | **Three demo entry points** | `/?as=<email>`; one seed readies all three. Password deliberately not in the URL |
+| D-33 | 2026-09-08 | **Fixed 5 review findings** | Session cookie surviving sign-out; uppercase-uuid audit bypass; alloc derived twice; suffix allowlist; coach unable to sign out |
+| D-32 | 2026-09-08 | Six-surface code review | 15 findings, 13 high; one discarded as false after checking |
 | D-31 *(closes T-32)* | 2026-09-03 | **Rail rewired — no fabricated numbers left** | `target_handicap` added to eco 0.20.0 and wired; index read from the profile; the two Forge-derived figures show honest dashes |
 | D-30 *(closes T-33)* | 2026-09-03 | **Removed the ten-shot video test** | Deleted from the profile section + its 33 lines of bindings + an orphaned rail badge. Player file now reads Handicap history → The interview → sign-off |
 | D-29 | 2026-09-03 | Intake tier-2 rejection confirmed fixed on live | The exact 17-slider payload that broke the demo run now returns 200; and the tier is unreachable anyway |
@@ -108,4 +113,4 @@
 
 **Retired IDs:** T-32 → D-31 · T-33 → D-30.
 
-_Next free ID: **T-37** / **D-32**._
+_Next free ID: **T-39** / **D-35**._
