@@ -155,7 +155,7 @@ function injectBanner(html: string, liveCount: number): string {
   // destination rather than a new tab, Back returns them to the login screen. Injected rather than
   // added to his markup, same reasoning as the banner it sits in: it is a statement about how
   // Atlas hosts this page, not part of Luke's design.
-  const home = `<a href="/" style="color:#13110b;font-weight:700;text-decoration:none;border-bottom:1px solid rgba(19,17,11,0.4);margin-right:14px;">&larr; Atlas</a>`
+  const home = `<a href="/?home=1" style="color:#13110b;font-weight:700;text-decoration:none;border-bottom:1px solid rgba(19,17,11,0.4);margin-right:14px;">&larr; Atlas</a>`
   // ── SIGN OUT. Not optional here, and it is not a duplicate of the SPA's button. ─────────────
   // A coach LANDS on this page — App.tsx redirects them here on sign-in — and this page is a
   // standalone document with no React and no sign-out of its own. The "← Atlas" link above goes

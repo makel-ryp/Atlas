@@ -55,14 +55,22 @@ function useIntakeGate(active: boolean): [IntakeGate, () => void] {
 }
 
 /**
- * Sends a coach to the served prototype.
+ * Sends a coach OR A PLAYER to the served prototype.
+ *
+ * Was coach-only, and that was the bug behind "why don't we have the player Dashboard anymore"
+ * (2026-09-09). `/proto/dashboard` has never had a coach guard — it already builds the player
+ * view (`buildAtlasData(uid, 'today', HIDDEN_FOR_PLAYER)`) and always did. Nothing routed a
+ * player to it. A player who finished intake fell through to `<Profile />`, a bare React form,
+ * and the only door to their own dashboard was a button on that form labelled "Open the coach
+ * dashboard" that opened a new tab. So the player dashboard was built, wired to real data, and
+ * unreachable — which reads from the outside as both "the UI is gone" and "the DB is broken."
  *
  * Two steps, and the first is the one that is easy to miss: a browser NAVIGATION cannot carry an
  * Authorization header, so the Firebase ID token has to be exchanged for an httpOnly session
  * cookie (POST /api/session) BEFORE the navigation, or `/proto/dashboard` answers 401 and the
- * coach sees a bare error page instead of their roster.
+ * user sees a bare error page instead of their dashboard.
  *
- * `location.replace`, not `href`: the SPA is not a place the coach chose to be, and leaving it in
+ * `location.replace`, not `href`: the SPA is not a place they chose to be, and leaving it in
  * history means their Back button lands on a screen that immediately redirects them forward again.
  * The way back is the "← Atlas" link injected into the page's banner (server/routes/proto.ts).
  */
@@ -127,7 +135,14 @@ function useSignoutParam(logout: () => Promise<void>, active: boolean): boolean 
   useEffect(() => {
     if (!pending || !active) return
     // Strip the param first so a refresh or a back-button press does not sign the NEXT person out.
-    window.history.replaceState({}, '', window.location.pathname)
+    //
+    // `as` SURVIVES the strip. The demo links are `/?as=<email>&signout=1` — signout so the link
+    // is deterministic no matter who was signed in before (a stale coach cookie is what made all
+    // three demo URLs open the coach dashboard), `as` so Login can prefill the address. Stripping
+    // the whole query string killed the prefill and traded one broken entry point for another.
+    const keepAs = new URLSearchParams(window.location.search).get('as')
+    const rest = keepAs ? `?as=${encodeURIComponent(keepAs)}` : ''
+    window.history.replaceState({}, '', `${window.location.pathname}${rest}`)
     void logout().finally(() => setPending(false))
   }, [pending, active, logout])
 
@@ -139,6 +154,10 @@ function Routes() {
   const [tab, setTab] = useState<'profile' | 'admin'>('profile')
   const [intakeGate, satisfyIntakeGate] = useIntakeGate(status === 'signed_in')
   const signingOut = useSignoutParam(logout, status === 'signed_in')
+  // Read once, on the first render, and keep it for the life of the mount: the redirect below runs
+  // on every render, so reading the live URL would send them back to the prototype the moment
+  // anything strips the param.
+  const [wantsSpa] = useState(() => new URLSearchParams(window.location.search).get('home') === '1')
 
   switch (status) {
     case 'loading':
@@ -185,7 +204,14 @@ function Routes() {
       // not get to hijack the wider one's only entry point.
       // `!signingOut`: a coach arriving at /?signout=1 must not be bounced back to the prototype
       // before their sign-out completes — that race is what left the session cookie alive.
-      if (isCoach && !isAtlasAdmin && !signingOut) {
+      //
+      // `!wantsSpa`: "← Atlas" in the prototype banner points at `/`, which used to redirect
+      // straight back — a loop that left a coach with no way into the SPA at all. Now that a
+      // PLAYER lands on the prototype too, that loop would also be the only thing standing
+      // between them and their own profile form, so the banner link carries `?home=1` and this
+      // honours it. Same idiom as `?signout=1`, for the same reason: the prototype is a plain
+      // document and a query param is the only channel it has back into React.
+      if (!isAtlasAdmin && !signingOut && !wantsSpa) {
         return <CoachDashboardRedirect />
       }
       if (signingOut) {

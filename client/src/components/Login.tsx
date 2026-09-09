@@ -47,9 +47,9 @@ function messageFor(code: string): string {
  * `/?as=<email>` prefills the address and names the view underneath the heading, so a single URL
  * can be handed to someone and lands them in one specific part of the product. Three exist:
  *
- *   /?as=demo.player2@rypgolf.com  → the Practice DNA intake  (that run is seeded fresh)
- *   /?as=demo.player1@rypgolf.com  → the player dashboard     (that run is seeded completed)
- *   /?as=demo.coach@rypgolf.com    → the coach dashboard      (Luke's roster, real students)
+ *   /?as=demo.player2@rypgolf.com&signout=1  → the Practice DNA intake  (that run is seeded fresh)
+ *   /?as=demo.player1@rypgolf.com&signout=1  → the player dashboard     (that run is seeded completed)
+ *   /?as=demo.coach@rypgolf.com&signout=1    → the coach dashboard      (Luke's roster, real students)
  *
  * ⚠️ The PASSWORD is deliberately NOT in the URL and not on the page. atlas.ryptest.com is public
  * and these accounts hold real entitlements against the shared Firebase project; a link that signs

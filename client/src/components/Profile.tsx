@@ -147,11 +147,11 @@ function OpenPrototype() {
   return (
     <div style={{ marginTop: '1.5rem' }}>
       <button onClick={open} disabled={busy}>
-        {busy ? 'Opening…' : 'Open the coach dashboard'}
+        {busy ? 'Opening…' : 'Open your dashboard'}
       </button>
       <p className="small muted">
-        Luke\'s design, served as-is, with your real students injected. The page banner says which
-        numbers are live and which are still his sample data.
+        Luke\'s design, served as-is, with your real data injected. The page banner
+        names what is live and what is still empty for want of a producer app.
       </p>
       {error && <p className="error small">{error}</p>}
     </div>
