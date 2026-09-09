@@ -51,7 +51,7 @@ export type RosterRow = {
   tier: string
   /** Atlas curriculum zone. Not built. */
   zone: string
-  /** Target handicap. There is no `target_handicap` COLUMN in ryp-core, not merely no data. */
+  /** Target handicap. REAL since 2026-09-03 — `golf.player_profile.target_handicap` exists and is read below. */
   target: number | null
   /** Practice days. Needs a `practice_days` producer; none exists. */
   days: number | null

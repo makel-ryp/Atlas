@@ -17,6 +17,7 @@
 | --- | --- | --- | --- | --- |
 | T-02 | ✅ done | Repin Atlas to `@ryp/eco#v0.18.0` | AI | Done 2026-08-31, typecheck clean. Was **not** related to T-01 (v0.18.0 is a SQL-only change). |
 | T-24 | ✅ done | **Host on Railway so nothing is demoed from localhost** | AI | Project `proactive-comfort`, service `Atlas`. Env vars set from `.env` via the CLI; `railway.json` added; eco vendored to fix the build. Live at `https://atlas.ryptest.com`, verified end to end. |
+| T-40 | 🟡 draft | Coaching-ruleset spec for Luke | Luke | `docs/operations/ASK-luke-coaching-ruleset-2026-09-09.md`. The quiz asks 13 of 71 items, so calibration + performance mastery are permanently null; `computeGrowthZone` skips null zones (scoring.ts:389) so only construction/transfer can ever be the growth zone and 2 of the 4 `GROWTH` prescriptions are unreachable; `recommendedAlloc` instead substitutes `zoneDeficit(null)=0.5` (scoring.ts:363) — a printed assumption. Prescription is consumed only by ResultScreen.tsx; `protoData` sets `tier:''`/`zone:''`. 6 questions for Luke, ordered. |
 | T-39 | 🟡 partly verified | Player was routed away from their own dashboard | AI | **Fixed f470dee.** `/proto/dashboard` never had a coach guard and always built the player view (`buildAtlasData(uid,'today',HIDDEN_FOR_PLAYER)`); `App.tsx` routed only coaches to it, so a player fell through to `<Profile />` and the only door was a button labelled "Open the coach dashboard". Also: `?as=` links now carry `&signout=1` (they only prefilled the form, so a stale session made all three demo URLs open the coach view), `as` survives the query strip, and the banner's "← Atlas" points at `/?home=1` so the SPA is reachable. **Verified on live:** all three entry points show distinct labels and correct prefills. **NOT verified:** the signed-in landing for each role — needs a password, which the AI must not use. |
 | T-37 | ⚪ open | Remaining review findings | AI | `ProfileForm` handedness defaults to 'right'; a completed run stays PATCHable so an edited handicap never re-reconciles; `isPlausibleIndex` has no caller; `Admin.tsx` grant button demotes, shared reason box, no revoke; `ErrorBoundary` falsely claims answers are saved. |
 | T-38 | ⚪ open | Player-side "ready for review" tick | AI | Decision recorded in `eco/sql/rls_core.sql`: a player-owned table, not a column on `drill_progress`. Needs a player-facing surface, which does not exist. |
@@ -114,4 +115,4 @@
 
 **Retired IDs:** T-32 → D-31 · T-33 → D-30.
 
-_Next free ID: **T-40** / **D-35**._
+_Next free ID: **T-41** / **D-35**._
