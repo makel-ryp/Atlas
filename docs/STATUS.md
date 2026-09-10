@@ -20,7 +20,7 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-10 11:49 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-10 12:10 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-10 11:49 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.20.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.20.0.tgz`
-- **Atlas HEAD:** `3893442 Spec for Luke: the coaching ruleset the Practice DNA result never reaches`
+- **Atlas HEAD:** `d48e334 Correct five factual errors in the Luke ruleset doc, found by the equations audit`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
