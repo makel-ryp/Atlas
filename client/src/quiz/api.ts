@@ -11,6 +11,7 @@
  */
 
 import { apiFetch, ApiError } from '../lib/api';
+import type { InterviewKey } from '../../../shared/interview';
 import { computeVolumeBreakdown } from '../../../shared/volume';
 import type {
   AllocInput,
@@ -124,6 +125,14 @@ export const intakeApi: QuizApi = {
       return await patchIntake(id, { kind: 'profile', profile });
     } catch (err) {
       throw toQuizApiError(err, "We couldn't save your profile. Please try again.");
+    }
+  },
+
+  async saveInterview(id: string, interview: Partial<Record<InterviewKey, string>>): Promise<QuizRun> {
+    try {
+      return await patchIntake(id, { kind: 'interview', interview });
+    } catch (err) {
+      throw toQuizApiError(err, "We couldn't save your answers. Please try again.");
     }
   },
 

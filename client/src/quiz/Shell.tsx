@@ -15,6 +15,7 @@ import type { QuizApi } from './contract';
 import { type Tier, itemsForTier } from '../../../shared/practice-dna/items';
 import { ErrorBoundary } from './ErrorBoundary';
 import { NotBuiltYet } from './NotBuiltYet';
+import { InterviewStage } from './InterviewStage';
 import { ProfileStage } from './ProfileStage';
 import { ResultScreen } from './ResultScreen';
 import { TierRunner, questionsFor } from './TierRunner';
@@ -183,6 +184,15 @@ export function Shell({ api, onEnterAtlas }: { api: QuizApi; onEnterAtlas?: () =
           <ProfileStage
             busy={quiz.busy}
             onDone={(profile) => void quiz.saveProfile(profile).catch(() => {})}
+          />
+        );
+
+      case 'interview':
+        return (
+          <InterviewStage
+            busy={quiz.busy}
+            initial={quiz.run?.interview}
+            onDone={(interview) => void quiz.saveInterview(interview).catch(() => {})}
           />
         );
 

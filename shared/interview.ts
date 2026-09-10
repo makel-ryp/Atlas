@@ -1,0 +1,87 @@
+/**
+ * The interview — five free-text questions Luke's profile page has always rendered and nothing
+ * ever asked.
+ *
+ * ── Why this lives HERE and not in shared/practice-dna/ ────────────────────────────────────────
+ * `shared/practice-dna/items.ts` is BYTE-IDENTICAL to tgt's copy (verified 2026-09-10 by diff).
+ * tgt is a live product running the same instrument, so adding items there forks a shared
+ * assessment to serve one app's screen. The interview is an ATLAS concept — it fills Luke's coach
+ * dossier, it is not scored, and it feeds no scale — so it gets its own Atlas-owned module and its
+ * own column rather than a seat in the item bank.
+ *
+ * ── Where the text comes from ──────────────────────────────────────────────────────────────────
+ * Verbatim from `proto/Dashboard.dc.html:3957` (`intakeVals`'s `FIELDS`), which carries the longer
+ * hints; the profile view at `:3783` has the same five keys with shortened ones. Taking the longer
+ * pair means the question a golfer answers reads the same as the question the coach sees answered.
+ * Do not reword: the profile page renders these keys directly, and `limits`' hint is load-bearing.
+ *
+ * ── The one field that is not just prose ───────────────────────────────────────────────────────
+ * `limits` is the stated input to the pivot routing. `STEPS[1].variants.anchor`
+ * (`Dashboard.dc.html:2518`) is "the route when dorsiflexion or lead-hip depth is limited", and the
+ * Fitness screen that reported exactly that was cut for v1. So this answer is currently the ONLY
+ * source that rule could ever read. See docs/reports/PROTOTYPE-WHAT-LUKE-ALREADY-BUILT-2026-09-10.md §3.
+ */
+
+export interface InterviewField {
+  /** Key in the stored jsonb AND in the prototype's `file` object. Luke's markup reads these. */
+  key: InterviewKey
+  label: string
+  hint: string
+}
+
+export type InterviewKey = 'sport' | 'years' | 'limits' | 'time' | 'goal'
+
+export const INTERVIEW_FIELDS: readonly InterviewField[] = [
+  {
+    key: 'sport',
+    label: 'Sports background',
+    hint: 'What else did your body learn first, and to what level?',
+  },
+  {
+    key: 'years',
+    label: 'Years playing golf',
+    hint: 'And how many of those were coached?',
+  },
+  {
+    key: 'limits',
+    label: 'Physical limitations',
+    hint: 'Injuries, surgeries, ranges you cannot reach. Be complete — this decides which route you are given.',
+  },
+  {
+    key: 'time',
+    label: 'Honest weekly hours',
+    hint: 'Not the number you wish were true.',
+  },
+  {
+    key: 'goal',
+    label: 'Why you are here',
+    hint: 'In one sentence, in your own words.',
+  },
+]
+
+export const INTERVIEW_KEYS: readonly InterviewKey[] = INTERVIEW_FIELDS.map((f) => f.key)
+
+/**
+ * Per-answer cap. Generous because an injury history is genuinely long — the prototype's textarea
+ * grows by `Math.ceil(v.length / 38)` rows and expects paragraphs — but bounded so one field
+ * cannot be used to store an essay in a jsonb column that is read on every dashboard load.
+ */
+export const INTERVIEW_MAX_LEN = 2000
+
+/**
+ * Validate a partial interview patch. Returns an error code, or null when the shape is fine.
+ *
+ * Partial on purpose: the stage saves as the golfer types past a field, same as the profile
+ * stage, so an object with one key is normal and an empty object is not an error.
+ *
+ * Empty strings are ALLOWED and meaningful — "I have no physical limitations" is an answer, and
+ * distinguishing it from "not yet asked" is why the column is null until the stage is reached.
+ */
+export function validateInterviewPartial(input: Record<string, unknown>): string | null {
+  for (const [key, value] of Object.entries(input)) {
+    if (!INTERVIEW_KEYS.includes(key as InterviewKey)) return `unknown_interview_field:${key}`
+    if (typeof value !== 'string') return `invalid_interview_value:${key}`
+    if (value.length > INTERVIEW_MAX_LEN) return `interview_value_too_long:${key}`
+  }
+  return null
+}

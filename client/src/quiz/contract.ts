@@ -25,6 +25,7 @@ import { PROFILE_FIELDS, type Answers, type Profile } from '../../../shared/prac
 import type { PracticeDnaResult } from '../../../shared/practice-dna/scoring';
 import type { AllocInput, VolumeInput } from '../../../shared/contract';
 import { VOLUME_LIMITS } from '../../../shared/contract';
+import type { InterviewKey } from '../../../shared/interview';
 
 export type { Answers, Profile, PracticeDnaResult, AllocInput, VolumeInput };
 export { VOLUME_LIMITS };
@@ -67,6 +68,11 @@ export interface QuizRun {
   volume: VolumeInput | null;
   /** The four practice-time shares, or null before the volume stage is saved. */
   alloc: AllocInput | null;
+  /**
+   * The five free-text interview answers, `{}` before the interview stage is saved.
+   * Atlas-owned (shared/interview.ts), not part of the pinned instrument — see that file.
+   */
+  interview: Partial<Record<InterviewKey, string>>;
   /** Null until enough is answered to score (Tier 1A complete + full profile). */
   result: PracticeDnaResult | null;
   createdAt: string;
@@ -116,6 +122,9 @@ export interface QuizApi {
    * the whole port: these answers are what becomes the golfer's profile, not a copy of it.
    */
   saveProfile(id: string, profile: Profile): Promise<QuizRun>;
+
+  /** Partial save of the interview stage; merges server-side like `saveProfile`. */
+  saveInterview(id: string, interview: Partial<Record<InterviewKey, string>>): Promise<QuizRun>;
 
   /**
    * PATCH /api/intake/:id { kind: 'answers', tierCompleted } — saves the tier's answers and

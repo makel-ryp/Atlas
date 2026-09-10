@@ -20,12 +20,12 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-10 12:29 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-10 14:41 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **1 file(s)** | pushed |
-| eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | pushed |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **12 file(s)** | pushed |
+| eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | **1 ahead** |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
 | locker-room | `~/Desktop/ATR/apps/locker-room` | makel-ryp/locker-room | feature | clean | pushed |
@@ -33,8 +33,8 @@ _Regenerated 2026-09-10 12:29 CDT by `docs/refresh-status.sh`._
 | practice-dna | `~/Desktop/ATR/apps/practice-dna` | **not a git repo** | — | — | — |
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
-- **@ryp/eco version:** `0.20.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.20.0.tgz`
-- **Atlas HEAD:** `932381f Rename the skill radar off "Practice DNA", and cut the fitness movement screen`
+- **@ryp/eco version:** `0.21.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.21.0.tgz`
+- **Atlas HEAD:** `d8951d0 Finishing intake now overrides an earlier "keep me in the SPA"`
 <!-- AUTO:END -->
 
 Regenerate the block above with:

@@ -20,6 +20,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { InterviewKey } from '../../../shared/interview';
 import {
   type AllocInput,
   type Answers,
@@ -39,6 +40,7 @@ export interface QuizRunState {
   error: string | null;
   saveVolume(volume: VolumeInput, alloc: AllocInput): Promise<void>;
   saveProfile(profile: Profile): Promise<void>;
+  saveInterview(interview: Partial<Record<InterviewKey, string>>): Promise<void>;
   saveTier(tier: '1A' | '1B' | '2' | '3', answers: Answers): Promise<void>;
   dismissError(): void;
 }
@@ -178,6 +180,15 @@ export function useQuizRun(api: QuizApi): QuizRunState {
         mutate(
           () => api.saveProfile(requireRun().id, profile),
           "We couldn't save your profile. Please try again.",
+        ),
+      [api, mutate, requireRun],
+    ),
+
+    saveInterview: useCallback(
+      (interview) =>
+        mutate(
+          () => api.saveInterview(requireRun().id, interview),
+          "We couldn't save your answers. Please try again.",
         ),
       [api, mutate, requireRun],
     ),

@@ -18,7 +18,15 @@
 
 import { isProfileFilled, type QuizRun, type TierCompleted } from './contract';
 
-export type Stage = 'volume' | 'profile' | 'tier1A' | 'tier1B' | 'tier2' | 'tier3' | 'result';
+export type Stage =
+  | 'volume'
+  | 'profile'
+  | 'interview'
+  | 'tier1A'
+  | 'tier1B'
+  | 'tier2'
+  | 'tier3'
+  | 'result';
 
 /**
  * The furthest-along screen this run has earned. Order matters: each check assumes
@@ -41,6 +49,14 @@ export type Stage = 'volume' | 'profile' | 'tier1A' | 'tier1B' | 'tier2' | 'tier
 export function defaultStage(run: QuizRun): Stage {
   if (!run.volume || !run.alloc) return 'volume';
   if (!isProfileFilled(run.profile)) return 'profile';
+  // The interview sits between the profile and the items: it is the same kind of question as the
+  // profile (about you, not about your practice) and it is what fills the coach's dossier, so a
+  // golfer answers it while still in that frame rather than after being scored.
+  //
+  // Gated on `goal` alone, not on all five. `limits` is legitimately empty for most people and
+  // `isInterviewFilled` would then loop them back here forever. `goal` is the one question nobody
+  // has a blank answer to.
+  if (!run.interview?.goal) return 'interview';
   if (run.tierCompleted === 0) return 'tier1A';
   return 'result';
 }
@@ -68,11 +84,12 @@ export function nextTier(_tierCompleted: TierCompleted): 'tier1B' | 'tier2' | 't
 }
 
 /** Progress dots in the header. Tier 3 is excluded: it is research opt-in, not the flow. */
-export const STAGE_SEQUENCE: readonly Stage[] = ['volume', 'profile', 'tier1A', 'result'];
+export const STAGE_SEQUENCE: readonly Stage[] = ['volume', 'profile', 'interview', 'tier1A', 'result'];
 
 export const STAGE_LABELS: Record<Stage, string> = {
   volume: 'Your practice week',
   profile: 'About your game',
+  interview: 'The interview',
   tier1A: 'The Read',
   tier1B: 'Sharpen your map',
   tier2: 'The Full Diagnosis',

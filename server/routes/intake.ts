@@ -17,6 +17,7 @@ import { ensureAtlasAccess } from '../ensureAtlasAccess'
 import { PROFILE_FIELDS, ITEM_BY_CODE, type Profile, type Answers, type AnswerValue } from '../../shared/practice-dna/items'
 import { computeResult, type PracticeDnaResult } from '../../shared/practice-dna/scoring'
 import { computeVolumeBreakdown } from '../../shared/volume'
+import { validateInterviewPartial } from '../../shared/interview'
 // The 17 zone-prior sliders Tier 2 appends. They are NOT in the instrument's item bank on purpose —
 // `shared/practice-dna/` is Forge's canonical copy and adding to it would fork our version from
 // theirs invisibly (see zone-grades.ts) — so the route has to learn about them separately or it
@@ -144,6 +145,9 @@ function toEnvelope(row: SubmissionRow) {
     // quality_flag, which stays server-side. (Caught by the smoke suite 2026-09-01.)
     volume: row.volume ?? null,
     alloc: row.alloc ?? null,
+    // Same reasoning as volume/alloc above: its own column, so it must be returned explicitly
+    // or a resumed run renders the interview stage blank over answers that are actually stored.
+    interview: row.interview ?? {},
     completedAt: row.completedAt,
     startedAt: row.startedAt,
     updatedAt: row.updatedAt,
@@ -426,6 +430,10 @@ const patchBodySchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('volume'), volume: z.record(z.string(), z.unknown()), tierCompleted: z.number().int().min(0).max(4).optional() }).strict(),
   z.object({ kind: z.literal('alloc'), alloc: z.record(z.string(), z.unknown()), tierCompleted: z.number().int().min(0).max(4).optional() }).strict(),
   z.object({ kind: z.literal('answers'), answers: z.record(z.string(), z.unknown()), tierCompleted: z.number().int().min(0).max(4).optional() }).strict(),
+  // The interview — five free-text answers. Its own kind rather than a member of `profile`
+  // because `validateProfilePartial` enforces the pinned instrument's closed vocabulary and
+  // would reject every one of these keys as `unknown_profile_field`.
+  z.object({ kind: z.literal('interview'), interview: z.record(z.string(), z.unknown()), tierCompleted: z.number().int().min(0).max(4).optional() }).strict(),
 ])
 
 intakeRouter.patch('/intake/:id', ...identityChain, async (req, res, next) => {
@@ -446,6 +454,8 @@ intakeRouter.patch('/intake/:id', ...identityChain, async (req, res, next) => {
     // Raw inputs get their own columns. They are NOT merged into `answers` — see tryComputeResult.
     let volumePatch: Record<string, unknown> | undefined
     let allocPatch: Record<string, unknown> | undefined
+    // Atlas-owned free text, validated against shared/interview.ts rather than the instrument.
+    let interviewPatch: Record<string, unknown> | undefined
     if (body.kind === 'profile') {
       const err = validateProfilePartial(body.profile)
       if (err) {
@@ -464,6 +474,13 @@ intakeRouter.patch('/intake/:id', ...identityChain, async (req, res, next) => {
       // Raw practice minutes / course hours / messy time. Stored as given so the run stays
       // re-scoreable if the volume adapter changes.
       volumePatch = body.volume
+    } else if (body.kind === 'interview') {
+      const err = validateInterviewPartial(body.interview)
+      if (err) {
+        res.status(400).json({ error: err })
+        return
+      }
+      interviewPatch = body.interview
     } else {
       const err = validateAnswersPartial(body.answers)
       if (err) {
@@ -492,6 +509,9 @@ intakeRouter.patch('/intake/:id', ...identityChain, async (req, res, next) => {
         const nextAnswers = answersPatch ? { ...(current.answers as object ?? {}), ...answersPatch } : current.answers
         const nextVolume = volumePatch ? { ...(current.volume as object ?? {}), ...volumePatch } : current.volume
         const nextAlloc = allocPatch ? { ...(current.alloc as object ?? {}), ...allocPatch } : current.alloc
+        const nextInterview = interviewPatch
+          ? { ...((current.interview as object) ?? {}), ...interviewPatch }
+          : current.interview
         const nextTier =
           body.tierCompleted !== undefined ? Math.max(current.tierCompleted ?? 0, body.tierCompleted) : current.tierCompleted
 
@@ -502,6 +522,7 @@ intakeRouter.patch('/intake/:id', ...identityChain, async (req, res, next) => {
             answers: nextAnswers,
             volume: nextVolume,
             alloc: nextAlloc,
+            interview: nextInterview,
             tierCompleted: nextTier,
             updatedAt: new Date(),
           })
