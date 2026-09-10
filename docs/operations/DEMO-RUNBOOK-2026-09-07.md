@@ -127,6 +127,27 @@ so approval actually grants something rather than being a formality."
 refused by the database, and so is approving their own request. Both were tested as the app's own
 Postgres role.
 
+### The Parallax sign-off list — seeded 2026-09-10
+
+Open **Avery Lane**. The sign-off list shows the three drills the file defines
+(`sga30`, `chip20`, `ryp20`) and is seeded into a deliberate mix:
+
+| Drill | State | Why it is in this state |
+| --- | --- | --- |
+| **Short Game Assessment** (`sga30`) | ✓ Signed off, with a note | What a completed review looks like — *"Bunker lie is the leak — 4 of 5 left short."* |
+| **Chipping Index** (`chip20`) | Not signed off, video ref present | **The actionable one.** The player has submitted; the coach watches it in Parallax and ticks here. |
+| **Ryp Putting Drill** (`ryp20`) | Not signed off, no ref | Nothing submitted yet. |
+
+Ticking `chip20` writes `golf.drill_progress.verified_at` + `verified_by_user_id` and the row
+flips to "✓ Signed off" with today's date.
+
+**Jordan Reyes has no drill rows and that is correct** — the `drill_progress_select` policy scopes
+rows to students a coach actually coaches, and Jordan is still *pending*. The list renders empty
+rather than wrong.
+
+Verified 2026-09-10 by running the live policies as `atlas_app`: with the coach's id set, both of
+Avery's rows come back; with an unrelated player's id set, **zero** rows come back.
+
 ## 5. Academies · sign out, sign in as **the admin**
 
 Go to the **Admin** tab — it does not render for a player or a coach.

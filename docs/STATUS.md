@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-10 12:16 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-10 12:29 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **4 file(s)** | pushed |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **1 file(s)** | pushed |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | pushed |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-10 12:16 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.20.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.20.0.tgz`
-- **Atlas HEAD:** `fcf4319 Rewrite the Luke ask: he already built the ladder, the inputs just aren't wired`
+- **Atlas HEAD:** `932381f Rename the skill radar off "Practice DNA", and cut the fitness movement screen`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
