@@ -1115,6 +1115,7 @@
       </div>
 
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:20px;">
+        <sc-if value="{{ showFitnessScreen }}" hint-placeholder-val="{{ false }}">
         <div style="border:1px solid rgba(255,255,255,0.09); border-radius:18px; background:#1a222e; padding:clamp(17px,3.4vw,28px);">
           <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px;">
             <h3 style="font-family:'Newsreader',serif; font-size:25px; color:#ece7db; margin:0;">Fitness screen</h3>
@@ -1132,6 +1133,7 @@
           </div>
           <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f; margin-top:18px;">Last screened Jul 8 · next Aug 5</div>
         </div>
+        </sc-if>
 
         <div style="border:1px solid rgba(255,255,255,0.09); border-radius:18px; background:#1a222e; padding:clamp(17px,3.4vw,28px);">
           <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px;">
@@ -1853,7 +1855,7 @@
 
         <div style="border:1px solid rgba(255,255,255,0.09); border-radius:18px; background:#161d28; padding:clamp(19px,3.4vw,30px) clamp(19px,3.6vw,32px);">
           <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:20px;">
-            <h3 style="font-family:'Newsreader',serif; font-size:25px; color:#ece7db; margin:0;">Practice DNA</h3>
+            <h3 style="font-family:'Newsreader',serif; font-size:25px; color:#ece7db; margin:0;">Skill radar</h3>
             <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f;">You vs scratch baseline</span>
           </div>
           <div style="display:grid; place-items:center; padding:10px 0 6px;">
@@ -5055,7 +5057,7 @@ class Component extends DCLogic {
       // Hiding a section closes its content but leaves its rail entry, which then navigates
       // to a blank screen. One flag per nav item off the same injected list, so a coach's rail
       // is the two screens they came for instead of eleven about their own golf.
-      showToday: !isHidden('today'), showCal: !isHidden('cal'), showPlan: !isHidden('plan'), showBuild: !isHidden('build'), showEvidence: !isHidden('evidence'), showTransfer: !isHidden('transfer'), showPerf: !isHidden('perf'), showFitness: !isHidden('fitness'), showThread: !isHidden('thread'), showProfile: !isHidden('profile'), showIntake: !isHidden('intake'), showRoster: !isHidden('roster'),
+      showToday: !isHidden('today'), showCal: !isHidden('cal'), showPlan: !isHidden('plan'), showBuild: !isHidden('build'), showEvidence: !isHidden('evidence'), showTransfer: !isHidden('transfer'), showPerf: !isHidden('perf'), showFitness: !isHidden('fitness'), showFitnessScreen: !isHidden('fitnessScreen'), showThread: !isHidden('thread'), showProfile: !isHidden('profile'), showIntake: !isHidden('intake'), showRoster: !isHidden('roster'),
       cRoster: r.roster.c, bRoster: r.roster.b,
       isProfile: view === 'profile' && !isHidden('profile'), goProfile: this.nav('profile'),
       cProfile: r.profile.c, bProfile: r.profile.b,

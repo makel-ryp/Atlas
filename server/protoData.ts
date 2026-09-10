@@ -108,10 +108,28 @@ export type RosterRow = {
  */
 const VIDEO_TEST_SECTIONS = ['intake', 'evidence'] as const
 
+/**
+ * The physical movement screen inside the Fitness tab — pelvic rotation, torso separation, ankle
+ * dorsiflexion, single-leg balance, overhead squat, each graded Pass/Limited by a named coach
+ * (`FITNESS`, Dashboard.dc.html:2670).
+ *
+ * Cut for v1 (Makel, 2026-09-10: "the whole physical screen thing is not doable"). It needs an
+ * in-person screening by a movement coach on a four-week cadence, which is not a pipeline we have.
+ *
+ * NOT the whole Fitness tab — the programming and Speed blocks stay, because those are workouts a
+ * player can actually be given. This is a sub-block guard, so it is its own key rather than a
+ * member of the section list.
+ */
+const FITNESS_SCREEN = ['fitnessScreen'] as const
+
 const PLAYER_ONLY = ['today', 'cal', 'plan', 'build', 'fitness', 'transfer', 'perf', 'thread'] as const
 
-export const HIDDEN_FOR_COACH: readonly string[] = [...VIDEO_TEST_SECTIONS, ...PLAYER_ONLY]
-export const HIDDEN_FOR_PLAYER: readonly string[] = [...VIDEO_TEST_SECTIONS, 'roster']
+export const HIDDEN_FOR_COACH: readonly string[] = [
+  ...VIDEO_TEST_SECTIONS, ...PLAYER_ONLY, ...FITNESS_SCREEN,
+]
+export const HIDDEN_FOR_PLAYER: readonly string[] = [
+  ...VIDEO_TEST_SECTIONS, ...FITNESS_SCREEN, 'roster',
+]
 
 export type AtlasData = {
   /**
