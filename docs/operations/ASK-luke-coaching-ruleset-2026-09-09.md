@@ -87,9 +87,10 @@ This cascades in three ways we can prove:
   The priority zone can therefore only ever be **construction or transfer**. Calibration and
   performance are unreachable, so two of your four prescriptions can never fire.
 - **`recommendedAlloc` does NOT skip them.** It substitutes `zoneDeficit(null) = 0.5`, "unmeasured
-  ⇒ moderate assumed need" (`scoring.ts:363`). So the recommended-practice bars show calibration and
-  performance figures derived from an assumption, not from anything the golfer said. This is the one
-  place in the pipeline we are currently printing a made-up number, and we would like to stop.
+  ⇒ moderate assumed need" (`scoring.ts:363`), so its calibration and performance shares rest on an
+  assumption rather than on anything the golfer said. It is not on a screen today — `recommendedAlloc`
+  is computed on every result and rendered **nowhere**, in neither the quiz nor your dashboard. We
+  are not going to display it in that state, which is really Question 1 again.
 - **The Architect archetype asserts "no zone is starving"** while two zones were never looked at
   (`scoring.ts:560`).
 
@@ -203,21 +204,45 @@ instead; a decision tree or "tier sets the intensity, zone sets the content" bot
 
 ## 5. Strokes gained
 
-`ASK-luke-forge-repo.md` §1c and §2 already cover the two `sgFor` implementations and the
-`BENCH`/`SGA_BENCH` divergence. Not repeating those. Two things are new since it was written.
+`ASK-luke-forge-repo.md` §1c and §2 already cover the clashing `sgFor` implementations and the
+`BENCH`/`SGA_BENCH` divergence. Not repeating the detail — but the short version matters here, so:
 
-### 5.1 What the dashboard computes today
+### 5.1 There are three different "SG" formulas, and they disagree
 
-`proto/Dashboard.dc.html:2636` and `:3017`:
+| Where | Formula | Constants |
+| --- | --- | --- |
+| `Dashboard.dc.html:2637` | `(target − index) × SG_W[k]` | `SG_W` = .30 / .35 / .15 / .20 |
+| `AtlasPlayer.dc.html:1130` | `(SG_EXP[k] × hcp − idx) × SG_F[k]` | `SG_EXP` = 1.40 / .90 / .20 / .35 · `SG_F` = .12 / .30 / .12 / .20 |
+| `Dashboard.dc.html:3088` | `(hcp − hcpFor(pts)) × SG_W.chipping` | reuses **.15** — chipping's *share of the composite* — as a strokes-per-point conversion |
+
+Two functions with the same name, `sgFor`, computing different numbers, both shown to a user as
+"SG". The third borrows a weight for a purpose it wasn't defined for.
+
+### 5.2 ⚠️ One of these numbers is fabricated and still on screen
+
+On the Performance screen, `forgeVals()` still computes:
 
 ```js
-const SG_W = { driving: 0.30, approach: 0.35, chipping: 0.15, putting: 0.20 };
+// Dashboard.dc.html:3017
 const composite = +(d.driving*0.30 + d.approach*0.35 + d.chipping*0.15 + d.putting*0.20).toFixed(2);
+// Dashboard.dc.html:3145
+composite: fmtSG(tHcp - composite),
 ```
 
-and the figure labelled **Total SG** is then `targetHandicap − composite`.
+Its four inputs are **not measured**. They are hardcoded literals at `Dashboard.dc.html:2761`:
 
-**This is not strokes gained.** Strokes gained is defined per shot, against a baseline:
+```js
+forge: { driving: 14.0, approach: 8.0, chipping: -3.0, putting: 2.0, ... }
+```
+
+So the composite is always **6.95**, and against a target of 5 the screen prints **−2.0** under a
+real student's name. It is the same figure for every player. We rewired the rail to print a dash for
+exactly this reason; this screen was missed. **We are fixing it on our side** — flagged here only so
+you know that number in the demo was never real.
+
+### 5.3 What real strokes gained would require
+
+Strokes gained is defined per shot, against a baseline:
 
 ```
   SG(shot) = E[strokes to hole from where it started]
@@ -225,20 +250,35 @@ and the figure labelled **Total SG** is then `targetHandicap − composite`.
            − 1
 ```
 
-summed over a round. It requires a **baseline expected-strokes table** indexed by distance and lie
-(the tour-average tables from Broadie's work, or your own). **No such table exists anywhere in either
-codebase, and nothing references one.** What the formula above produces is a handicap-gap figure —
-useful, arguably more useful for coaching — but a golfer who knows the term will read it as strokes
-gained and it isn't.
+summed over a round. None of the three formulas above is that — all three are
+`(benchmark − index) × constant`, a linear rescaling of a drill score into stroke units. There is no
+shot, no start position, no end position, no −1.
 
-> ### ❓ Question 4 — proxy or the real thing?
-> **(a)** Is the 30/35/15/20 composite a deliberate proxy you stand behind? If yes we keep it exactly
-> as written and only change the **label**, because the current one is the one thing we can't leave.
-> What should it be called? *"Index gap"* and *"Handicap delta"* are two options.
+**One thing in the codebase is genuinely SG-shaped**, and it's yours — the launch-monitor screen:
+
+```js
+// AtlasPlayer.dc.html:1107
+const lmStrokes = p => 1.75 + 0.41 * Math.log(Math.max(1, p));
+// AtlasPlayer.dc.html:1674
+sg = +(lmStrokes(exp) - lmStrokes(act)).toFixed(2);
+```
+
+That is `E[from A] − E[from B]` — the right structure, missing only the `−1` and any notion of lie.
+But `lmStrokes` is a two-constant curve on proximity, not a table indexed by distance **and** lie
+(tee / fairway / rough / sand / recovery / green), and it is used on three clubs only. Nothing else
+in either app consumes it.
+
+> ### ❓ Question 4 — proxy, or the real thing?
+> **(a)** Is the 30/35/15/20 composite a deliberate proxy you stand behind? If yes we keep the maths
+> exactly as written and change only the **label** — that is the one thing we can't leave, because a
+> golfer who knows the term will read it as strokes gained. *"Index gap"* or *"Handicap delta"*?
 >
-> **(b)** If you want real strokes gained: whose baseline table, and — the harder half — what
-> measures each shot's start and end position? That is a per-shot data capture we do not have today
-> and it is a Forge question before it is an Atlas one.
+> **(b)** Which of the three formulas is canonical? They cannot all stay.
+>
+> **(c)** If you want real strokes gained: whose baseline table — Broadie's published one, your own,
+> or a licensed set? And the harder half: what records each shot's start and end position? Your own
+> copy at `Dashboard.dc.html:1816` says *"On-course strokes gained comes from your Arccos rounds"*,
+> and Arccos appears nowhere else in either codebase. Is that the intended source?
 
 ### 5.2 Good news on the denominator
 
@@ -246,6 +286,24 @@ Your rail prints *"Benchmarks read against a 5 handicap"* and that 5 used to be 
 student's number was computed against a target nobody set. There is now a real
 `golf.player_profile.target_handicap` column and the dashboard reads it. Nothing needed from you —
 noted so you know the number moves with the player now.
+
+### 5.4 Where SG is meant to land does not exist yet
+
+Our own architecture record already rules that **Atlas must never compute SG, only read it**
+(`STATUS.md:127-128`): `forge.index_expected` is your expected-value model, and *"only the sg it
+produces is promoted"*. We stand by
+that; two SG figures for one player is worse than none.
+
+Worth knowing that the receiving end isn't built. `golf.player_metrics` — the table that note points
+at — **does not exist**. The `golf` schema today has exactly three tables: `player_profile`,
+`handicap_history`, `drill_progress`. And the vocabulary that would gate the write
+(`config.ts:78`) has eight metric types — `mechanics_index`, `club_head_speed`, `handicap`,
+`on_course_score`, `mental_game_index`, `routine_adherence`, `pressure_performance`,
+`decision_quality` — and **none of them is strokes gained**.
+
+Nothing needed from you here; it's our build. It does mean "wire up SG" is further out than the
+roadmap implies, and it is a reason Question 4a (the label) is worth answering now — it's a fix we
+can ship without any of this.
 
 > ### ❓ Question 5 — the four indices 🔒
 > `driving`, `approach`, `chipping`, `putting` are Forge's. Confirming what we assume: they are
