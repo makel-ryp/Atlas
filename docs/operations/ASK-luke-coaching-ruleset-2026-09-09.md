@@ -45,11 +45,12 @@ Three things are true at once, and each needs a decision from you:
 2. **The only coaching output is a 4-row table of static prose**, keyed on one variable. Two of its
    four rows can never be reached, because their zones are among the unmeasurable ones.
 3. **None of it reaches the dashboard.** The prescription renders once, on the quiz result screen,
-   and is never seen again. On the dashboard, `tier` and `zone` are empty strings with the comment
-   *"Atlas curriculum tier. Not built."*
+   and is never seen again. Your Plan page and Calendar run off `state.tier: 'builder'` and
+   `state.phase: 2` — two literals at `Dashboard.dc.html:2783` — so every player sees the same week.
 
 So: the quiz currently changes what a golfer is **told about themselves**, and changes nothing about
-what the product **does with them**. Section 4 is the ask that fixes that.
+what the product **does with them**. Section 4 is the ask that fixes that — and §4.1 is the short
+version, because the quiz already asks the two questions your tier table is keyed on.
 
 ---
 
@@ -151,54 +152,95 @@ So a golfer's archetype is *described* to them and then discarded.
 
 ## 4. ⭐ The main ask: the curriculum ruleset
 
-This is the piece that does not exist in any form, and the reason for this document.
+### First — you have already built most of this, and we should say so
 
-On your dashboard every player carries a **tier** and a **zone**. In our data layer both are the
-empty string, with this comment (`server/protoData.ts:49`):
+The Plan page is not a sketch. `TIERS` at `Dashboard.dc.html:2678` is a real curriculum:
 
-```js
-// ── NO PRODUCER. Present so his render finds the key, empty because nothing writes it.
-/** Atlas curriculum tier. Not built. */   tier: string
-/** Atlas curriculum zone. Not built. */   zone: string
-```
+| Tier | Floor (hrs/wk) | Play | Speed | Home | Range |
+| --- | --- | --- | --- | --- | --- |
+| **Foundation** — *"the book default, fits around a full life"* | 2 | 2 | 0 | 15 min | 30 min |
+| **Builder** | 5 | 5 | 3 | 30 min | 30 min |
+| **Competitive** | 10 | 10 | 3 | 30 min | 30 min |
 
-Nothing sets them because no rule exists that says what they should be. The quiz result is not
-passed to the dashboard at all — `buildAtlasData()` never calls the scoring engine.
+Three tiers, four phases each, and every one of those twelve cells carries a label, weekly hours, a
+session mix, a home/range split and a **full seven-day schedule** — e.g. Foundation Phase 2,
+*"Construction Primary"*, 2.0 hrs, `6 × 15 Home + 1 × 30 Range`, split 75/25, with each day named.
 
-### What we need from you
+**So we are not asking you to invent a ladder. You wrote one.** We are asking for the two rules that
+would make it run by itself.
 
-**A. The tier ladder.** Your prototype shows a plan phase 1–4.
+### The two things it does not say
 
-- What are the four tiers called, and what does each one mean?
-- What puts a new golfer on a tier on day one — handicap? the quiz? a coach's judgement?
-- **What advances someone?** This is the important one. A number of sessions, a coach sign-off, a
-  measured improvement, a re-test? Advancement criteria are the difference between a label and a
-  curriculum.
-- Can a player move *down*?
+**A. What puts a player on a tier?** `state.tier` is the literal `'builder'` (`:2783`) for everyone.
+Is the tier chosen by the player as a commitment level ("I can give 5 hrs/wk"), assigned by the
+coach, or derived from something — handicap, the quiz, stated available hours? The `floor` column
+reads like an hours-per-week commitment, which hints at self-selection; confirm?
 
-**B. The zone assignment.** We already compute a growth zone from the quiz. Is that the same thing as
-your dashboard's "zone", or are they different concepts that happen to share a word? If the same:
-does our rule (weakest measured zone by deficit × trainability, gated by the Mechanics Index) match
-what you intended, or would you assign it differently?
+**B. What advances a phase?** `state.phase` is the literal `2`. `phaseTabs` (`:3436`) is a manual
+picker — you click Phase 1–4 to look at them. Nothing in the file *selects* a phase or moves anyone
+between them. This is the real gap: a number of weeks, hitting the floor N weeks running, a coach
+sign-off, a re-test, a measured improvement?
 
-**C. The drill mapping.** 🔒 partly — the drill library itself is Forge's, but the *rule* is yours:
-given a tier and a zone, how are drills chosen? A fixed list per tier-and-zone cell? A pool the coach
-picks from? Ordered, or parallel?
+Also worth answering while you are here: **can a player move down**, and does `rebuild` (the toggle
+at `:2783`, which adds `t.play` hours in Phase 2 only, `:2973`) sit outside the ladder or inside it?
+
+**C. Zone vs tier.** We compute a growth zone from the quiz (weakest measured zone by deficit ×
+trainability, gated by the Mechanics Index). Your dashboard also carries a `zone`. Same concept, or
+two things sharing a word? If the same, does our rule match what you intended?
 
 ### The shape of the answer
 
-The most useful artifact is a **table**, and it does not need to be complete on the first pass — one
-filled row tells us the shape and we can bring you the rest:
+For A and B, prose is fine — this is two rules, not a table:
 
-| Tier | Zone | What the player is told to do | What advances them |
-| --- | --- | --- | --- |
-| 1 | Construction | … | … |
-| 1 | Calibration | … | … |
-| … | … | … | … |
+> *"Tier is the player's own commitment level, picked at signup from the three floors. Phase advances
+> when they hit the floor four weeks running and the coach signs the phase off."*
 
-Four tiers × four zones is sixteen cells. If a cell is unreachable or meaningless, say so — that is
-information too. If the real structure is not a grid, tell us what it is and we will build that
-instead; a decision tree or "tier sets the intensity, zone sets the content" both work fine.
+Something that shape is a complete answer and we can build straight from it.
+
+### 4.1 Why this is the only missing link — the quiz already asks your questions
+
+This is the part worth seeing, because it makes A and B smaller than they look.
+
+**Your tier table is keyed on exactly the two numbers the quiz already collects.** Intake asks two
+typed questions (`shared/contract.ts:20`):
+
+```ts
+/** Weekly minutes on the full swing: range, garage, simulator. Excludes rounds. */
+practiceMinutes: number;
+/** Weekly hours playing on the course. Decimals ok. */
+courseHours: number;
+```
+
+And your tiers are keyed on `floor` (practice hrs/wk) and `play` (course hrs/wk) — 2/2, 5/5, 10/10.
+**Same two quantities, same units.** A player answering the volume screen is already stating which
+of your three floors they clear. Nothing joins the two.
+
+**The rest of the chain is already yours, and it already speaks the quiz's language.** Your phase
+`week` arrays name each session by zone — 10 Construction, 6 Calibration, 6 Transfer, 8 Impact
+Opposites — the same four zones the quiz grades. And the Plan page and the Calendar are not separate
+logic: `weekRows` reads `ph.week` directly and `buildSchedule(ph)` feeds the schedule rows and the
+`.ics` export from the same array (`:3436`). `practiceBar` then compares logged hours against
+`floorHrs`.
+
+So the whole thing is one chain with two broken links at the top:
+
+```
+  volume answers ──?──► TIER ──?──► PHASE ──► ph.week ──► Plan page
+                                                    └──► Calendar + .ics
+       quiz growth zone ──?──► which zone each session targets
+```
+
+Everything downstream of PHASE you have already built. The three `?` are the ask — and A and B
+above are two of them. The third:
+
+**D. Does the growth zone steer the schedule?** Your Phase 2 week is Construction-heavy by design.
+If the quiz says a player's weakest zone is Transfer, should their Phase 2 week shift toward
+Transfer, or does the phase's shape hold regardless and the zone only changes *emphasis within* a
+session? Either is buildable; they are very different products.
+
+That is the honest state of it: not "no ruleset exists", but "your ruleset has no inputs wired to
+it." The demo shows Builder / Phase 2 for everyone because those are two literals at
+`Dashboard.dc.html:2783`, not because the logic is missing underneath.
 
 ---
 
@@ -354,7 +396,8 @@ Later questions depend on earlier ones.
 2. **Q4a** (the SG label) — one word, unblocks a visible fix.
 3. **Q3** (does the prescription vary) — determines whether §4's table is 16 cells or something
    larger.
-4. **§4 A/B/C** (the tier ladder) — the big one. Everything on the dashboard's coaching surface waits
+4. **§4 A/B/D** (what picks a tier, what advances a phase, does the zone steer the week) — the big
+   one, and smaller than it looks; see §4.1. Everything on the dashboard's coaching surface waits
    on it.
 5. **Q6** (the constants) — a ratification pass, safe to do last.
 6. 🔒 **Q4b, Q5** — need Forge, so whenever that conversation happens.
