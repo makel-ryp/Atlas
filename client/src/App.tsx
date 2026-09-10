@@ -154,10 +154,36 @@ function Routes() {
   const [tab, setTab] = useState<'profile' | 'admin'>('profile')
   const [intakeGate, satisfyIntakeGate] = useIntakeGate(status === 'signed_in')
   const signingOut = useSignoutParam(logout, status === 'signed_in')
-  // Read once, on the first render, and keep it for the life of the mount: the redirect below runs
-  // on every render, so reading the live URL would send them back to the prototype the moment
-  // anything strips the param.
-  const [wantsSpa] = useState(() => new URLSearchParams(window.location.search).get('home') === '1')
+  // `?home=1` — the prototype banner's "← Atlas" link, asking to stay in the SPA rather than be
+  // bounced straight back to the dashboard.
+  //
+  // Read once on the first render, because the redirect below runs on EVERY render and reading the
+  // live URL would fire it the moment anything stripped the param.
+  //
+  // ⚠️ But it must be CLEARABLE, and that is the bug this shape fixes (2026-09-10). A player who
+  // clicked "← Atlas" and then discovered they still owed an intake did the whole quiz inside a
+  // mount where this was latched true — so finishing it returned them to the profile form instead
+  // of their dashboard. Completing intake is an explicit "take me in", so `satisfyIntakeGate`
+  // clears it below.
+  const [wantsSpa, setWantsSpa] = useState(
+    () => new URLSearchParams(window.location.search).get('home') === '1',
+  )
+
+  // Strip the param so a refresh does not re-latch it after the redirect has been allowed through.
+  useEffect(() => {
+    if (!wantsSpa) return
+    const q = new URLSearchParams(window.location.search)
+    if (!q.has('home')) return
+    q.delete('home')
+    const qs = q.toString()
+    window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''))
+  }, [wantsSpa])
+
+  // Finishing intake overrides an earlier "keep me in the SPA".
+  const enterAtlas = useCallback(() => {
+    setWantsSpa(false)
+    satisfyIntakeGate()
+  }, [satisfyIntakeGate])
 
   switch (status) {
     case 'loading':
@@ -188,7 +214,7 @@ function Routes() {
         return <main className="shell"><p className="muted">Loading…</p></main>
       }
       if (isPlayer && intakeGate === 'needed') {
-        return <IntakeShell api={intakeApi} onEnterAtlas={satisfyIntakeGate} />
+        return <IntakeShell api={intakeApi} onEnterAtlas={enterAtlas} />
       }
 
       // A COACH LANDS ON LUKE'S DESIGN, not on a React rebuild of it.
