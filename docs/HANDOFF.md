@@ -89,6 +89,23 @@ The seven assertions the intake must pass are in STATUS §4.
 
 ## 6. Do NOT re-derive these — they cost real time to learn
 
+**⛔ Before you design ANY coaching logic, or write any question for Luke — read
+`docs/reports/PROTOTYPE-WHAT-LUKE-ALREADY-BUILT-2026-09-10.md`.**
+
+`proto/Dashboard.dc.html` holds **33 top-level constants** that are the product spec, not sample
+data: a 6-drill library with scoring rubrics and verdict functions (`DRILL_DEFS`), a 5-step build
+ladder with per-step advancement criteria (`STEPS`), 3 tiers × 4 phases with full 7-day schedules
+(`TIERS`), a 4-rung chipping tolerance ladder (`CHIP_LEVELS`), a carry→handicap baseline table, 28
+drill rationales (`WHY`), and more.
+
+**Luke specified the content AND the rules. Nothing evaluates them — every selector is a hardcoded
+literal or a manual toggle.** We twice nearly asked him to invent something already in the file.
+One grep prevents it:
+
+```bash
+grep -nE "^(const|let|function|class) " proto/Dashboard.dc.html
+```
+
 **Postgres / RLS**
 
 - **RLS answers WHICH ROWS; grants answer WHICH COLUMNS.** A "you may edit your own record"

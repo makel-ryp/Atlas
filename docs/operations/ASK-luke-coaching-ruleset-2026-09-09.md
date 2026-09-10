@@ -176,10 +176,27 @@ Is the tier chosen by the player as a commitment level ("I can give 5 hrs/wk"), 
 coach, or derived from something — handicap, the quiz, stated available hours? The `floor` column
 reads like an hours-per-week commitment, which hints at self-selection; confirm?
 
-**B. What advances a phase?** `state.phase` is the literal `2`. `phaseTabs` (`:3436`) is a manual
+**B. What advances a phase?** `state.phase` is the literal `2`. `phaseTabs` (`:3450`) is a manual
 picker — you click Phase 1–4 to look at them. Nothing in the file *selects* a phase or moves anyone
 between them. This is the real gap: a number of weeks, hitting the floor N weeks running, a coach
 sign-off, a re-test, a measured improvement?
+
+You have already answered this question **for the other ladder**, which is why we think it is a
+small ask. Every step in `STEPS` (`:2509`) carries a `cond` — its advancement criterion, in your
+words:
+
+> Step 1 → *"All four drills verified on camera."*
+> Step 2 → *"Path at zero, shaft lean right, ground force excellent, trunk angle decreasing."*
+> Step 4 → *"Solid strikes at two seconds, on camera."*
+
+Nothing evaluates those either — `cond` is rendered as text (`:782`) and never compared against
+anything — but the *form* of the answer is exactly right. **A `cond` string per phase, in that same
+style, is a complete answer to B.**
+
+Worth knowing while you are here: the camera half of those conditions is now buildable. The coach's
+Parallax check-off writes `golf.drill_progress.verified_at`, your drills already carry `cam: true`,
+and `DONE` uses the same `'2-P1'` ref format. So *"all four drills verified on camera"* is a
+condition we could evaluate today if you want the build ladder to advance itself.
 
 Also worth answering while you are here: **can a player move down**, and does `rebuild` (the toggle
 at `:2783`, which adds `t.play` hours in Phase 2 only, `:2973`) sit outside the ladder or inside it?
@@ -219,7 +236,7 @@ of your three floors they clear. Nothing joins the two.
 `week` arrays name each session by zone — 10 Construction, 6 Calibration, 6 Transfer, 8 Impact
 Opposites — the same four zones the quiz grades. And the Plan page and the Calendar are not separate
 logic: `weekRows` reads `ph.week` directly and `buildSchedule(ph)` feeds the schedule rows and the
-`.ics` export from the same array (`:3436`). `practiceBar` then compares logged hours against
+`.ics` export from the same array (`planVals`, `:3426`). `practiceBar` then compares logged hours against
 `floorHrs`.
 
 So the whole thing is one chain with two broken links at the top:
