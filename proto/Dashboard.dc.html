@@ -480,22 +480,22 @@
     <sc-if value="{{ pfDrillsShow }}" hint-placeholder-val="{{ true }}">
     <div style="padding:34px 0 30px; border-bottom:1px solid rgba(20,25,31,0.18);">
       <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.22em; text-transform:uppercase; color:#8a6a2f; margin-bottom:8px;">Sign-off</div>
-      <h2 style="font-family:'Newsreader',serif; font-size:clamp(23px,4.2vw,30px); color:#14191f; margin:0 0 8px;">What you have watched.</h2>
-      <p style="font-family:'Newsreader',serif; font-size:17px; line-height:1.5; color:#6f7681; margin:0 0 22px; max-width:62ch;">Watch the submission in Parallax, then tick it here. A tick is your judgement that the rep happened — it is not the player&rsquo;s claim, which is theirs to make and lives elsewhere.</p>
+      <h2 style="font-family:'Newsreader',serif; font-size:clamp(23px,4.2vw,30px); color:#ece7db; margin:0 0 8px;">What you have watched.</h2>
+      <p style="font-family:'Newsreader',serif; font-size:17px; line-height:1.5; color:#66717f; margin:0 0 22px; max-width:62ch;">Watch the submission in Parallax, then tick it here. A tick is your judgement that the rep happened — it is not the player&rsquo;s claim, which is theirs to make and lives elsewhere.</p>
 
       <div style="display:none; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; color:#a8422f; background:rgba(168,66,47,0.08); border:1px solid rgba(168,66,47,0.3); border-radius:8px; padding:9px 12px; margin-bottom:16px;" data-err="{{ tickErrShow }}">{{ tickErr }}</div>
 
       <div style="display:flex; flex-direction:column; gap:10px;">
         <sc-for list="{{ pfDrills }}" as="d" hint-placeholder-count="3">
-        <div onClick="{{ d.toggle }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 16px; border:1px solid rgba(20,25,31,0.14); border-radius:10px; background:rgba(255,255,255,0.5);">
+        <div onClick="{{ d.toggle }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 16px; border:1px solid rgba(20,25,31,0.14); border-radius:10px; background:#1a222e;">
           <div style="min-width:0;">
-            <div style="font-family:'Archivo'; font-weight:700; font-size:15px; color:#14191f;">{{ d.name }}</div>
-            <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#8a9099; margin-top:4px;">{{ d.domain }} &middot; {{ d.shots }}</div>
-            <div style="font-family:'Newsreader',serif; font-size:13.5px; color:#6f7681; margin-top:6px;">{{ d.ref }}</div>
+            <div style="font-family:'Archivo'; font-weight:700; font-size:15px; color:#ece7db;">{{ d.name }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#8d99a8; margin-top:4px;">{{ d.domain }} &middot; {{ d.shots }}</div>
+            <div style="font-family:'Newsreader',serif; font-size:13.5px; color:#66717f; margin-top:6px;">{{ d.ref }}</div>
           </div>
           <div style="flex:none; text-align:right;">
             <div style="display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; padding:6px 11px; border-radius:999px; color: {{ d.markColor }}; background: {{ d.markBg }};">{{ d.mark }}</div>
-            <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.1em; color:#8a9099; margin-top:6px;">{{ d.when }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.1em; color:#8d99a8; margin-top:6px;">{{ d.when }}</div>
           </div>
         </div>
         </sc-for>
@@ -3846,8 +3846,11 @@ class Component extends DCLogic {
         when: on ? new Date(got.verifiedAt).toLocaleDateString() : '',
         ref: got.videoRef || '',
         note: got.verifyNote || '',
-        markColor: on ? '#2f6b47' : '#8a9099',
-        markBg: on ? 'rgba(47,107,71,0.10)' : 'rgba(20,25,31,0.05)',
+        // Luke's DARK palette. These were #2f6b47 on rgba(20,25,31,0.05) — a dark green on a
+        // near-white wash, which is a light-theme pill. This block sits outside the cream dossier
+        // pane (that closes at :474) on the dark page, so the whole card read as greyed-out.
+        markColor: on ? '#7fae8e' : '#8d99a8',
+        markBg: on ? 'rgba(127,174,142,0.12)' : 'rgba(255,255,255,0.04)',
         toggle: () => this.tickDrill(who.id, id, !on),
       };
     });
