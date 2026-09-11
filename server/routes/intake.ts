@@ -17,6 +17,7 @@ import { ensureAtlasAccess } from '../ensureAtlasAccess'
 import { PROFILE_FIELDS, ITEM_BY_CODE, type Profile, type Answers, type AnswerValue } from '../../shared/practice-dna/items'
 import { computeResult, type PracticeDnaResult } from '../../shared/practice-dna/scoring'
 import { computeVolumeBreakdown } from '../../shared/volume'
+import { validateVolumeInput } from '../../shared/contract'
 import { validateInterviewPartial } from '../../shared/interview'
 // The 17 zone-prior sliders Tier 2 appends. They are NOT in the instrument's item bank on purpose —
 // `shared/practice-dna/` is Forge's canonical copy and adding to it would fork our version from
@@ -471,8 +472,15 @@ intakeRouter.patch('/intake/:id', ...identityChain, async (req, res, next) => {
       // The RAW alloc column — not answers. The engine's ALLOC is derived from this at score time.
       allocPatch = body.alloc
     } else if (body.kind === 'volume') {
-      // Raw practice minutes / course hours / messy time. Stored as given so the run stays
-      // re-scoreable if the volume adapter changes.
+      // Raw practice minutes / course hours. Stored as given so the run stays re-scoreable if the
+      // volume adapter changes — but validated first: this object feeds computeVolumeBreakdown,
+      // which divides by the effective total to derive answers.ALLOC, so an unchecked value
+      // reached the scoring adapter and came back as NaN shares in a stored result.
+      const err = validateVolumeInput(body.volume)
+      if (err) {
+        res.status(400).json({ error: err })
+        return
+      }
       volumePatch = body.volume
     } else if (body.kind === 'interview') {
       const err = validateInterviewPartial(body.interview)

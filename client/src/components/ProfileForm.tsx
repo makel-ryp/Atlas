@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { parseHandicapIndex } from '../../../shared/handicap'
 import { apiFetch, ApiError } from '../lib/api'
 import type { Me, PlayerProfile } from '../lib/types'
 
@@ -17,7 +18,10 @@ function draftFrom(me: Me): Draft {
     displayName: me.user.displayName ?? '',
     handicapIndex: me.profile?.handicapIndex ?? '',
     driverCarryYds: me.profile?.driverCarryYds?.toString() ?? '',
-    handedness: me.profile?.handedness ?? 'right',
+    // No '?? right'. Defaulting here meant the first save of ANY field stamped a handedness
+    // nobody supplied into golf.player_profile — and that datum is not cosmetic: the dashboard
+    // mirrors its dispersion geometry and flips a bias sign on it. Empty means not recorded.
+    handedness: me.profile?.handedness ?? '',
     ghinNumber: me.profile?.ghinNumber ?? '',
   }
 }
@@ -62,9 +66,13 @@ export function ProfileForm({ me, onSaved }: { me: Me; onSaved: () => Promise<vo
         method: 'PATCH',
         body: JSON.stringify({
           displayName: orNull(draft.displayName),
-          handicapIndex: hcp === null ? null : Number(hcp),
+          // parseHandicapIndex, NOT Number(): '+2.1' is the golf convention for 2.1 BETTER than
+          // scratch and must be stored NEGATIVE. `Number('+2.1')` is 2.1, so typing the convention
+          // wrote a 4.2-stroke error into golf.player_profile — the shared layer every RYP app
+          // reads, and what a coach then sees on the roster. Same parser the intake route uses.
+          handicapIndex: parseHandicapIndex(hcp),
           driverCarryYds: carry === null ? null : Number(carry),
-          handedness: draft.handedness,
+          handedness: draft.handedness === '' ? null : draft.handedness,
           ghinNumber: orNull(draft.ghinNumber),
         }),
       })
@@ -101,6 +109,7 @@ export function ProfileForm({ me, onSaved }: { me: Me; onSaved: () => Promise<vo
       <label>
         Handedness
         <select value={draft.handedness} onChange={set('handedness')}>
+          <option value="">— not recorded —</option>
           <option value="right">right</option>
           <option value="left">left</option>
         </select>

@@ -35,6 +35,33 @@ export const VOLUME_LIMITS = {
 } as const;
 
 /**
+ * Validate a `VolumeInput` off the wire. Returns an error code, or null when the shape is fine.
+ *
+ * The volume PATCH was the one intake kind with NO domain validation — profile, alloc, answers and
+ * interview each ran a validator and `volume` was assigned straight off `z.record(z.unknown())`.
+ * That object is not inert: `computeVolumeBreakdown` divides by the effective total to derive
+ * `answers.ALLOC`, so a string, a negative, or a missing key reached the scoring adapter and came
+ * back as NaN shares in a stored result.
+ *
+ * Both keys are REQUIRED. This is not a partial patch like the others — the volume screen saves
+ * both numbers together or neither, and a half-saved volume is what makes the breakdown lie.
+ */
+export function validateVolumeInput(input: unknown): string | null {
+  if (typeof input !== 'object' || input === null) return 'invalid_volume';
+  const v = input as Record<string, unknown>;
+  for (const k of Object.keys(v)) {
+    if (k !== 'practiceMinutes' && k !== 'courseHours') return `unknown_volume_field:${k}`;
+  }
+  const pm = v.practiceMinutes;
+  const ch = v.courseHours;
+  if (typeof pm !== 'number' || !Number.isFinite(pm)) return 'invalid_volume_value:practiceMinutes';
+  if (typeof ch !== 'number' || !Number.isFinite(ch)) return 'invalid_volume_value:courseHours';
+  if (pm < 0 || pm > VOLUME_LIMITS.practiceMinutesMax) return 'invalid_volume_value:practiceMinutes';
+  if (ch < 0 || ch > VOLUME_LIMITS.courseHoursMax) return 'invalid_volume_value:courseHours';
+  return null;
+}
+
+/**
  * The 4-segment allocation of PRACTICE time (not rounds). Must sum to 100.
  * Performance is deliberately absent: it is derived from `courseHours`, not self-reported here.
  */

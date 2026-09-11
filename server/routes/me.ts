@@ -79,7 +79,10 @@ const patchSchema = z
     displayName: z.string().trim().min(1).max(120).nullable(),
     handicapIndex: z.number().min(-10).max(60).nullable(),
     driverCarryYds: z.number().int().min(50).max(400).nullable(),
-    handedness: z.enum(['left', 'right']),
+    // Nullable: 'not recorded' is a real state and must be storable. The form used to default
+    // to 'right', which stamped a fabricated handedness on the first save of any field — and the
+    // dashboard mirrors its dispersion geometry and flips a bias sign on that value.
+    handedness: z.enum(['left', 'right']).nullable(),
     ghinNumber: z.string().trim().max(32).nullable(),
   })
   .partial()
