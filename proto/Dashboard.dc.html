@@ -480,8 +480,8 @@
     <sc-if value="{{ pfDrillsShow }}" hint-placeholder-val="{{ true }}">
     <div style="padding:34px 0 30px; border-bottom:1px solid rgba(20,25,31,0.18);">
       <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.22em; text-transform:uppercase; color:#8a6a2f; margin-bottom:8px;">Sign-off</div>
-      <h2 style="font-family:'Newsreader',serif; font-size:clamp(23px,4.2vw,30px); color:#ece7db; margin:0 0 8px;">What you have watched.</h2>
-      <p style="font-family:'Newsreader',serif; font-size:17px; line-height:1.5; color:#66717f; margin:0 0 22px; max-width:62ch;">Watch the submission in Parallax, then tick it here. A tick is your judgement that the rep happened — it is not the player&rsquo;s claim, which is theirs to make and lives elsewhere.</p>
+      <h2 style="font-family:'Newsreader',serif; font-size:clamp(23px,4.2vw,30px); color:#ece7db; margin:0 0 8px;">{{ pfDrillsTitle }}</h2>
+      <p style="font-family:'Newsreader',serif; font-size:17px; line-height:1.5; color:#66717f; margin:0 0 22px; max-width:62ch;">{{ pfDrillsBlurb }}</p>
 
       <div style="display:none; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; color:#a8422f; background:rgba(168,66,47,0.08); border:1px solid rgba(168,66,47,0.3); border-radius:8px; padding:9px 12px; margin-bottom:16px;" data-err="{{ tickErrShow }}">{{ tickErr }}</div>
 
@@ -3831,7 +3831,13 @@ class Component extends DCLogic {
     // fourth here would put a drill on screen that no session can run.
     const pfDrills = ['sga30', 'chip20', 'ryp20'].map(id => {
       const def = DRILL_DEFS[id] || {};
-      const got = (who.drills || {})[id] || {};
+      // WHOSE sign-off state. A coach reads the selected student's; a PLAYER reads their own,
+      // injected as __ATLAS_DATA__.me.drills. Until now the player branch did not exist: `drills`
+      // rode only on roster rows, a player's roster is empty, so the coach's tick landed in
+      // golf.drill_progress and the student it was about never saw it.
+      const isViewingSelf = ROSTER.length === 0;
+      const drillSrc = isViewingSelf ? (ATLAS_ME.drills || {}) : (who.drills || {});
+      const got = drillSrc[id] || {};
       const on = !!got.verifiedAt;
       return {
         id,
@@ -3851,7 +3857,11 @@ class Component extends DCLogic {
         // pane (that closes at :474) on the dark page, so the whole card read as greyed-out.
         markColor: on ? '#7fae8e' : '#8d99a8',
         markBg: on ? 'rgba(127,174,142,0.12)' : 'rgba(255,255,255,0.04)',
-        toggle: () => this.tickDrill(who.id, id, !on),
+        // A player may READ their sign-off state and may not write it — the tick is the coach's
+        // judgement. `drill_progress_coach_update` would refuse the write anyway; this stops the
+        // UI from offering an action the database will reject.
+        readOnly: isViewingSelf,
+        toggle: isViewingSelf ? (() => {}) : (() => this.tickDrill(who.id, id, !on)),
       };
     });
 
@@ -3859,7 +3869,12 @@ class Component extends DCLogic {
       pfDrills,
       tickErr: this.state.tickErr || '',
       tickErrShow: this.state.tickErr ? 'block' : 'none',
-      pfDrillsShow: ROSTER.length > 0 && !!who.id,
+      pfDrillsShow: ROSTER.length > 0 ? !!who.id : Object.keys(ATLAS_ME.drills || {}).length > 0,
+      // The same list means two different things depending on who is reading it.
+      pfDrillsTitle: ROSTER.length === 0 ? 'What your coach has verified.' : 'What you have watched.',
+      pfDrillsBlurb: ROSTER.length === 0
+        ? 'Your coach watches the submission in Parallax and ticks it here. A tick is their judgement that the rep happened.'
+        : 'Watch the submission in Parallax, then tick it here. A tick is your judgement that the rep happened \u2014 it is not the player\u2019s claim, which is theirs to make and lives elsewhere.',
       pfName: who.n,
       pfInitials: who.n.split(' ').map(w => w[0]).join(''),
       // GUARDED: was string concatenation, so a missing tier/zone/days rendered the literal text

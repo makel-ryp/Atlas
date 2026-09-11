@@ -162,6 +162,14 @@ export type AtlasData = {
     hand: string | null
     /** Driver carry in yards, or null. The baseline the driving index is scored from. */
     carry: number | null
+    /**
+     * THE CALLER'S OWN coach sign-off state, keyed by drill id.
+     *
+     * The coach's tick has always written `golf.drill_progress.verified_at` correctly — and the
+     * student never saw it. `drills` existed ONLY on `RosterRow`, and a player is nobody's coach,
+     * so their roster is `[]` and the judgement died in the database. This is the return leg.
+     */
+    drills: RosterRow['drills']
   }
 }
 
@@ -343,6 +351,27 @@ export async function buildAtlasData(
       .where(eq(golfPlayerProfile.userId, me.id))
       .limit(1)
 
+    // The caller's OWN sign-off state. `drill_progress_select` permits this through its
+    // `user_id = current_user_id()` clause — no new policy, no coach relationship required.
+    const myProgress = await db
+      .select({
+        drillId: golfDrillProgress.drillId,
+        verifiedAt: golfDrillProgress.verifiedAt,
+        videoRef: golfDrillProgress.videoRef,
+        verifyNote: golfDrillProgress.verifyNote,
+      })
+      .from(golfDrillProgress)
+      .where(eq(golfDrillProgress.userId, me.id))
+
+    const myDrills: RosterRow['drills'] = {}
+    for (const r of myProgress) {
+      myDrills[r.drillId] = {
+        verifiedAt: r.verifiedAt ? r.verifiedAt.toISOString() : null,
+        videoRef: r.videoRef,
+        verifyNote: r.verifyNote,
+      }
+    }
+
     const meBlock = {
       name: me.displayName ?? me.email ?? null,
       hcp: myProfile[0]?.handicapIndex ?? null,
@@ -377,6 +406,7 @@ export async function buildAtlasData(
        * Null when not recorded, and his file prints a dash rather than substituting a number.
        */
       carry: myProfile[0]?.driverCarryYds ?? null,
+      drills: myDrills,
     }
 
     // ── 2. Candidates, by both paths ────────────────────────────────────────────────────────────
