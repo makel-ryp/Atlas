@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { withRls } from '@ryp/eco/db'
 import {
   golfDrillProgress,
@@ -513,6 +513,43 @@ export async function buildAtlasData(
           .where(inArray(golfDrillProgress.userId, ids))
       : []
 
+    /**
+     * THE STUDENT'S INTAKE — `atlas.student_intake`, the coach-safe view.
+     *
+     * Makel decided this on 2026-09-11 ("yes, that's the point of the intake"), and `rls_core.sql`
+     * had been holding it open as the one call only he could make. The view — never a policy on the
+     * base table — gates on `app_private.coaches(user_id)` and withholds `quality_flag` and the
+     * Mini-IPIP items. See the long note in rls_core.sql for why that shape.
+     *
+     * Raw SQL because the view is not in eco's drizzle schema: adding it there means another eco
+     * release, and this reads four columns. If a second caller ever needs it, promote it properly.
+     *
+     * The gate lives in the VIEW, so this query carries no ownership filter of its own — the same
+     * reasoning as the roster and the drill progress above.
+     */
+    const intakeRows = ids.length
+      ? ((await db.execute(
+          sql`select user_id, interview, profile, tier_completed, status
+                from atlas.student_intake`,
+        )) as unknown as {
+          rows: Array<{
+            user_id: string
+            interview: Record<string, string> | null
+            profile: Record<string, unknown> | null
+            tier_completed: number | null
+            status: string | null
+          }>
+        }).rows
+      : []
+
+    const intakeBy = new Map<string, Record<string, string>>()
+    for (const r of intakeRows) {
+      // Only the five interview answers travel into his `file` block — that is exactly what his
+      // FIELDS renders (sport, years, limits, time, goal). The profile and status are read here so
+      // a later change has them without a second round trip.
+      if (r.interview) intakeBy.set(r.user_id, r.interview)
+    }
+
     const progressBy = new Map<string, RosterRow['drills']>()
     for (const r of progressRows) {
       const bucket = progressBy.get(r.userId) ?? {}
@@ -559,7 +596,10 @@ export async function buildAtlasData(
         answer: {},
         est: {},
         grid: [], // Forge
-        file: {},
+        // REAL since 2026-09-11 — the five interview answers, via atlas.student_intake.
+        // `{}` when that student has not answered the interview stage; his render shows the
+        // honest empty state rather than another student's words.
+        file: intakeBy.get(person.id) ?? {},
       }
     })
 
