@@ -53,7 +53,7 @@
 | T-11 | ⚪ open | Version-stamp integrity | AI | `CONFIG_VERSION` / `SCORING_VERSION` / `RESULT_VERSION` are stamped once at write, but the result is recomputed by whatever code is deployed at read time. Those two facts disagree. |
 | T-12 | 🔴 next | **Strip `state.forge` — the sidebar shows a fake handicap** | AI | "5 HANDICAP" / "TOTAL SG −2.0" on the main page. Avery is 4.2; Total SG has no producer. Most visible wrong number in the app. Then `SEED`, `DRILL_PICK`. |
 | T-32 | ⚪ open | Update the served banner text | AI | Still lists "intake answers" as empty; that section is hidden now. |
-| T-33 | ⚪ open | Luke's coach dashboard prints a plus handicap as `-2.1` | AI | It renders `hcp` through his own `fx1()` and uses the number for colour thresholds, so it needs a separate display field rather than a formatted string. |
+| T-33 | ✅ fixed | Luke's coach dashboard printed a plus handicap as `-2.1` | AI | Live reproduction: `makel@pixelcaddie.com` is stored `-1` (a plus-1) and rendered **-1.0** on the coach roster. Two sites used `fx1` (a plain `toFixed`) for a handicap — `rosterVals` (:4098) and `pfHandicapReal` (:3867) — while six others already used Luke's correct `hcpLabel`. Fixed with a guarded `hcpText`, because `hcpLabel(null)` returns '+0.0' (`null <= 0` is true in JS) — the same trap the file's own comment records hitting on `target`. Also removed the `11.4` literal fallback. |
 
 ## 3. Backlog — real, unscheduled
 

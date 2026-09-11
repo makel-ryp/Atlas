@@ -2658,6 +2658,10 @@ const fmtSG = n => (n > 0 ? '+' : '') + n.toFixed(1);
 const sgColor = n => n >= 0.5 ? '#7fae8e' : n <= -0.5 ? '#cf7d5c' : '#c8a05e';
 // A facet's relative handicap is the index itself — the handicap that facet plays to.
 const hcpLabel = v => v <= 0 ? (v === 0 ? 'scratch' : '+' + Math.abs(v).toFixed(1)) : v.toFixed(1);
+// A handicap for DISPLAY, guarded. `hcpLabel` alone is unsafe on a missing value: `null <= 0` is
+// true in JS, so it returns '+0.0' — a fabricated scratch-plus handicap under a real name. That
+// exact trap already bit the roster once on `target`. Use this anywhere a handicap is printed.
+const hcpText = v => isNum(v) ? hcpLabel(v) : DASH;
 
 // Impact opposites. Path can be proved without a ball; face and strike cannot,
 // so they stay inert until real ball transfer rather than pretending to score.
@@ -3864,7 +3868,7 @@ class Component extends DCLogic {
         self ? 'Day 41 of 90' : who.days === 0 ? 'logged today' : isNum(who.days) ? 'last logged ' + who.days + 'd ago' : 'no practice log'
       ].filter(Boolean).join(' · '),
       pfIntake: who.intake,
-      pfHandicapReal: fx1(self ? (s.realHcp === undefined ? 11.4 : s.realHcp) : who.hcp),
+      pfHandicapReal: hcpText(self ? (s.realHcp === undefined ? null : s.realHcp) : who.hcp),
       // GUARDED, and this one was the worst of them: `t` is `who.target`, and no
       // `target_handicap_index` COLUMN exists to read. `null <= 0` is TRUE in JS, so the old
       // expression fell into the plus-handicap branch and printed '+0' — Math.abs(null) is 0. A
@@ -4095,7 +4099,9 @@ class Component extends DCLogic {
         // with no tier or no zone assigned yet showed bare punctuation ('Zone ' alone, or ' · ').
         // Pre-join here and drop whichever half is absent.
         meta: [p.tier, p.zone ? 'Zone ' + p.zone : ''].filter(Boolean).join(' · '),
-        hcp: fx1(p.hcp),
+        // hcpText, not fx1: fx1 is a plain toFixed, so a plus-1 golfer (stored -1, the negative
+        // convention) printed as '-1.0' on their own coach's roster instead of '+1.0'.
+        hcp: hcpText(p.hcp),
         // GUARDED: `fmtSG(undefined)` threw. With `sg: []` (Forge, not shipped) `p.now` is
         // `p.sg[-1]` — undefined — and one such row broke the entire roster screen inside this map.
         sg: isNum(p.now) ? fmtSG(p.now) : DASH,
