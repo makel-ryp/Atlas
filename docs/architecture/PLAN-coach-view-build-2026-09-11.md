@@ -131,52 +131,156 @@ never the coach's own numbers. Verify with two accounts side by side, not by rea
 
 # Layer 2 — the RAIL
 
-Today the rail shows the **viewer's own** golf: `EVERY NUMBER VS <target>`, `TARGET HANDICAP` slider,
-`PRACTICE`, `REAL`, `TRANSFER GAP`, `THE GUARANTEE`. For a coach that is noise. Its **nav** half is
-already role-correct — every item is `sc-if`-guarded and the server closes twelve for a coach.
+Today the rail shows the **viewer's own** golf. For a coach that is noise: it is their handicap,
+their target, their transfer gap. Its **nav** half is already role-correct — every item is
+`sc-if`-guarded and the server closes twelve of them for a coach.
 
-**Step A (do first, ~30 min).** Add one key to the `hidden` mechanism — e.g. `railMetrics` — guard
-the five metric blocks with it, and add it to `HIDDEN_FOR_COACH` in `server/protoData.ts`. Pattern to
-copy: `FITNESS_SCREEN` / `showFitnessScreen`, added 2026-09-10.
+## The exact blocks — measured, with line numbers
 
-**Step B (after Layer 1).** Re-point the same blocks at `subject()` so they become the selected
-student's header. Then a coach reading a student always has that student's baseline on screen. This
-is the one surface where a fresh design would genuinely help — if anything goes to Claude Design,
-send *"a rail for a coach reading one student"*, not a copy of the player board.
+| Block | Opens at | Label at | Bindings it consumes |
+| --- | --- | --- | --- |
+| `EVERY NUMBER VS <n> HANDICAP` + `TOTAL SG` | `~50` | `51` | `railHcp`, `railSG`, `railSGColor` |
+| `THE FOUR ZONES` | `~62` | `72` | (zone links; nav-ish — see note) |
+| `TARGET HANDICAP` + slider | `~108` | `109` | `targetHcp`, `targetRaw`, `targetSet`, `targetNote` |
+| `PRACTICE` | `~115` | `116` | `practiceHcp` |
+| `REAL` + ± steppers | `~121` | `122` | `realHcp`, `realHcpUp`, `realHcpDown`, `realHcpNote` |
+| `TRANSFER GAP` | `~131` | `132` | `gapHcp`, `gapHcpColor`, `gapHcpLabel` |
+| `THE GUARANTEE` | `~138` | `139` | `guaranteeRead`, `guaranteeBar` |
 
----
+⚠️ **`THE FOUR ZONES` is navigation, not a metric — do not hide it.** It routes to the four zone
+screens and a coach needs it once Layer 1 lands.
 
-# Layer 3 — NOTES  *(smallest; the backend and a working UI already exist)*
+⚠️ Three of these already render honest dashes for everyone (`practiceHcp`, `gapHcp`,
+`guaranteeRead`) because their inputs are Forge's or nonexistent. Hiding them for a coach removes
+five lines of dashes; it does not remove information.
 
-**Nothing needs building server-side. Verified 2026-09-11:**
+## Step A — hide the metric blocks for a coach  *(~30 min, no dependencies)*
 
-- `atlas.coaching_notes` exists, with a `visibility` vocabulary.
-- `server/routes/notes.ts` — GET, POST, PATCH, DELETE on `/coach/students/:userId/notes`, all on the
-  standard four-link auth chain.
-- `client/src/components/Roster.tsx:146,158` — a **working** compose-and-list UI.
-- The RLS already routes a note to the student. `coaching_notes_select`:
+Copy the `FITNESS_SCREEN` pattern added 2026-09-10, which is the working precedent for a
+**sub-block** guard (as opposed to a whole section):
 
-  ```sql
-  author_user_id = current_user_id()                                   -- the author
-  OR (visibility IN ('coaching_team','shared') AND coaches(subject))   -- the coaching team
-  OR (visibility = 'shared'   AND subject_user_id = current_user_id()) -- ← THE STUDENT
-  ```
+1. **`proto/Dashboard.dc.html`** — wrap each of the five metric blocks (rows 1, 3, 4, 5, 6, 7 above;
+   NOT `THE FOUR ZONES`) in `<sc-if value="{{ showRailMetrics }}" hint-placeholder-val="{{ true }}">`.
+   Six wraps. Balance `</sc-if>` for each.
+2. Add the flag beside the other `show*` flags at **`:5137`**:
+   `showRailMetrics: !isHidden('railMetrics'),`
+3. **`server/protoData.ts`** — add the key next to `FITNESS_SCREEN` (`:123`) and include it in
+   `HIDDEN_FOR_COACH` only (`:128`), never `HIDDEN_FOR_PLAYER` (`:131`):
+   ```ts
+   const RAIL_METRICS = ['railMetrics'] as const   // the viewer's OWN golf; noise for a coach
+   ```
 
-  **So a note written with `visibility = 'shared'` already reaches the student.** That is exactly
-  "comment back to the student on fixes to make", and it needs no schema or policy change.
+**Verify:** sign in as a coach — rail shows Atlas mark, nav, the four zones, and the account chip,
+and nothing else. Sign in as a player — rail unchanged.
 
-**The only gap is reachability.** `Roster.tsx` is never rendered — `App.tsx` redirects coaches to the
-prototype, and `Roster` survives only in a comment at `App.tsx:224`.
+## Step B — the rail as the selected student's header  *(~1 hr, needs Layer 1)*
 
-**The work:** port the interaction into Luke's dossier pane (the cream pane, `:386`–`:474`) as a
-notes block, rather than resurrecting `Roster.tsx`. Two surfaces:
-1. **Coach, on a student's file** — list the notes, compose a new one, with a visibility control.
-   Default `coaching_team`; **`shared` is the one the student sees, so label it plainly** — e.g.
-   *"Send to the player"* vs *"Team only"*.
-2. **Player, on their own file** — read-only list of `shared` notes. Same shape as the two-sided
-   sign-off list shipped 2026-09-11 (`pfDrills`), which is the pattern to copy.
+Re-point the same bindings at `subject()` and un-hide for a coach. `railHcp` / `realHcp` / `targetHcp`
+become the **student's**, so a coach reading a student always has that student's baseline on screen —
+which is the reason every benchmark on the page exists.
 
----
+⚠️ `realHcpUp` / `realHcpDown` are **steppers that mutate**. A coach must not nudge a student's
+self-reported handicap, so on the coach path they must be inert (`readOnly`, same treatment
+`pfDrills` got on 2026-09-11) — not merely hidden.
+
+**This is the one surface where a fresh design would genuinely help.** If anything goes to Claude
+Design, send *"a rail for a coach reading one student — who they are, where they are, what needs
+attention"*, not a restyled copy of the player board.
+
+# Layer 3 — NOTES  *(smallest; backend and a working UI both already exist)*
+
+## Nothing needs building server-side — verified 2026-09-11
+
+**The table.** `atlas.coaching_notes`, with a `visibility` vocabulary.
+
+**The endpoints.** `server/routes/notes.ts`, all four on one auth chain:
+
+| | |
+| --- | --- |
+| `GET` | `/api/coach/students/:userId/notes` |
+| `POST` | `/api/coach/students/:userId/notes` |
+| `PATCH` | `/api/coach/students/:userId/notes/:noteId` |
+| `DELETE` | `/api/coach/students/:userId/notes/:noteId` |
+
+**The POST body** (`createSchema`, `notes.ts:73`) — `.strict()`, so an extra key is a 400:
+
+```ts
+{ body: string (trimmed, 1..4000), visibility?: 'coaching_team' | 'private' | 'shared' }
+```
+
+**The row shape** (`client/src/lib/types.ts:85`):
+
+```ts
+interface CoachingNote {
+  id, subjectUserId, authorUserId, authorDisplayName: string | null,
+  body: string, visibility: 'coaching_team' | 'private' | 'shared', createdAt: string
+}
+```
+
+**The RLS already routes a note to the student.** `coaching_notes_select`:
+
+```sql
+   author_user_id = current_user_id()                                   -- the author
+OR (visibility IN ('coaching_team','shared') AND coaches(subject))      -- the coaching team
+OR (visibility = 'shared'   AND subject_user_id = current_user_id())    -- ← THE STUDENT
+```
+
+So **`visibility = 'shared'` is already "comment back to the student"**, with no schema or policy
+change. `private` is author-only; `coaching_team` is coaches-only.
+
+**A working UI already exists** at `client/src/components/Roster.tsx:146` (load) and `:158` (save) —
+compose box, visibility select, list, error handling.
+
+## The only gap is reachability — and one trap
+
+`Roster.tsx` is never rendered. `App.tsx` redirects coaches to the prototype and `Roster` survives
+only in a comment at `App.tsx:224`. **Port the interaction into Luke's dossier pane rather than
+resurrecting `Roster.tsx`** — that pane is the cream block, `proto/Dashboard.dc.html:386`–`:474`.
+
+### ⚠️ THE TRAP — read before writing a line of this
+
+**`notes.ts` uses `verifyToken`, which is BEARER-ONLY** (`notes.ts:14-19`). The prototype page is a
+server-rendered document authenticated by a **session cookie**; a browser navigation cannot carry an
+Authorization header. Calling these endpoints from the prototype as-is returns **401**. This exact
+bug already shipped once, on the coach's drill tick.
+
+**The fix is one line, and the precedent is in the repo.** Change `notes.ts`'s chain to match
+`coach.ts:57-62`:
+
+```ts
+const identityChain: RequestHandler[] = [
+  cookieOrBearer,          // ← was verifyToken
+  attachUser(pool), ensureAtlasAccess(pool), requireApp('atlas'),
+]
+```
+
+and call it from the prototype the way `tickDrill` already does (`Dashboard.dc.html`):
+
+```js
+fetch('/api/coach/students/' + userId + '/notes', {
+  method: 'POST', credentials: 'same-origin', ...
+})
+```
+
+## The work — two surfaces, same block
+
+1. **Coach, on a student's file.** List the notes, compose a new one, with a visibility control.
+   Default `coaching_team`. **Label the options in plain language, because one of them is visible to
+   the player** — e.g. *"Send to the player"* (`shared`) vs *"Team only"* (`coaching_team`) vs
+   *"Just me"* (`private`). A coach must never discover after the fact that the student read it.
+2. **Player, on their own file.** Read-only list of `shared` notes only. RLS enforces this already,
+   so the client does not need to filter — but it must not offer a compose box.
+
+**The pattern to copy is `pfDrills`**, made two-sided on 2026-09-11: one block, audience chosen by
+`ROSTER.length === 0`, with `pfDrillsTitle` / `pfDrillsBlurb` switching the copy and the write path
+disabled on the player side. Notes are the same shape.
+
+⚠️ Use **Luke's dark palette** — `#1a222e` card, `#ece7db` name, `#8d99a8` meta, `#66717f` ref. The
+sign-off block shipped with light-theme values and rendered as a grey slab until it was fixed.
+
+**Verify end to end, with two accounts:** coach writes a `shared` note on a student → student signs
+in and sees it; coach writes a `coaching_team` note → student does **not** see it. Check the second
+case, not just the first.
 
 # Sequence
 
