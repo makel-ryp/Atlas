@@ -20,7 +20,7 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-11 10:15 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-11 10:22 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-11 10:15 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.21.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.21.0.tgz`
-- **Atlas HEAD:** `20493b8 Surface scan: the four remaining surfaces, and close the proto entitlement gap`
+- **Atlas HEAD:** `b9b3e68 Coach roster: a plus handicap printed as a minus, on live data (T-33)`
 <!-- AUTO:END -->
 
 Regenerate the block above with:

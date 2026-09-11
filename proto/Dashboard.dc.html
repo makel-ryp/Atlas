@@ -137,8 +137,8 @@
 
     <div style="padding:18px 26px 0; border-top:1px solid rgba(255,255,255,0.06);">
       <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:8px;">The guarantee</div>
-      <div style="font-family:'Newsreader',serif; font-size:17px; color:#ece7db; margin-bottom:10px;">Day 41 of 90</div>
-      <div style="height:3px; border-radius:3px; background:rgba(200,160,94,0.2); overflow:hidden; margin-bottom:16px;"><div style="height:100%; background:#c8a05e; width:45.5%;"></div></div>
+      <div style="font-family:'Newsreader',serif; font-size:17px; color:#ece7db; margin-bottom:10px;">{{ guaranteeRead }}</div>
+      <div style="height:3px; border-radius:3px; background:rgba(200,160,94,0.2); overflow:hidden; margin-bottom:16px;"><div style="height:100%; background:#c8a05e; width: {{ guaranteeBar }};"></div></div>
       <div style="display:flex; align-items:center; gap:10px;">
         <span style="width:30px; height:30px; border-radius:50%; background:#26303f; border:1px solid rgba(200,160,94,0.4); display:grid; place-items:center; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#c8a05e;">{{ initials }}</span>
         <span style="font-family:'Newsreader',serif; font-size:15px; color:#97a2af;">{{ playerName }}</span>
@@ -4570,13 +4570,41 @@ class Component extends DCLogic {
       realHcpUp: () => this.setState(st => ({ realHcp: Math.round(((st.realHcp === undefined ? 11.4 : st.realHcp) + 0.1) * 10) / 10 })),
       realHcpNote: this.state.realHcp === undefined ? 'Not recorded' : 'Self-reported',
 
+      // THE GUARANTEE — 'Day 41 of 90' and a 45.5% bar, both hardcoded into the markup, shown
+      // under whoever was signed in. The 90-day guarantee is a real product promise (Atlas.dc.html
+      // sells it), but nothing records when a player's 90 days STARTED: there is no enrolment or
+      // programme-start column anywhere in ryp-core. `users.created_at` is account creation, which
+      // is not the same thing and would be a different lie.
+      //
+      // So: no day count, and an empty bar. The copy beneath is the promise; the number was fiction.
+      guaranteeRead: 'Not started — no programme start date on record',
+      guaranteeBar: '0%',
+
       // Transfer gap: what the range says minus what the card says. The whole
       // programme is judged on closing it.
       ...(() => {
-        const d = this.state.forge;
-        const prac = d.driving * 0.30 + d.approach * 0.35 + d.chipping * 0.15 + d.putting * 0.20;
-        const real = this.state.realHcp === undefined ? 11.4 : this.state.realHcp;
-        const gap = real - prac;
+        // BLANK, 2026-09-11, for the same reason `practiceHcp` directly above it is blank — and
+        // this one was missed when that one was fixed, which is why it was still on screen.
+        //
+        // The gap is `real − practice composite`, and that composite is
+        // `driving·0.30 + approach·0.35 + chipping·0.15 + putting·0.20` over `state.forge`'s
+        // literals (14.0 / 8.0 / −3.0 / 2.0). Those are Forge's `golf.practice_index_results`,
+        // which does not exist. So the composite is ALWAYS 6.95, and the gap was a real handicap
+        // minus a fixed fiction: signed in with a handicap of 1 it printed '-6.0' and captioned it
+        // "What you build, you take to the course".
+        //
+        // A dash with no verdict is the honest state. The moment Forge lands, `prac` becomes real
+        // and this restores itself — the arithmetic below is Luke's and is kept.
+        const real = this.state.realHcp;
+        const prac = null; // ← Forge: golf.practice_index_results, no producer
+        const gap = prac === null || real === undefined ? null : real - prac;
+        if (gap === null) {
+          return {
+            gapHcp: '—',
+            gapHcpColor: '#8d99a8',
+            gapHcpLabel: 'Needs a practice index — no producer yet',
+          };
+        }
         return {
           gapHcp: (gap > 0 ? '+' : '') + gap.toFixed(1),
           gapHcpColor: gap > 3 ? '#cf7d5c' : gap > 1.5 ? '#c8a05e' : '#7fae8e',
