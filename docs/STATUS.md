@@ -20,7 +20,7 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-11 10:22 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-11 10:36 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-11 10:22 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.21.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.21.0.tgz`
-- **Atlas HEAD:** `b9b3e68 Coach roster: a plus handicap printed as a minus, on live data (T-33)`
+- **Atlas HEAD:** `fddce50 The sign-off list was a light-theme card on the dark page (my bug, b7d17c9)`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
