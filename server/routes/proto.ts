@@ -179,7 +179,20 @@ ${home}${signout}Live from ryp-core: ${liveCount} student${liveCount === 1 ? '' 
 // everyone, and a coach is served the player tab with no error anywhere. Which is exactly what
 // happened on the first attempt (2026-09-01): typecheck passed, the page rendered, and the only
 // symptom was the wrong screen.
-protoRouter.get('/proto/dashboard', verifySessionCookieMiddleware, attachUser(pool), async (req, res, next) => {
+// ⚠️ FOUR LINKS, not two. This route ran `verifySessionCookieMiddleware, attachUser` and stopped,
+// while every other authed chain on the server has four (coach.ts:57-63, intake.ts:69-74,
+// me.ts:27-32, notes.ts:14-19, and proto.ts's own bearerChain at :62-67). The two it was missing
+// are the ENTITLEMENT links: without `ensureAtlasAccess` a brand-new allowlisted account gets no
+// atlas row created here, and without `requireApp('atlas')` a revoked account keeps the served
+// dashboard until its session cookie expires — up to eight hours of access after the revocation.
+// attachUser only resolves who you are; it does not ask whether you are still allowed in.
+protoRouter.get(
+  '/proto/dashboard',
+  verifySessionCookieMiddleware,
+  attachUser(pool),
+  ensureAtlasAccess(pool),
+  requireApp('atlas'),
+  async (req, res, next) => {
   try {
     const firebaseUid = (req as any).firebaseUid as string
     const file = await fs.readFile(path.join(PROTO_DIR, 'Dashboard.dc.html'), 'utf8')
