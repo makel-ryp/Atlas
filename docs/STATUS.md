@@ -20,7 +20,7 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-11 10:55 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-11 11:09 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-11 10:55 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.21.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.21.0.tgz`
-- **Atlas HEAD:** `6b1538b Close the loop: the coach's tick now reaches the student`
+- **Atlas HEAD:** `1d1a808 Coach can now read a student's intake (T-08), via the view rls_core specified`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
