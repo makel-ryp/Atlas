@@ -154,7 +154,15 @@ export type AtlasData = {
   hidden: readonly string[]
   roster: RosterRow[]
   /** The signed-in coach. `hcp` is the raw `numeric` string here — see the type note below. */
-  me: { name: string | null; hcp: string | null; target: string | null }
+  me: {
+    name: string | null
+    hcp: string | null
+    target: string | null
+    /** 'left' | 'right' | null. Flips dispersion geometry and a bias sign in his file. */
+    hand: string | null
+    /** Driver carry in yards, or null. The baseline the driving index is scored from. */
+    carry: number | null
+  }
 }
 
 /*
@@ -328,6 +336,8 @@ export async function buildAtlasData(
       .select({
         handicapIndex: golfPlayerProfile.handicapIndex,
         targetHandicap: golfPlayerProfile.targetHandicap,
+        driverCarryYds: golfPlayerProfile.driverCarryYds,
+        handedness: golfPlayerProfile.handedness,
       })
       .from(golfPlayerProfile)
       .where(eq(golfPlayerProfile.userId, me.id))
@@ -343,6 +353,30 @@ export async function buildAtlasData(
        * code and false of the player. Null renders as '—'; nothing substitutes a number here.
        */
       target: myProfile[0]?.targetHandicap ?? null,
+      /**
+       * HANDEDNESS — 'left' | 'right' | null. Not cosmetic on this page.
+       *
+       * `state.hand` flips real geometry in Luke's file: the dispersion field mirrors on it
+       * (`Dashboard.dc.html:4212`, `:4827`) and a bias value changes SIGN (`:4933`). It was the
+       * literal 'R' with a manual toggle (`:5236`), so a left-handed player was shown a
+       * right-handed read of their own miss pattern until they noticed the toggle. About one
+       * golfer in ten. `demo.player2` is left-handed in ryp-core today.
+       *
+       * Sent raw rather than as 'L'/'R' so the mapping lives in one place, in his file, next to
+       * the code that consumes it. Null means not recorded — his default stands, unchanged.
+       */
+      hand: myProfile[0]?.handedness ?? null,
+      /**
+       * DRIVER CARRY, yards. The baseline the driving index is measured from.
+       *
+       * `PLAYER_CARRY = 265` was a literal feeding `drivingBaseline(PLAYER_CARRY)`
+       * (`Dashboard.dc.html:2185`, used at `:2481`), so every golfer's driving index was scored
+       * against a 265-yard carry. The bands are coarse enough that this is not a rounding
+       * difference: 265 reads as a 5 handicap and 212 reads as a 20.
+       *
+       * Null when not recorded, and his file prints a dash rather than substituting a number.
+       */
+      carry: myProfile[0]?.driverCarryYds ?? null,
     }
 
     // ── 2. Candidates, by both paths ────────────────────────────────────────────────────────────

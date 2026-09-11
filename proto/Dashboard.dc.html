@@ -2182,8 +2182,19 @@ const BASELINE_CARRY_TABLE = [
   { max: 234, hcp: 15 }, { max: 254, hcp: 10 }, { max: 279, hcp: 5 },
   { max: 309, hcp: 0 }, { max: Infinity, hcp: -5 }
 ];
-const PLAYER_CARRY = 265;
+// Driver carry, from golf.player_profile.driver_carry_yds via __ATLAS_DATA__.me.carry.
+// Was the literal 265, which meant every golfer's driving index was scored against the same
+// baseline — and the bands are coarse (265 reads as a 5 handicap, 212 as a 20), so that was a
+// real error, not a rounding one. Null when not recorded; `drivingBaseline` answers null too
+// rather than substituting a number.
+const PLAYER_CARRY = (() => {
+  const v = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.me || {}).carry;
+  return v === null || v === undefined ? null : Number(v);
+})();
 const drivingBaseline = carry => {
+  // No carry on file means no baseline. Returning a number here would be a fabricated handicap
+  // band under a real name, which is the one thing this page must not do.
+  if (carry === null || carry === undefined || !isFinite(carry)) return null;
   const row = BASELINE_CARRY_TABLE.filter(r => carry <= r.max)[0];
   return row ? row.hcp : 10;
 };
@@ -2478,8 +2489,14 @@ const DRILL_DEFS = {
     tones: ['bad', 'ok', 'good', 'ok', 'bad'],
     verdict: t => {
       const fair = t[2], bad = t[0] + t[4];
-      const idx = drivingBaseline(PLAYER_CARRY) + (8 - (fair - bad * 2));
-      return { value: (idx > 0 ? '+' : '') + idx.toFixed(1), unit: 'driving index', line: fair + ' fairways · ' + bad + ' bad misses · baseline ' + drivingBaseline(PLAYER_CARRY) };
+      const base = drivingBaseline(PLAYER_CARRY);
+      // Without a recorded carry there is no baseline, and `null + n` would quietly score this
+      // against scratch. A dash is the honest answer; the shot counts are still real.
+      if (base === null) {
+        return { value: '—', unit: 'driving index', line: fair + ' fairways · ' + bad + ' bad misses · no driver carry on file' };
+      }
+      const idx = base + (8 - (fair - bad * 2));
+      return { value: (idx > 0 ? '+' : '') + idx.toFixed(1), unit: 'driving index', line: fair + ' fairways · ' + bad + ' bad misses · baseline ' + base };
     }
   }
 };
@@ -2756,7 +2773,15 @@ class Component extends DCLogic {
       const v = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.me || {}).hcp;
       return v === null || v === undefined ? undefined : Number(v);
     })(),
-    hand: 'R', pivot: 'cannon', impactOpp: [],
+    // HANDEDNESS — golf.player_profile.handedness via __ATLAS_DATA__.me.hand.
+    // Not cosmetic: the dispersion field mirrors on this (:4212, :4827) and a bias value changes
+    // SIGN (:4933). It was the literal 'R' with a manual toggle below, so a left-handed golfer
+    // read a mirrored version of their own miss pattern until they found the toggle. The toggle
+    // still works and still wins — this only sets the starting value from what is on file.
+    hand: (() => {
+      const v = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.me || {}).hand;
+      return v === 'left' ? 'L' : 'R';
+    })(), pivot: 'cannon', impactOpp: [],
     stake: { active: true, amount: 25, dest: 'charity', pledged: true, misses: 2 },
     session: { open: false, screen: 'roadmap', open_dom: 'chipping', drill: 'drive20', tally: [0, 0, 0, 0, 0] },
     forge: {
