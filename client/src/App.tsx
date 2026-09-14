@@ -6,6 +6,7 @@ import { Profile } from './components/Profile'
 import { Admin } from './components/Admin'
 import { Shell as IntakeShell } from './quiz/Shell'
 import { intakeApi } from './quiz/api'
+import { defaultStage } from './quiz/stages'
 import { QuizApiError } from './quiz/contract'
 
 /**
@@ -33,7 +34,26 @@ function useIntakeGate(active: boolean): [IntakeGate, () => void] {
     intakeApi
       .getRun()
       .then((run) => {
-        if (!cancelled) setGate(run.status === 'completed' ? 'satisfied' : 'needed')
+        /**
+         * `status === 'completed'` alone is NOT "nothing left to answer" — fixed 2026-09-14.
+         *
+         * The interview stage was added after several accounts had already finished, and a run
+         * marked completed was never re-offered, so those golfers could never answer it: their
+         * five interview answers were permanently blank, and it is the interview that fills the
+         * coach's dossier. Four of five real accounts were in exactly that state.
+         *
+         * The second half of this condition is deliberately `defaultStage`, not a fresh
+         * `!run.interview?.goal` check. `defaultStage` is already the one place that answers
+         * "which screen does this run still owe", and a second copy of that rule here would be
+         * free to drift from it — the same class of bug as re-deriving an RLS predicate in
+         * TypeScript. It returns 'result' exactly when nothing is outstanding.
+         *
+         * A run that owes something now reopens at precisely that stage, which for a finished
+         * golfer is the interview and nothing else. It also, correctly, catches a run marked
+         * completed that never stored a profile or volume at all.
+         */
+        const owesNothing = run.status === 'completed' && defaultStage(run) === 'result'
+        if (!cancelled) setGate(owesNothing ? 'satisfied' : 'needed')
       })
       .catch((err) => {
         if (cancelled) return
