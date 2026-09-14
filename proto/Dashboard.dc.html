@@ -32,10 +32,16 @@
       <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.2em; text-transform:uppercase; color:#66717f;">Atlas</div>
       <div style="font-family:'Archivo'; font-weight:700; font-size:15px; color:#ece7db; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ viewTitle }}</div>
     </div>
+    <!-- The SAME viewer-own metrics the rail carries, so it takes the same guard. 4361949 wrapped
+         the rail blocks and missed this: on a phone a coach reading a student's file still had
+         'vs <their own target>' printed directly under the header, where it reads as the
+         student's. Hidden for a coach, unchanged for a player. -->
+    <sc-if value="{{ showRailMetrics }}" hint-placeholder-val="{{ true }}">
     <div style="flex:none; text-align:right;">
       <div style="font-family:'Archivo'; font-weight:800; font-size:17px; line-height:1; color: {{ railSGColor }};">{{ railSG }}</div>
       <div style="font-family:'IBM Plex Mono',monospace; font-size:8px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f; margin-top:3px;">vs {{ railHcp }}</div>
     </div>
+    </sc-if>
   </div>
 
   <div onClick="{{ closeRail }}" style="display: {{ scrimShow }}; position:fixed; inset:0; z-index:310; background:rgba(8,11,15,0.72);"></div>
@@ -2692,6 +2698,21 @@ const fx1 = v => isNum(v) ? v.toFixed(1) : DASH;
 // A fully-shaped row with nothing in it. `profileVals` did `ROSTER.filter(...)[0] || ROSTER[0]` and
 // then dereferenced the result, so an empty roster — a coach with no students yet, or a player who
 // opened the page — was `undefined.id`. Every key his render touches is present and empty.
+/**
+ * Everything the note composer holds, at its empty.
+ *
+ * The compose box is VIEWER state inside a PER-SUBJECT pane, and nothing used to clear it when the
+ * subject changed. A coach could type "shallow the shaft, his lead wrist is cupped at P6" about
+ * student A, click back to the roster, open student B, and find that sentence already in B's box
+ * with the visibility chip still set — and `pfNoteSend` resolves `who.id` at click time, so one
+ * click posted prose about A onto B's file. Applied at every site that moves the subject.
+ *
+ * `noteVis: undefined` restores the default rather than pinning it, because the default is read as
+ * `this.state.noteVis || 'coaching_team'` — so a coach who chose "Player can read" for one student
+ * does not silently inherit it for the next.
+ */
+const NOTE_RESET = { noteDraft: '', noteVis: undefined, noteErr: '', noteBusy: false };
+
 const EMPTY_PLAYER = {
   id: '', n: '', tier: '', zone: '', hcp: null, target: null, days: null, leak: '',
   hand: '', carry: '', intake: '', sg: [], hist: {}, read: {}, note: {}, tone: {},
@@ -2862,9 +2883,17 @@ class Component extends DCLogic {
     // SIGN (:4933). It was the literal 'R' with a manual toggle below, so a left-handed golfer
     // read a mirrored version of their own miss pattern until they found the toggle. The toggle
     // still works and still wins — this only sets the starting value from what is on file.
+    // FIXED 2026-09-14. This was `v === 'left' ? 'L' : 'R'` — a TWO-way ternary, so null (nothing
+    // on file) came out as the assertion 'R'. Its two siblings above deliberately return
+    // `undefined` for an unrecorded value so the guards downstream fire and the display shows a
+    // dash; this one destroyed "unknown" at seed time, which made `pfHand`'s guard dead and
+    // printed 'Right-handed' under the name of a player who never said so.
+    // Every consumer tests `=== 'L'` (:4492 flip, :5135 lefty, :5241 bias sign), so `undefined`
+    // leaves the geometry exactly as it was; what changes is that the LABEL no longer claims a
+    // handedness we do not have, and the toggle shows neither side selected until one is chosen.
     hand: (() => {
       const v = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.me || {}).hand;
-      return v === 'left' ? 'L' : 'R';
+      return v === 'left' ? 'L' : v === 'right' ? 'R' : undefined;
     })(), pivot: 'cannon', impactOpp: [],
     stake: { active: true, amount: 25, dest: 'charity', pledged: true, misses: 2 },
     session: { open: false, screen: 'roadmap', open_dom: 'chipping', drill: 'drive20', tally: [0, 0, 0, 0, 0] },
@@ -3760,7 +3789,7 @@ class Component extends DCLogic {
   }
 
   nav = v => () => this.setState(v === 'profile'
-    ? { view: v, railOpen: false, profileOf: null }
+    ? Object.assign({ view: v, railOpen: false, profileOf: null }, NOTE_RESET)
     : { view: v, railOpen: false });
 
   // Tomorrow's session is generated, not chosen. It is built from the facet
@@ -3995,7 +4024,12 @@ class Component extends DCLogic {
       return {
         body: n.body || '',
         // Who said it. A player sees the coach's name; a coach sees 'You' on their own.
-        author: n.mine ? 'You' : (n.author || 'Your coach'),
+        // 'Your coach' is only true on the PLAYER's screen. On a coach's screen the unnamed author
+        // is a COLLEAGUE — coaching_notes_select shows every coach of the subject the whole team's
+        // notes, and a coach has no SELECT on a peer coach's users row, so the leftJoin returns
+        // null for exactly that case. Calling another coach 'Your coach' to a coach is a fabricated
+        // attribution on the one line that says who said it.
+        author: n.mine ? 'You' : (n.author || (notesSelf ? 'Your coach' : 'Another coach')),
         when: n.createdAt ? new Date(n.createdAt).toLocaleDateString() : '',
         // The player is shown no visibility pill: everything they can see is 'shared' by policy,
         // so the label would be noise that also hints at notes they cannot read.
@@ -4124,7 +4158,7 @@ class Component extends DCLogic {
             ? 'Answered by ' + (who.n || 'this player').split(' ')[0] + ' at intake, in their words. Read it before you write the next block — ' + who.file.limits.split(/[.,—]/)[0].trim().toLowerCase() + ' decides which pivot they can be given. Edits are theirs to make, not yours.'
             : 'No intake answers on record for this player. The intake form is not yet wired to a table, so nothing has been collected — read nothing into the blanks below.'),
       pfBackShow: self ? 'none' : 'inline-flex',
-      pfBack: () => this.setState({ view: 'roster', profileOf: null }),
+      pfBack: () => this.setState(Object.assign({ view: 'roster', profileOf: null }, NOTE_RESET)),
       pfEditable: self,
 
       // The ten-shot video test's bindings were removed with its markup on 2026-09-03
@@ -4137,8 +4171,16 @@ class Component extends DCLogic {
         const v = P[f.k] === undefined ? (who.file[f.k] || '') : P[f.k];
         return {
           label: f.label, hint: f.hint, value: v,
-          readOnly: !self,
-          rule: self ? 'rgba(20,25,31,0.28)' : 'rgba(20,25,31,0.13)',
+          // READ-ONLY FOR EVERYONE — fixed 2026-09-14.
+          // This was `!self`, which was inert while `self` was hardcoded false. Making `self`
+          // reachable turned these five textareas into editable fields for every player, and
+          // NOTHING SAVES THEM: the only two fetches in this entire file are the drill verify
+          // (:4389) and the note POST (:4425). A player could rewrite "Physical limitations" to
+          // record a shoulder surgery, navigate away, and lose it silently — worse than never
+          // offering the edit, because they would believe their coach had been told.
+          // The intake flow is where these are answered; this pane is where they are read back.
+          readOnly: true,
+          rule: 'rgba(20,25,31,0.13)',
           // Ruled lines that grow. An injury history is never one line long.
           rows: Math.max(1, Math.ceil(v.length / 38)),
           onChange: set(f.k),
@@ -4255,7 +4297,7 @@ class Component extends DCLogic {
       inPct: pct + '%',
       inPctBar: pct + '%',
       inStatus: pct === 100 ? 'Complete — send it to your coach.' : 'Incomplete. Your coach cannot write a block from a half-filled form.',
-      inSubmit: () => this.setState({ view: 'profile', profileOf: null }),
+      inSubmit: () => this.setState(Object.assign({ view: 'profile', profileOf: null }, NOTE_RESET)),
       inSubmitLabel: pct === 100 ? 'Submit intake' : 'Save and finish later',
       inSubmitBg: pct === 100 ? '#14191f' : 'transparent',
       inSubmitColor: pct === 100 ? '#efe9dc' : '#14191f',
@@ -4319,7 +4361,7 @@ class Component extends DCLogic {
         lastColor: p.days > 7 ? '#d9885e' : p.days > 3 ? '#c8a05e' : '#66717f',
         flagShow: p.flag ? 'inline-block' : 'none',
         border: p.flag ? 'rgba(217,136,94,0.34)' : 'rgba(255,255,255,0.08)',
-        open: () => this.setState({ view: 'profile', profileOf: p.id, railOpen: false })
+        open: () => this.setState(Object.assign({ view: 'profile', profileOf: p.id, railOpen: false }, NOTE_RESET))
       })),
       // GUARDED, both counts. `flag: p.days > 7` is `false` for `days: null`, so an un-guarded
       // '0 need a call' told the coach every never-logged student was fine — a reassurance drawn
@@ -4815,8 +4857,14 @@ class Component extends DCLogic {
       // Real index from golf.player_profile.handicap_index via the seeded state. '—' when the
       // player has not recorded one — never the 11.4 literal this used to print.
       realHcp: this.state.realHcp === undefined ? '—' : this.state.realHcp.toFixed(1),
-      realHcpDown: () => this.setState(st => ({ realHcp: Math.round(((st.realHcp === undefined ? 11.4 : st.realHcp) - 0.1) * 10) / 10 })),
-      realHcpUp: () => this.setState(st => ({ realHcp: Math.round(((st.realHcp === undefined ? 11.4 : st.realHcp) + 0.1) * 10) / 10 })),
+      // FIXED 2026-09-14: both steppers fell back to the literal 11.4, so a player with NO recorded
+      // handicap who tapped '+' once was given 11.5 out of nothing. The rail displayed an honest
+      // dash right up until the first tap. It matters more since a3060a7, because pfHandicapReal
+      // now falls through to the same state and prints it in the Player file header under 'Real',
+      // without the rail's 'Self-reported' qualifier beside it.
+      // No baseline means no step: there is nothing to increment, and 11.4 was never this player's.
+      realHcpDown: () => this.setState(st => st.realHcp === undefined ? {} : ({ realHcp: Math.round((st.realHcp - 0.1) * 10) / 10 })),
+      realHcpUp: () => this.setState(st => st.realHcp === undefined ? {} : ({ realHcp: Math.round((st.realHcp + 0.1) * 10) / 10 })),
       realHcpNote: this.state.realHcp === undefined ? 'Not recorded' : 'Self-reported',
 
       // THE GUARANTEE — 'Day 41 of 90' and a 45.5% bar, both hardcoded into the markup, shown
