@@ -24,7 +24,7 @@ _Regenerated 2026-09-14 15:01 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **1 file(s)** | **9 ahead** |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | clean | **10 ahead** |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | **2 ahead** |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-14 15:01 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.21.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.21.0.tgz`
-- **Atlas HEAD:** `5f973d5 Six defects an adversarial review found in my own last four commits`
+- **Atlas HEAD:** `8534dd9 Docs: record T-59, the six defects the adversarial review found`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
