@@ -421,6 +421,25 @@
             <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.26em; text-transform:uppercase; color:#8a6a2f; margin-bottom:8px;">Player file</div>
             <h1 style="font-family:'Archivo'; font-weight:800; font-size:clamp(28px,6vw,42px); line-height:1; letter-spacing:-0.03em; color:#14191f; margin:0 0 8px;">{{ pfName }}</h1>
             <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#6f7681;">{{ pfMeta }}</div>
+
+            <!-- ============ YOUR NAME · self only ============ -->
+            <!-- Added 2026-09-14. A coach's roster was printing EMAIL ADDRESSES where names belong,
+                 because `public.users.display_name` is null for any account that did not sign in
+                 with Google (which supplies one) or get seeded. There was already a name field in
+                 the React profile form, but App.tsx sends every non-admin straight to this page,
+                 so a player never saw it. This is the same field, where the player actually is.
+                 LIGHT palette — this block is inside the cream dossier pane (#efe9dc), unlike the
+                 sign-off and notes blocks further down, which sit on the dark page.
+                 Self only: a coach must never rename a student. -->
+            <div style="display: {{ pfNameEditShow }}; margin-top:14px; max-width:420px;">
+              <label style="display:block; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.2em; text-transform:uppercase; color:#8a6a2f; margin-bottom:5px;">{{ pfNameEditLabel }}</label>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <input value="{{ pfNameDraft }}" onChange="{{ pfNameSet }}" placeholder="First and last name" style="flex:1 1 auto; min-width:0; background:transparent; border:0; border-bottom:1px solid rgba(20,25,31,0.28); padding:5px 0 8px; font-family:'Newsreader',serif; font-size:18px; color:#14191f; outline:none;">
+                <div onClick="{{ pfNameSave }}" style="cursor:pointer; flex:none; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#efe9dc; background:#14191f; padding:9px 16px; border-radius:999px;">{{ pfNameSaveLabel }}</div>
+              </div>
+              <div style="font-family:'Newsreader',serif; font-style:italic; font-size:14px; color:#6f7681; margin-top:7px;">{{ pfNameHint }}</div>
+              <div style="display: {{ pfNameErrShow }}; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; color:#a8422f; margin-top:7px;">{{ pfNameErr }}</div>
+            </div>
           </div>
         </div>
         <div style="display:flex; flex-wrap:wrap; gap:26px 34px;">
@@ -4077,6 +4096,26 @@ class Component extends DCLogic {
         ? 'Your coach watches the submission in Parallax and ticks it here. A tick is their judgement that the rep happened.'
         : 'Watch the submission in Parallax, then tick it here. A tick is your judgement that the rep happened \u2014 it is not the player\u2019s claim, which is theirs to make and lives elsewhere.',
       pfName: who.n,
+
+      // ── YOUR NAME · self only ───────────────────────────────────────────────────────────────
+      // The coach's roster prints `display_name ?? email`, so an account without a name shows an
+      // email address where a person's name belongs. This is the fix at the source: let the
+      // player set it, on the page they actually use.
+      //
+      // `ATLAS_ME.displayName` is the RAW value and is null when unset — deliberately not
+      // `ATLAS_ME.name`, which falls back to the email. Pre-filling this box with an email is how
+      // a golfer would end up saving their email address AS their name.
+      pfNameEditShow: self ? 'block' : 'none',
+      pfNameEditLabel: ATLAS_ME.displayName ? 'Your name' : 'Add your name',
+      pfNameDraft: this.state.nameDraft === undefined ? (ATLAS_ME.displayName || '') : this.state.nameDraft,
+      pfNameSet: ev => this.setState({ nameDraft: ev.target.value }),
+      pfNameSave: () => this.saveName(),
+      pfNameSaveLabel: this.state.nameBusy ? 'Saving\u2026' : this.state.nameSaved ? 'Saved' : 'Save',
+      pfNameHint: ATLAS_ME.displayName
+        ? 'This is what your coach sees on their roster.'
+        : 'Your coach currently sees your email address here. A name makes their roster readable.',
+      pfNameErr: this.state.nameErr || '',
+      pfNameErrShow: this.state.nameErr ? 'block' : 'none',
       pfInitials: who.n.split(' ').map(w => w[0]).join(''),
       // GUARDED: was string concatenation, so a missing tier/zone/days rendered the literal text
       // 'undefined · Zone undefined · last logged undefinedd ago'. Absent parts are now dropped
@@ -4472,6 +4511,40 @@ class Component extends DCLogic {
     }).catch(err => {
       // The draft is deliberately left in the box — see the note above.
       this.setState({ noteBusy: false, noteErr: err.message || 'Could not save that note.' });
+    });
+  }
+
+  /**
+   * Save the caller's own display name.
+   *
+   * PATCH /api/users/me, `credentials: 'same-origin'` — that route was BEARER-ONLY until
+   * 2026-09-14 and would have returned 401 from this page, the third time that trap has cost a
+   * feature here (drill tick, coaching notes, this). See server/cookieOrBearer.ts.
+   *
+   * Writes through to `public.users.display_name`, which is what the coach's roster reads, so the
+   * name appears on their next load. Updates ATLAS_ME in place so the header stops showing the
+   * email without needing a reload.
+   */
+  saveName() {
+    const name = (this.state.nameDraft === undefined ? (ATLAS_ME.displayName || '') : this.state.nameDraft).trim();
+    if (!name || this.state.nameBusy) return;
+    this.setState({ nameBusy: true, nameErr: '', nameSaved: false });
+
+    fetch('/api/users/me', {
+      method: 'PATCH',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: name })
+    }).then(r => {
+      if (r.ok) return;
+      return r.json().catch(() => null).then(() => { throw new Error('Could not save that name.'); });
+    }).then(() => {
+      ATLAS_ME.displayName = name;
+      ATLAS_ME.name = name;
+      if (ATLAS_ME_ROW) ATLAS_ME_ROW.n = name;
+      this.setState({ nameBusy: false, nameSaved: true, nameErr: '' });
+    }).catch(err => {
+      this.setState({ nameBusy: false, nameErr: err.message || 'Could not save that name.' });
     });
   }
 

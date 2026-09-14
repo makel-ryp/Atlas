@@ -214,6 +214,8 @@ export type AtlasData = {
   /** The signed-in coach. `hcp` is the raw `numeric` string here — see the type note below. */
   me: {
     name: string | null
+    /** The real display name, or null when unset. `name` falls back to the email; this does not. */
+    displayName: string | null
     hcp: string | null
     target: string | null
     /** 'left' | 'right' | null. Flips dispersion geometry and a bias sign in his file. */
@@ -457,6 +459,16 @@ export async function buildAtlasData(
     // first so both audiences come out of one query. `meBlock` is assembled from this below.
     const meBase = {
       name: me.displayName ?? me.email ?? null,
+      /**
+       * The caller's REAL display name, or null — as distinct from `name` above, which falls back
+       * to the email so the header always has something to print.
+       *
+       * Sent separately so the page can tell "has a name" from "is showing an email because there
+       * is no name". Without the distinction the self-service field below would come pre-filled
+       * with an email address, and the golfer would save that as their name — which is the state
+       * the coach's roster is already complaining about.
+       */
+      displayName: me.displayName ?? null,
       hcp: myProfile[0]?.handicapIndex ?? null,
       /**
        * The caller's own target handicap, or null. The rail prints this as the reference every

@@ -1,10 +1,11 @@
 import { Router, type RequestHandler } from 'express'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { verifyToken, attachUser, requireApp } from '@ryp/eco/auth'
+import { attachUser, requireApp } from '@ryp/eco/auth'
 import { withRls } from '@ryp/eco/db'
 import { users, golfPlayerProfile } from '@ryp/eco/schema'
 import { pool } from '../db'
+import { cookieOrBearer } from '../cookieOrBearer'
 import { ensureAtlasAccess } from '../ensureAtlasAccess'
 
 // Only the tables this router touches. withRls wants the caller's OWN schema object so drizzle
@@ -24,8 +25,16 @@ const schema = { users, golfPlayerProfile }
 // folded into it: the two answer different questions. One decides whether a NEW person is entitled;
 // the other enforces entitlement for everyone, including a person whose access was revoked — who
 // passes through ensureAtlasAccess untouched and is still refused here.
+/**
+ * Cookie OR bearer. Third route to need this, after coach.ts and notes.ts — see ../cookieOrBearer.
+ *
+ * The SPA sends a bearer token, but Luke's served prototype authenticates with the session cookie
+ * and is where a PLAYER actually lives. `PATCH /api/users/me` is how a golfer sets their own
+ * display name, and bearer-only made that unreachable from the only page they see — which is a
+ * large part of why the coach's roster prints email addresses where names belong.
+ */
 const identityChain: RequestHandler[] = [
-  verifyToken,
+  cookieOrBearer,
   attachUser(pool),
   ensureAtlasAccess(pool),
   requireApp('atlas'),
