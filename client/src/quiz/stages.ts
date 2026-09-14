@@ -64,27 +64,43 @@ export function defaultStage(run: QuizRun): Stage {
 /**
  * Which tier a "keep going" button should offer next, or null when they're done.
  *
- * ── THE INTAKE ENDS AT TIER 1A. Decision, Makel, 2026-09-01. ────────────────────────────────
- * Atlas's intake is three sections and no more: the practice week (two typed questions and the
- * allocation slider), background and body (the seven profile fields), and one block of questions
- * (Tier 1A). That is 23 answers.
+ * ── THE FULL LADDER IS BACK. Decision, Makel, 2026-09-14. ───────────────────────────────────
+ * This supersedes the 2026-09-01 decision recorded here, which cut everything past Tier 1A and
+ * read "the intake ends at Tier 1A". Two things that decision could not have weighed:
  *
- * Tiers 1B, 2 and 3 are 78 further questions — Tier 2 alone is 51 — and they are cut from the
- * product, not merely deprioritised. They are the "continue the diagnosis" path, and asking a
- * golfer for a hundred answers before they have seen anything is not an onboarding.
+ *  1. The MAP has never rendered, for anyone. `ResultScreen` gates it on `quizConfidence`, and
+ *     confidence only leaves 'baseline' once a Tier 1B answer exists (scoring.ts `computeConfidence`).
+ *     Returning null here pinned it to 'baseline' forever, so `PracticeMap` — the product's
+ *     central metaphor, fully built and identical to TGT's — was unreachable code.
+ *  2. The three SLIDER items (ATTN01, ATTN02, FP_TRA) are all Tier 2. `QuestionControls` already
+ *     renders them; only the flow withheld them. The two ATTN items are the attention checks that
+ *     `quality_flag` is derived from, so without Tier 2 there is no response-quality signal at all.
  *
- * NOT DELETED from `shared/practice-dna/items.ts`. That file is Forge's canonical copy of the
- * instrument, verified byte-identical, and removing items would fork our version from theirs
- * invisibly — the exact trap that produced the ZP_* and PRO_AGE bugs. The items stay; the flow
- * stops offering them. `TierRunner` can still render any tier if something asks it to, so
- * restoring the depth later is this function, not a migration.
+ * This is the same ladder TGT runs today (yanyanarti/practice-dna), which is the instrument this
+ * is a port of. It stays OPT-IN: `defaultStage` still lands on the result after Tier 1A, and each
+ * result screen sells the next level. Nobody is made to answer 60 items before seeing anything.
+ *
+ * Tier 3 is offered by this function and then filtered out by `tierHasQuestions` in Shell — all
+ * 15 of its items are `pending: true` with empty text, and the Mini-IPIP block that would fill it
+ * is deliberately held out of `ALL_ITEMS`. Leaving the case here rather than returning null keeps
+ * this function a faithful mirror of the instrument; the guard in Shell is what protects the
+ * golfer from a screen with no questions.
  */
-export function nextTier(_tierCompleted: TierCompleted): 'tier1B' | 'tier2' | 'tier3' | null {
-  return null;
+export function nextTier(tierCompleted: TierCompleted): 'tier1B' | 'tier2' | 'tier3' | null {
+  switch (tierCompleted) {
+    case 1:
+      return 'tier1B';
+    case 2:
+      return 'tier2';
+    case 3:
+      return 'tier3';
+    default:
+      return null;
+  }
 }
 
 /** Progress dots in the header. Tier 3 is excluded: it is research opt-in, not the flow. */
-export const STAGE_SEQUENCE: readonly Stage[] = ['volume', 'profile', 'interview', 'tier1A', 'result'];
+export const STAGE_SEQUENCE: readonly Stage[] = ['volume', 'profile', 'interview', 'tier1A', 'tier1B', 'tier2', 'result'];
 
 export const STAGE_LABELS: Record<Stage, string> = {
   volume: 'Your practice week',

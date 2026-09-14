@@ -109,12 +109,14 @@ export function ResultScreen({
   // reads `breakdown` below already has a `?? result.actualAlloc` or an `if (breakdown)` guard
   // from tgt's own code — this renders those branches' empty state (no time bars, no messy
   // dial) rather than fabricating minutes from data that was never saved.
-  // `as` (not a plain annotation) is deliberate: a bare `= null` narrows to the literal type
-  // `null` for every later read in this scope (TS tracks a `const`'s control-flow type from its
-  // initializer, not its declared annotation), which turned every `if (breakdown)` guard below
-  // into dead code typed `never`. Casting the initializer keeps the guards meaningful once
-  // `breakdown` has a real source again.
-  const breakdown = null as VolumeBreakdown | null;
+  // WIRED 2026-09-14. This was hardcoded `null as VolumeBreakdown | null`, written when the two
+  // raw volume answers had no server-side home — so the Messy Middle dial and the two time-bar
+  // sections it gates were unreachable, and a golfer who had just set their whole practice split
+  // was shown nothing derived from it. `atlas.intake_submissions.volume` and `.alloc` are real
+  // columns now and `toEnvelope` returns them, so the source exists. Still nullable on purpose:
+  // a run resumed before the volume stage genuinely has neither, and the guards below handle it.
+  const breakdown: VolumeBreakdown | null =
+    run.volume && run.alloc ? computeVolumeBreakdown(run.volume, run.alloc) : null;
 
   /**
    * The displayed efficiency has to be the focus-adjusted one, not `result.efficiency`.
