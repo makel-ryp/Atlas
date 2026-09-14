@@ -1,7 +1,7 @@
 import { Router, type RequestHandler } from 'express'
 import { z } from 'zod'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
-import { attachUser, requireApp, verifySessionCookieMiddleware, verifyToken } from '@ryp/eco/auth'
+import { attachUser, requireApp, verifyToken } from '@ryp/eco/auth'
 import { withRls } from '@ryp/eco/db'
 import {
   users,
@@ -13,6 +13,7 @@ import {
   golfDrillProgress,
 } from '@ryp/eco/schema'
 import { pool } from '../db'
+import { cookieOrBearer } from '../cookieOrBearer'
 import { ensureAtlasAccess } from '../ensureAtlasAccess'
 
 const schema = {
@@ -31,28 +32,6 @@ const identityChain: RequestHandler[] = [
   ensureAtlasAccess(pool),
   requireApp('atlas'),
 ]
-
-/**
- * Accept EITHER a session cookie or a bearer token.
- *
- * The SPA holds a Firebase ID token and sends `Authorization: Bearer`. The served prototype does
- * not — it is a plain server-rendered page, and a browser navigation cannot carry an Authorization
- * header, so it authenticates with the httpOnly session cookie minted by POST /api/session.
- *
- * The drill sign-off is called from BOTH: eventually from the SPA, and today from Luke's page,
- * which is the only surface a coach actually ticks a drill on. Bearer-only meant every tick from
- * that page returned 401 while the POST body and URL were perfectly correct — the UI rolled the
- * tick back and said "Could not save that sign-off", which is honest but not the bug. Found by
- * clicking the row in a browser on 2026-09-01; no amount of API testing could see it, because
- * every API test sends a bearer token.
- */
-const cookieOrBearer: RequestHandler = (req, res, next) => {
-  const hasBearer = req.headers.authorization?.startsWith('Bearer ')
-  // Both middlewares set `req.firebaseUid` and nothing else, so whichever runs, the rest of the
-  // chain is identical. Cookie first: a page-served request is the common case for this route.
-  if (hasBearer) return verifyToken(req, res, next)
-  return verifySessionCookieMiddleware(req, res, next)
-}
 
 const pageOrApiChain: RequestHandler[] = [
   cookieOrBearer,

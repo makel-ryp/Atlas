@@ -1,6 +1,7 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { withRls } from '@ryp/eco/db'
 import {
+  atlasCoachingNotes,
   golfDrillProgress,
   golfPlayerProfile,
   orgMemberships,
@@ -81,6 +82,36 @@ export type RosterRow = {
    * signed off; it never means the player did not do it, which is `tickedAt` and belongs to Forge.
    */
   drills: Record<string, { verifiedAt: string | null; videoRef: string | null; verifyNote: string | null }>
+  /**
+   * Coaching notes ABOUT this student. REAL — atlas.coaching_notes.
+   *
+   * ⚠️ Not to be confused with `note` above, which is Forge narrative prose with no producer. This
+   * is the written half of the coaching loop: the coach ticks a drill (`drills`) and says why
+   * (`notes`). Newest first.
+   *
+   * Every row here arrived through `atlas.coaching_notes_select`, so the filtering is the
+   * database's, not this file's — see the query for why that matters for `visibility`.
+   */
+  notes: CoachingNoteRow[]
+}
+
+/**
+ * One coaching note, as the prototype receives it.
+ *
+ * `visibility` travels to the client because the COACH must see it: a note they can read is not
+ * necessarily a note the student can read, and the difference has to be visible on the card or a
+ * coach cannot tell what they have already said to whom. It is never a filter on the client —
+ * `coaching_notes_select` has already decided which rows exist.
+ */
+export type CoachingNoteRow = {
+  id: string
+  body: string
+  visibility: string
+  /** Display name, or null when the author never set one. The client prints a dash, not an email. */
+  author: string | null
+  /** True when the caller wrote it. Drives 'You' vs the author's name. */
+  mine: boolean
+  createdAt: string
 }
 
 /**
@@ -170,6 +201,19 @@ export type AtlasData = {
      * so their roster is `[]` and the judgement died in the database. This is the return leg.
      */
     drills: RosterRow['drills']
+    /**
+     * THE CALLER'S OWN coaching notes — the same return leg as `drills`, for the written half.
+     *
+     * A player is nobody's coach, so their roster is `[]` and nothing on `RosterRow` can ever
+     * reach them. Without this the coach's comment would land in the database exactly the way the
+     * tick did before 2026-09-11, and the student would never read it.
+     *
+     * ⚠️ This is `shared`-only in practice, and NOT because anything here filters it.
+     * `coaching_notes_select` grants the subject only `visibility = 'shared'`, so a
+     * `coaching_team` or `private` note is not in the result set at all. The client never sees a
+     * row it must not show, which is the only arrangement that cannot leak by omission.
+     */
+    notes: RosterRow['notes']
   }
 }
 
@@ -307,6 +351,7 @@ export async function buildAtlasData(
     orgMemberships,
     organizations,
     golfPlayerProfile,
+    atlasCoachingNotes,
   }
 
   // Bootstrap read. The zero uuid is not a placeholder to be tidied away: at this point we do not
@@ -372,7 +417,10 @@ export async function buildAtlasData(
       }
     }
 
-    const meBlock = {
+
+    // Everything about the caller EXCEPT their notes, which need the roster ids to be resolved
+    // first so both audiences come out of one query. `meBlock` is assembled from this below.
+    const meBase = {
       name: me.displayName ?? me.email ?? null,
       hcp: myProfile[0]?.handicapIndex ?? null,
       /**
@@ -468,6 +516,60 @@ export async function buildAtlasData(
     }
 
     const ids = [...candidates.keys()]
+
+    /**
+     * Coaching notes — the caller's own AND every student's, in ONE query.
+     *
+     * Runs before the empty-roster return on purpose: a PLAYER has no students, and the player is
+     * exactly who the `me` half of this exists for. Scoping it to the roster would have rebuilt
+     * the bug this closes, where the coach's judgement reached the database and never the student.
+     *
+     * ── Why there is no `visibility` filter here ────────────────────────────────────────────
+     * There must not be one. `atlas.coaching_notes_select` already answers it for both audiences
+     * from a single predicate: the subject sees `shared` only; a coach sees `coaching_team` and
+     * `shared` on their own students, plus anything they wrote themselves. Re-deriving that in
+     * TypeScript yields two rules that agree until one is edited, and the failure mode is a
+     * private note rendered under a student's login. The database decides; this only maps.
+     *
+     * Sorted newest-first here rather than in his file, so both surfaces agree without either
+     * one sorting.
+     */
+    const noteRows = await db
+      .select({
+        id: atlasCoachingNotes.id,
+        subjectUserId: atlasCoachingNotes.subjectUserId,
+        authorUserId: atlasCoachingNotes.authorUserId,
+        author: users.displayName,
+        body: atlasCoachingNotes.body,
+        visibility: atlasCoachingNotes.visibility,
+        createdAt: atlasCoachingNotes.createdAt,
+      })
+      .from(atlasCoachingNotes)
+      .leftJoin(users, eq(users.id, atlasCoachingNotes.authorUserId))
+      .where(
+        and(
+          inArray(atlasCoachingNotes.subjectUserId, [me.id, ...ids]),
+          isNull(atlasCoachingNotes.deletedAt),
+        ),
+      )
+      .orderBy(desc(atlasCoachingNotes.createdAt))
+
+    const notesBy = new Map<string, RosterRow['notes']>()
+    for (const r of noteRows) {
+      const list = notesBy.get(r.subjectUserId) ?? []
+      list.push({
+        id: r.id,
+        body: r.body,
+        visibility: r.visibility,
+        author: r.author ?? null,
+        mine: r.authorUserId === me.id,
+        createdAt: r.createdAt ? r.createdAt.toISOString() : '',
+      })
+      notesBy.set(r.subjectUserId, list)
+    }
+
+    const meBlock = { ...meBase, notes: notesBy.get(me.id) ?? [] }
+
     // The empty roster is a real, common answer — a coach with no students, or a player who opened
     // the page. It renders as an empty screen, which is correct.
     if (ids.length === 0) return { view, hidden, roster: [], me: meBlock }
@@ -576,6 +678,7 @@ export async function buildAtlasData(
         hand: handLabel(profile?.handedness),
         intake: intakeLine(meta),
         drills: progressBy.get(person.id) ?? {},
+        notes: notesBy.get(person.id) ?? [],
 
         // ── no producer. 44 of the 81 metrics on these screens are Forge outputs and Forge has not
         //    shipped, so most of his UI going quiet is the CORRECT outcome, not a regression. ──

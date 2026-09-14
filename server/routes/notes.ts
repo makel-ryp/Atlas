@@ -1,18 +1,28 @@
 import { Router, type RequestHandler } from 'express'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
-import { verifyToken, attachUser, requireApp } from '@ryp/eco/auth'
+import { attachUser, requireApp } from '@ryp/eco/auth'
 import { withRls } from '@ryp/eco/db'
 import { users, atlasCoachingNotes, NOTE_VISIBILITIES } from '@ryp/eco/schema'
 import { pool } from '../db'
+import { cookieOrBearer } from '../cookieOrBearer'
 import { ensureAtlasAccess } from '../ensureAtlasAccess'
 
 // Only the tables this router touches — see coach.ts for why a narrower schema object is a
 // narrower blast radius, not just a smaller type.
 const schema = { users, atlasCoachingNotes }
 
+/**
+ * Cookie OR bearer, not bearer alone.
+ *
+ * These four routes are called from Luke's served prototype, which authenticates with the httpOnly
+ * session cookie — a browser navigation cannot carry an Authorization header. Bearer-only here
+ * would return 401 for every note written from the only surface a coach actually writes notes on,
+ * with a correct URL and a correct body. That is not hypothetical: it is precisely the bug that
+ * shipped on the drill sign-off on 2026-09-01. See ../cookieOrBearer.
+ */
 const identityChain: RequestHandler[] = [
-  verifyToken,
+  cookieOrBearer,
   attachUser(pool),
   ensureAtlasAccess(pool),
   requireApp('atlas'),
