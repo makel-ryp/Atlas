@@ -596,6 +596,17 @@
 .border-ink\/15 {
   border-color: color-mix(in srgb, var(--paper) 15%, transparent);
 }
+/* Added 2026-09-14. Both were genuinely missing, and an undefined Tailwind colour compiles to
+   nothing — so these two elements simply had no border at all:
+     - InterviewStage.tsx:66  the five interview textareas, on a screen every golfer reaches
+     - ResultScreen.tsx:215   the baseline result's continue button
+   The enumeration comment above says the set was grepped from the port; these slipped it. */
+.border-ink\/20 {
+  border-color: color-mix(in srgb, var(--paper) 20%, transparent);
+}
+.border-ink\/25 {
+  border-color: color-mix(in srgb, var(--paper) 25%, transparent);
+}
 .border-ink\/40 {
   border-color: color-mix(in srgb, var(--paper) 40%, transparent);
 }
