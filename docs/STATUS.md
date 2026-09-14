@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-11 11:09 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-14 09:52 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **2 file(s)** | pushed |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **2 file(s)** | **5 ahead** |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | **2 ahead** |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-11 11:09 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.21.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.21.0.tgz`
-- **Atlas HEAD:** `1d1a808 Coach can now read a student's intake (T-08), via the view rls_core specified`
+- **Atlas HEAD:** `a3060a7 Layer 1, on the screen that is actually reachable: a player is no longer a blank`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -142,7 +142,21 @@ contain the strike map and must NOT contain "Handicap history" or "The interview
 A second copy remains inside the `intake` section, which is hidden from both roles and therefore
 never renders. Left alone on purpose.
 
-The player file now reads: Handicap history → The interview → the coach sign-off list.
+The player file now reads: Handicap history → The interview → the coach sign-off list → **coaching
+notes** (added 2026-09-14).
+
+### 🟢 The coaching loop closed — 2026-09-14
+
+A coach could tick a drill and could not say a word about it. Both halves now run, on the one screen
+both audiences share:
+
+| | |
+| --- | --- |
+| **Notes reach the page** | `server/routes/notes.ts` was **bearer-only** (`verifyToken`), and Luke's page is a server-rendered document authenticated by a session cookie — a browser navigation cannot carry an `Authorization` header, so every note written from the only surface a coach would use returned 401. The same bug shipped on the drill tick in Sep 2026. `cookieOrBearer` extracted to `server/cookieOrBearer.ts`, shared by `coach.ts` and `notes.ts`. |
+| **Two-sided, one block** | Coach: the selected student's notes plus a compose box with plain-language visibility chips (*Player can read* / *Coaches only* / *Just me*, defaulting to Coaches only). Player: read-only, no compose box. Audience chosen by `ROSTER.length === 0`, the `pfDrills` pattern. |
+| **The client never filters by visibility** | `atlas.coaching_notes_select` grants a subject `'shared'` only, so a `private`/`coaching_team` note is not in the payload at all. **Verified both directions on live data**: a `shared` note reached the student; `coaching_team` and `private` did not. |
+| **The subject is resolved** | `self` was `who.id === 'hale'` — never true — so a player opening their own profile saw a **blank placeholder person** with read-only fields. `meRow` (the caller shaped as a `RosterRow`, converted server-side) fixes it. Four fabricated values that this made reachable were removed in the same pass. |
+| **The coach's rail** | No longer prints the coach's own handicap, target, practice, real and transfer gap beside a student's file. One key, `HIDDEN_FOR_COACH` only; a player's rail is unchanged. |
 
 ### ✅ B-1 · FIXED and VERIFIED 2026-09-01. Kept here as the record.
 
