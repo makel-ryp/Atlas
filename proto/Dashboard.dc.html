@@ -3981,10 +3981,14 @@ class Component extends DCLogic {
     // Plain language, deliberately. A coach must be able to tell at a glance which of these the
     // student can read — discovering that after the fact is the one failure this vocabulary has
     // to prevent. 'shared' is the only one that leaves the coaching team.
+    // Ordered by how far the note travels — narrowest first, so the chip that reaches the STUDENT
+    // is last and cannot be hit by reflex on the way to the default. Explicit array rather than
+    // Object.keys, which would make the order of a UI control depend on object key order.
+    const VIS_ORDER = ['private', 'coaching_team', 'shared'];
     const VIS = {
-      shared: { label: 'Player can read', color: '#c8a05e', bg: 'rgba(200,160,94,0.14)' },
+      private: { label: 'Just me', color: '#8d99a8', bg: 'rgba(255,255,255,0.05)' },
       coaching_team: { label: 'Coaches only', color: '#8d99a8', bg: 'rgba(255,255,255,0.05)' },
-      private: { label: 'Just me', color: '#8d99a8', bg: 'rgba(255,255,255,0.05)' }
+      shared: { label: 'Player can read', color: '#c8a05e', bg: 'rgba(200,160,94,0.14)' }
     };
     const pfNotes = notesSrc.map(n => {
       const v = VIS[n.visibility] || VIS.coaching_team;
@@ -4019,7 +4023,7 @@ class Component extends DCLogic {
       pfNoteCompose: notesSelf ? 'none' : 'block',
       pfNoteDraft: this.state.noteDraft || '',
       pfNoteSet: ev => this.setState({ noteDraft: ev.target.value }),
-      pfNoteVis: Object.keys(VIS).map(k => ({
+      pfNoteVis: VIS_ORDER.map(k => ({
         label: VIS[k].label,
         color: noteVis === k ? '#14191f' : '#8d99a8',
         bg: noteVis === k ? '#c8a05e' : 'rgba(255,255,255,0.04)',
