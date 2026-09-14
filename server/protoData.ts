@@ -153,10 +153,25 @@ const VIDEO_TEST_SECTIONS = ['intake', 'evidence'] as const
  */
 const FITNESS_SCREEN = ['fitnessScreen'] as const
 
+/**
+ * The rail's METRIC blocks — every number vs / total SG, target handicap, practice, real,
+ * transfer gap, the guarantee.
+ *
+ * Hidden for a coach, never for a player. On a coach's login every one of these is the COACH's own
+ * golf: their handicap as the benchmark, their target, their transfer gap — printed beside a
+ * student's file, where the only plausible reading is that they belong to the student. Three of
+ * them already render as dashes for everyone because their inputs are Forge's, so what this
+ * removes is mostly noise; what it prevents is the misattribution.
+ *
+ * ⚠️ NOT the rail's nav, and NOT the 'The four zones' group label, which is navigation and stays.
+ * A sub-block guard like FITNESS_SCREEN, hence its own key rather than a member of the section list.
+ */
+const RAIL_METRICS = ['railMetrics'] as const
+
 const PLAYER_ONLY = ['today', 'cal', 'plan', 'build', 'fitness', 'transfer', 'perf', 'thread'] as const
 
 export const HIDDEN_FOR_COACH: readonly string[] = [
-  ...VIDEO_TEST_SECTIONS, ...PLAYER_ONLY, ...FITNESS_SCREEN,
+  ...VIDEO_TEST_SECTIONS, ...PLAYER_ONLY, ...FITNESS_SCREEN, ...RAIL_METRICS,
 ]
 export const HIDDEN_FOR_PLAYER: readonly string[] = [
   ...VIDEO_TEST_SECTIONS, ...FITNESS_SCREEN, 'roster',

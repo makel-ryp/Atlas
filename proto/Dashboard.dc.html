@@ -47,6 +47,13 @@
       <span style="font-family:'Newsreader',serif; font-size:34px; line-height:1; letter-spacing:0.01em; color:#ece7db;">Atlas</span>
     </div>
 
+    <!-- RAIL METRICS · the VIEWER'S OWN golf. Hidden for a coach (2026-09-14): on a coach's login
+         these are the coach's handicap, the coach's target, the coach's transfer gap — noise beside
+         a student's file, and three of them render as dashes for everyone anyway because their
+         inputs are Forge's. The NAV half of the rail is untouched and stays role-correct.
+         ⚠️ 'The four zones' below is a nav group LABEL, not a metric. It is deliberately not in
+         here — hiding it would take the coach's route to the zone screens with it. -->
+    <sc-if value="{{ showRailMetrics }}" hint-placeholder-val="{{ true }}">
     <div style="margin:-14px 18px 20px; padding:15px 16px 14px; border-radius:12px; background:#161d28; border:1px solid rgba(255,255,255,0.07);">
       <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:9px;">Every number vs</div>
       <div style="display:flex; align-items:baseline; gap:7px; margin-bottom:12px;">
@@ -58,6 +65,7 @@
         <span style="font-family:'Archivo'; font-weight:800; font-size:18px; line-height:1; color: {{ railSGColor }};">{{ railSG }}</span>
       </div>
     </div>
+    </sc-if>
 
     <div style="padding:0 18px; display:flex; flex-direction:column; gap:3px;">
       <sc-if value="{{ showToday }}" hint-placeholder-val="{{ true }}">
@@ -104,6 +112,12 @@
       </sc-if>
     </div>
 
+    <!-- TARGET · PRACTICE · REAL · TRANSFER GAP — one container, four metrics, all the viewer's own.
+         ⚠️ The ± steppers on REAL MUTATE state. Hidden is sufficient here because a hidden control
+         cannot be clicked; if this block is ever un-hidden for a coach (Layer 2 Step B, the rail as
+         the STUDENT's header) they must be made inert as well, or a coach nudges a student's
+         self-reported handicap. Hidden is not the same as safe. -->
+    <sc-if value="{{ showRailMetrics }}" hint-placeholder-val="{{ true }}">
     <div style="margin-top:auto; padding:20px 26px 18px; border-top:1px solid rgba(255,255,255,0.06);">
       <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px;">
         <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f;">Target handicap</span>
@@ -134,11 +148,19 @@
       </div>
       <div style="font-family:'Newsreader',serif; font-size:13px; line-height:1.35; color:#4d5765;">{{ gapHcpLabel }}</div>
     </div>
+    </sc-if>
 
-    <div style="padding:18px 26px 0; border-top:1px solid rgba(255,255,255,0.06);">
+    <!-- ⚠️ This container holds TWO different things: the guarantee (a player metric) and the
+         ACCOUNT CHIP (who you are signed in as), which every audience needs. Only the guarantee is
+         wrapped below. `margin-top` is bound because the block above supplies the `margin-top:auto`
+         that pushes this to the bottom of the rail — with that block hidden, this one has to take
+         the job over, or the chip floats up under the nav. -->
+    <div style="margin-top: {{ railChipTop }}; padding:18px 26px 0; border-top:1px solid rgba(255,255,255,0.06);">
+      <sc-if value="{{ showRailMetrics }}" hint-placeholder-val="{{ true }}">
       <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:8px;">The guarantee</div>
       <div style="font-family:'Newsreader',serif; font-size:17px; color:#ece7db; margin-bottom:10px;">{{ guaranteeRead }}</div>
       <div style="height:3px; border-radius:3px; background:rgba(200,160,94,0.2); overflow:hidden; margin-bottom:16px;"><div style="height:100%; background:#c8a05e; width: {{ guaranteeBar }};"></div></div>
+      </sc-if>
       <div style="display:flex; align-items:center; gap:10px;">
         <span style="width:30px; height:30px; border-radius:50%; background:#26303f; border:1px solid rgba(200,160,94,0.4); display:grid; place-items:center; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#c8a05e;">{{ initials }}</span>
         <span style="font-family:'Newsreader',serif; font-size:15px; color:#97a2af;">{{ playerName }}</span>
@@ -5299,6 +5321,13 @@ class Component extends DCLogic {
       // to a blank screen. One flag per nav item off the same injected list, so a coach's rail
       // is the two screens they came for instead of eleven about their own golf.
       showToday: !isHidden('today'), showCal: !isHidden('cal'), showPlan: !isHidden('plan'), showBuild: !isHidden('build'), showEvidence: !isHidden('evidence'), showTransfer: !isHidden('transfer'), showPerf: !isHidden('perf'), showFitness: !isHidden('fitness'), showFitnessScreen: !isHidden('fitnessScreen'), showThread: !isHidden('thread'), showProfile: !isHidden('profile'), showIntake: !isHidden('intake'), showRoster: !isHidden('roster'),
+      // The rail's METRIC blocks, as distinct from its nav. Same injected `hidden` list, so the
+      // server is the single authority on audience. A coach gets the Atlas mark, the nav, the four
+      // zones and their account chip — and none of their own golf numbers.
+      showRailMetrics: !isHidden('railMetrics'),
+      // The metrics block carries `margin-top:auto`, which is what bottom-anchors everything after
+      // it. When it is hidden the account chip has to take that over, or it rides up under the nav.
+      railChipTop: isHidden('railMetrics') ? 'auto' : '0',
       cRoster: r.roster.c, bRoster: r.roster.b,
       isProfile: view === 'profile' && !isHidden('profile'), goProfile: this.nav('profile'),
       cProfile: r.profile.c, bProfile: r.profile.b,
