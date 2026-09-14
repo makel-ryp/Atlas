@@ -483,7 +483,12 @@
       <h2 style="font-family:'Newsreader',serif; font-size:clamp(23px,4.2vw,30px); color:#ece7db; margin:0 0 8px;">{{ pfDrillsTitle }}</h2>
       <p style="font-family:'Newsreader',serif; font-size:17px; line-height:1.5; color:#66717f; margin:0 0 22px; max-width:62ch;">{{ pfDrillsBlurb }}</p>
 
-      <div style="display:none; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; color:#a8422f; background:rgba(168,66,47,0.08); border:1px solid rgba(168,66,47,0.3); border-radius:8px; padding:9px 12px; margin-bottom:16px;" data-err="{{ tickErrShow }}">{{ tickErr }}</div>
+      <!-- FIXED 2026-09-14: this was `style="display:none" data-err="{{ tickErrShow }}"`. support.js
+           has no data-* binding of any kind (its only dataset reference is the theme), so the rule
+           that actually applied was the literal display:none — the failed-tick message existed,
+           was correct, and could never be seen. A coach's tick silently rolled back. The binding
+           below is the idiom used everywhere else in this file, e.g. `display: {{ p.flagShow }}`. -->
+      <div style="display: {{ tickErrShow }}; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; color:#a8422f; background:rgba(168,66,47,0.08); border:1px solid rgba(168,66,47,0.3); border-radius:8px; padding:9px 12px; margin-bottom:16px;">{{ tickErr }}</div>
 
       <div style="display:flex; flex-direction:column; gap:10px;">
         <sc-for list="{{ pfDrills }}" as="d" hint-placeholder-count="3">
@@ -497,6 +502,51 @@
             <div style="display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; padding:6px 11px; border-radius:999px; color: {{ d.markColor }}; background: {{ d.markBg }};">{{ d.mark }}</div>
             <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.1em; color:#8d99a8; margin-top:6px;">{{ d.when }}</div>
           </div>
+        </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ============ COACHING NOTES · the written half of the loop ============ -->
+    <!-- Added 2026-09-14. Two-sided like the sign-off block above it: a coach reads the selected
+         student's notes and writes one; a player reads their own and gets no compose box. The
+         audience is chosen in profileVals by ROSTER.length === 0, not here.
+         Dark palette (#1a222e card, #ece7db name, #8d99a8 meta, #66717f body) — this sits OUTSIDE
+         the cream dossier pane, which closes at :474. The sign-off block shipped with light-theme
+         values once and read as a grey slab. -->
+    <sc-if value="{{ pfNotesShow }}" hint-placeholder-val="{{ true }}">
+    <div style="padding:34px 0 30px; border-bottom:1px solid rgba(20,25,31,0.18);">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.22em; text-transform:uppercase; color:#8a6a2f; margin-bottom:8px;">Notes</div>
+      <h2 style="font-family:'Newsreader',serif; font-size:clamp(23px,4.2vw,30px); color:#ece7db; margin:0 0 8px;">{{ pfNotesTitle }}</h2>
+      <p style="font-family:'Newsreader',serif; font-size:17px; line-height:1.5; color:#66717f; margin:0 0 22px; max-width:62ch;">{{ pfNotesBlurb }}</p>
+
+      <div style="display: {{ pfNoteErrShow }}; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; color:#a8422f; background:rgba(168,66,47,0.08); border:1px solid rgba(168,66,47,0.3); border-radius:8px; padding:9px 12px; margin-bottom:16px;">{{ pfNoteErr }}</div>
+
+      <!-- COMPOSE · coach only. The visibility chips are chosen BEFORE sending and are labelled in
+           plain language, because 'Player can read' is the one that leaves the coaching team and a
+           coach must never discover that after the fact. Default is Coaches only. -->
+      <div style="display: {{ pfNoteCompose }}; margin-bottom:22px;">
+        <textarea rows="3" value="{{ pfNoteDraft }}" onChange="{{ pfNoteSet }}" placeholder="What should they work on?" style="width:100%; box-sizing:border-box; display:block; resize:vertical; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.12); border-radius:12px; padding:13px 15px; color:#ece7db; font-family:'Newsreader',serif; font-size:16px; line-height:1.5; outline:none;" style-focus="border-color:#c8a05e"></textarea>
+        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px;">
+          <sc-for list="{{ pfNoteVis }}" as="v" hint-placeholder-count="3">
+            <div onClick="{{ v.pick }}" style="cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ v.color }}; background: {{ v.bg }}; border:1px solid {{ v.border }}; padding:8px 14px; border-radius:999px;">{{ v.label }}</div>
+          </sc-for>
+          <div onClick="{{ pfNoteSend }}" style="cursor:pointer; margin-left:auto; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#14191f; background:#c8a05e; border:1px solid #c8a05e; padding:9px 18px; border-radius:999px;">{{ pfNoteSendLabel }}</div>
+        </div>
+      </div>
+
+      <div style="display: {{ pfNotesEmpty }}; font-family:'Newsreader',serif; font-size:15px; color:#66717f; padding:4px 0 2px;">{{ pfNotesEmptyText }}</div>
+
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <sc-for list="{{ pfNotes }}" as="n" hint-placeholder-count="2">
+        <div style="padding:14px 16px; border:1px solid rgba(20,25,31,0.14); border-radius:10px; background:#1a222e;">
+          <div style="display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:7px;">
+            <span style="font-family:'Archivo'; font-weight:700; font-size:14px; color:#ece7db;">{{ n.author }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.1em; color:#8d99a8;">{{ n.when }}</span>
+            <span style="display: {{ n.visShow }}; font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.16em; text-transform:uppercase; color: {{ n.visColor }}; background: {{ n.visBg }}; padding:3px 9px; border-radius:999px; margin-left:auto;">{{ n.visLabel }}</span>
+          </div>
+          <div style="font-family:'Newsreader',serif; font-size:16px; line-height:1.55; color:#c3ccd6; white-space:pre-wrap;">{{ n.body }}</div>
         </div>
         </sc-for>
       </div>
@@ -3865,8 +3915,71 @@ class Component extends DCLogic {
       };
     });
 
+    // ── COACHING NOTES ───────────────────────────────────────────────────────────────────────
+    // The written half of the loop. The tick says a rep happened; this says what to do about it.
+    //
+    // Same two-sided shape as pfDrills above, and for the same reason: one block, audience chosen
+    // by `ROSTER.length === 0`. A coach reads the selected student's notes and can write one; a
+    // player reads their own and cannot.
+    //
+    // ⚠️ The client NEVER filters by visibility. Every row here arrived through
+    // atlas.coaching_notes_select, which grants the subject 'shared' only — so a 'private' or
+    // 'coaching_team' note is not in this array at all when a player is reading. Filtering here
+    // too would be a second rule that silently stops agreeing with the first one.
+    const notesSelf = ROSTER.length === 0;
+    const notesSrc = notesSelf ? (ATLAS_ME.notes || []) : (who.notes || []);
+    // Plain language, deliberately. A coach must be able to tell at a glance which of these the
+    // student can read — discovering that after the fact is the one failure this vocabulary has
+    // to prevent. 'shared' is the only one that leaves the coaching team.
+    const VIS = {
+      shared: { label: 'Player can read', color: '#c8a05e', bg: 'rgba(200,160,94,0.14)' },
+      coaching_team: { label: 'Coaches only', color: '#8d99a8', bg: 'rgba(255,255,255,0.05)' },
+      private: { label: 'Just me', color: '#8d99a8', bg: 'rgba(255,255,255,0.05)' }
+    };
+    const pfNotes = notesSrc.map(n => {
+      const v = VIS[n.visibility] || VIS.coaching_team;
+      return {
+        body: n.body || '',
+        // Who said it. A player sees the coach's name; a coach sees 'You' on their own.
+        author: n.mine ? 'You' : (n.author || 'Your coach'),
+        when: n.createdAt ? new Date(n.createdAt).toLocaleDateString() : '',
+        // The player is shown no visibility pill: everything they can see is 'shared' by policy,
+        // so the label would be noise that also hints at notes they cannot read.
+        visShow: notesSelf ? 'none' : 'inline-block',
+        visLabel: v.label, visColor: v.color, visBg: v.bg
+      };
+    });
+    const noteVis = this.state.noteVis || 'coaching_team';
+
     return {
       pfDrills,
+      pfNotes,
+      // A coach with no student selected has who = EMPTY_PLAYER, so guard on who.id exactly the
+      // way pfDrillsShow does — a compose box there would POST to .../students/undefined/notes.
+      pfNotesShow: ROSTER.length > 0 ? !!who.id : pfNotes.length > 0,
+      pfNotesTitle: notesSelf ? 'What your coach has told you.' : 'What you have told them.',
+      pfNotesBlurb: notesSelf
+        ? 'Notes your coach has written for you to read. They are not the whole conversation — coaches keep their own working notes too.'
+        : 'Write back. Choose who can read it before you send — only "Player can read" reaches the student.',
+      pfNotesEmpty: pfNotes.length === 0 ? 'block' : 'none',
+      pfNotesEmptyText: notesSelf ? 'Nothing from your coach yet.' : 'No notes on this player yet.',
+      // The compose box is the coach's alone. A player may read a note and may not write one;
+      // coaching_notes_insert would refuse the write anyway, so this stops the UI offering an
+      // action the database will reject.
+      pfNoteCompose: notesSelf ? 'none' : 'block',
+      pfNoteDraft: this.state.noteDraft || '',
+      pfNoteSet: ev => this.setState({ noteDraft: ev.target.value }),
+      pfNoteVis: Object.keys(VIS).map(k => ({
+        label: VIS[k].label,
+        color: noteVis === k ? '#14191f' : '#8d99a8',
+        bg: noteVis === k ? '#c8a05e' : 'rgba(255,255,255,0.04)',
+        border: noteVis === k ? '#c8a05e' : 'rgba(255,255,255,0.12)',
+        pick: () => this.setState({ noteVis: k })
+      })),
+      pfNoteSend: () => this.postNote(who.id),
+      pfNoteSendLabel: this.state.noteBusy ? 'Sending…' : 'Send note',
+      pfNoteErr: this.state.noteErr || '',
+      pfNoteErrShow: this.state.noteErr ? 'block' : 'none',
       tickErr: this.state.tickErr || '',
       tickErrShow: this.state.tickErr ? 'block' : 'none',
       pfDrillsShow: ROSTER.length > 0 ? !!who.id : Object.keys(ATLAS_ME.drills || {}).length > 0,
@@ -4199,6 +4312,57 @@ class Component extends DCLogic {
     }).catch(err => {
       if (before === undefined) delete row.drills[drillId]; else row.drills[drillId] = before;
       this.setState({ tickErr: err.message || 'Could not save that sign-off.' });
+    });
+  }
+
+  /**
+   * Write a coaching note about `userId`.
+   *
+   * Same transport as tickDrill: `credentials: 'same-origin'`, because this page authenticates
+   * with the httpOnly session cookie and cannot send a bearer token. The server side of that was
+   * fixed on 2026-09-14 (server/cookieOrBearer.ts); bearer-only here returned 401 for every note.
+   *
+   * Unlike the tick, this does NOT write optimistically. A tick is a boolean that can be rolled
+   * back invisibly; a note is prose the coach just typed, and clearing the box before the server
+   * has taken it is how you lose someone's writing. The draft stays until the POST succeeds.
+   */
+  postNote(userId) {
+    const body = (this.state.noteDraft || '').trim();
+    if (!userId || !body || this.state.noteBusy) return;
+    const visibility = this.state.noteVis || 'coaching_team';
+    this.setState({ noteBusy: true, noteErr: '' });
+
+    fetch('/api/coach/students/' + userId + '/notes', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      // createSchema is .strict() — an extra key here is a 400, not an ignored field.
+      body: JSON.stringify({ body: body, visibility: visibility })
+    }).then(r => {
+      if (!r.ok) {
+        return r.json().catch(() => null).then(j => {
+          throw new Error(j && j.error === 'not_your_student'
+            ? 'Not your student.'
+            : 'Could not save that note.');
+        });
+      }
+      return r.json().catch(() => null);
+    }).then(saved => {
+      // Append locally so the note appears without a reload. The row is the server's, not a
+      // guess: everything rendered comes from the response, except `mine`, which is true by
+      // construction because we just wrote it.
+      const row = ROSTER.filter(p => p.id === userId)[0];
+      const list = row ? (row.notes = row.notes || []) : null;
+      if (list && saved && saved.id) {
+        list.unshift({
+          id: saved.id, body: saved.body, visibility: saved.visibility,
+          author: saved.authorDisplayName || null, mine: true, createdAt: saved.createdAt
+        });
+      }
+      this.setState({ noteDraft: '', noteBusy: false, noteErr: '' });
+    }).catch(err => {
+      // The draft is deliberately left in the box — see the note above.
+      this.setState({ noteBusy: false, noteErr: err.message || 'Could not save that note.' });
     });
   }
 
