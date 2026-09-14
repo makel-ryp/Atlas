@@ -2666,6 +2666,14 @@ const ROSTER = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.roster) || [];
 // The signed-in account, from the same blob. `|| {}` — never a sample identity.
 const ATLAS_ME = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.me) || {};
 
+// The signed-in account shaped as a ROSTER ROW — the subject of the profile screen when the viewer
+// is a player. `me` above is the rail's shape (raw numeric string, raw 'left'/'right'); this is the
+// profile screen's shape, converted server-side by the same toHcp/handLabel a real roster row goes
+// through, so a plus handicap cannot come out as a minus on one screen and not the other.
+// `|| null` and never EMPTY_PLAYER here: absent means "the server did not send it", which the
+// subject resolution below must be able to tell apart from "a person with no data".
+const ATLAS_ME_ROW = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.meRow) || null;
+
 // ─── EMPTY-VALUE GUARDS — added 2026-08-31 with the ROSTER strip ────────────────────────────────
 // These are not polish; without them the page is blank. His render calls `.toFixed(1)` and
 // `.split()` on roster fields unconditionally, and `rosterVals()`, `profileVals()` and
@@ -3838,13 +3846,26 @@ class Component extends DCLogic {
   // printed on paper rather than screen-dark so it never reads as live data.
   profileVals() {
     const s = this.state;
-    // GUARDED with EMPTY_PLAYER: `|| ROSTER[0]` is `undefined` on an empty roster and the next line
-    // threw. `'hale'` is a sample id that no real row can ever carry, so `self` is always false for
-    // real data — the self/own-file branch of this screen is unreachable until something marks one
-    // row as the signed-in player. Left alone deliberately: wiring it needs a product decision
-    // (see the ROSTER contract, §4), and guessing here is how the wrong player becomes "you".
-    const who = ROSTER.filter(p => p.id === (s.profileOf || 'hale'))[0] || ROSTER[0] || EMPTY_PLAYER;
-    const self = who.id === 'hale';
+    // ── THE SUBJECT OF THIS SCREEN ───────────────────────────────────────────────────────────
+    // Resolved 2026-09-14. It used to be `who.id === 'hale'` — a sample id no real row can carry,
+    // so `self` was ALWAYS false. That was not merely dead: a player's roster is `[]`, so `who`
+    // fell through to EMPTY_PLAYER and a player opening their own profile saw a blank placeholder
+    // person — no name, no handicap, no handedness, an empty interview, and every field read-only
+    // because `readOnly: !self`. Live and user-visible until now.
+    //
+    // The product decision Luke's note asked for, made: the subject is the SELECTED STUDENT for a
+    // coach and the CALLER for everyone else. `meRow` is that caller, shaped as a roster row by
+    // the server so both branches of every line below read the same keys.
+    //
+    // EMPTY_PLAYER stays as the last resort — a coach who has not picked anyone yet. It must never
+    // be what a player sees, which is the whole bug.
+    const viewingSelf = ROSTER.length === 0;
+    const who = viewingSelf
+      ? (ATLAS_ME_ROW || EMPTY_PLAYER)
+      : (ROSTER.filter(p => p.id === s.profileOf)[0] || ROSTER[0] || EMPTY_PLAYER);
+    // `self` now means what it reads like: this is my own file, so the editable branches and the
+    // live unsaved state below are mine to use.
+    const self = viewingSelf;
     // The player's own file reads live state; a coach opening someone else's
     // file reads that player's stored intake.
     // GUARDED: `done` was hardcoded `true` for every non-self player, so opening ANY real student
@@ -3888,7 +3909,11 @@ class Component extends DCLogic {
       { k: 'time', label: 'Honest weekly hours', hint: 'Not the number you wish were true.' },
       { k: 'goal', label: 'Why you are here', hint: 'In one sentence, in your own words.' }
     ];
-    const t = self ? (s.targetHcp === undefined ? 5 : s.targetHcp) : who.target;
+    // FIXED 2026-09-14: the self branch defaulted to the literal 5. That was harmless only while
+    // `self` was unreachable; with it live it would print a 5-handicap target for every player who
+    // has not set one. Falls back to the subject's stored target, which is null when unset — and
+    // pfHandicapTarget already renders null as a dash.
+    const t = self ? (s.targetHcp === undefined ? who.target : s.targetHcp) : who.target;
     // ── COACH SIGN-OFF LIST ──────────────────────────────────────────────────────────────────
     // The loop: the player submits a swing video in Parallax, the coach watches it THERE, then
     // ticks it here. Atlas never fetches or renders the video — that is the whole point, it means
@@ -3908,7 +3933,9 @@ class Component extends DCLogic {
       // rode only on roster rows, a player's roster is empty, so the coach's tick landed in
       // golf.drill_progress and the student it was about never saw it.
       const isViewingSelf = ROSTER.length === 0;
-      const drillSrc = isViewingSelf ? (ATLAS_ME.drills || {}) : (who.drills || {});
+      // One source: the subject. `who` is now the caller's own row when the viewer is a player, so
+      // this no longer needs to reach for ATLAS_ME separately — and cannot disagree with itself.
+      const drillSrc = who.drills || {};
       const got = drillSrc[id] || {};
       const on = !!got.verifiedAt;
       return {
@@ -3949,7 +3976,8 @@ class Component extends DCLogic {
     // 'coaching_team' note is not in this array at all when a player is reading. Filtering here
     // too would be a second rule that silently stops agreeing with the first one.
     const notesSelf = ROSTER.length === 0;
-    const notesSrc = notesSelf ? (ATLAS_ME.notes || []) : (who.notes || []);
+    // One source: the subject, same as the sign-off list above.
+    const notesSrc = who.notes || [];
     // Plain language, deliberately. A coach must be able to tell at a glance which of these the
     // student can read — discovering that after the fact is the one failure this vocabulary has
     // to prevent. 'shared' is the only one that leaves the coaching team.
@@ -4004,7 +4032,7 @@ class Component extends DCLogic {
       pfNoteErrShow: this.state.noteErr ? 'block' : 'none',
       tickErr: this.state.tickErr || '',
       tickErrShow: this.state.tickErr ? 'block' : 'none',
-      pfDrillsShow: ROSTER.length > 0 ? !!who.id : Object.keys(ATLAS_ME.drills || {}).length > 0,
+      pfDrillsShow: ROSTER.length > 0 ? !!who.id : Object.keys(who.drills || {}).length > 0,
       // The same list means two different things depending on who is reading it.
       pfDrillsTitle: ROSTER.length === 0 ? 'What your coach has verified.' : 'What you have watched.',
       pfDrillsBlurb: ROSTER.length === 0
@@ -4018,17 +4046,30 @@ class Component extends DCLogic {
       pfMeta: [
         who.tier,
         who.zone ? 'Zone ' + who.zone : '',
-        self ? 'Day 41 of 90' : who.days === 0 ? 'logged today' : isNum(who.days) ? 'last logged ' + who.days + 'd ago' : 'no practice log'
+        // FIXED 2026-09-14: the self branch was the literal 'Day 41 of 90' — a fabricated position
+        // in a fabricated 90-day programme, which would have started printing under every player's
+        // own name the moment `self` became reachable. There is no practice-day producer for
+        // anyone, so both audiences now read the same honest line.
+        who.days === 0 ? 'logged today' : isNum(who.days) ? 'last logged ' + who.days + 'd ago' : 'no practice log'
       ].filter(Boolean).join(' · '),
       pfIntake: who.intake,
-      pfHandicapReal: hcpText(self ? (s.realHcp === undefined ? null : s.realHcp) : who.hcp),
+      // The subject's stored handicap, with the viewer's own unsaved edit winning when there is
+      // one. Was `: null` on the self branch, which printed a dash over a handicap we actually
+      // hold. hcpText renders null as a dash, so an unset one is still honest.
+      pfHandicapReal: hcpText(self ? (s.realHcp === undefined ? who.hcp : s.realHcp) : who.hcp),
       // GUARDED, and this one was the worst of them: `t` is `who.target`, and no
       // `target_handicap_index` COLUMN exists to read. `null <= 0` is TRUE in JS, so the old
       // expression fell into the plus-handicap branch and printed '+0' — Math.abs(null) is 0. A
       // fabricated scratch target under a real student's name, indistinguishable from a real one.
       pfHandicapTarget: !isNum(t) ? DASH : t <= 0 ? (t === 0 ? 'Scratch' : '+' + Math.abs(t)) : String(t),
-      pfHand: self ? (s.hand === 'L' ? 'Left-handed' : 'Right-handed') : who.hand,
-      pfCarry: self ? '265 yd driver carry' : who.carry,
+      // FIXED 2026-09-14. Two fabrications on the self branch, both live the moment `self` was:
+      //  - hand fell through to 'Right-handed' for anyone who had not toggled it. Handedness is not
+      //    cosmetic on this page — it mirrors dispersion geometry and flips a bias sign — and about
+      //    one golfer in ten is left-handed. `who.hand` is '' when unrecorded, which prints nothing.
+      //  - carry was the literal '265 yd driver carry', the same constant the PLAYER_CARRY work
+      //    removed from the driving index on 2026-09-10. It would have reappeared here.
+      pfHand: self && s.hand !== undefined ? (s.hand === 'L' ? 'Left-handed' : 'Right-handed') : who.hand,
+      pfCarry: who.carry,
       // Handicap history is a series, not a sentence — six marks back to ten
       // years, with NA where they were not playing at all.
       pfHist: (() => {

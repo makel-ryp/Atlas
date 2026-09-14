@@ -115,6 +115,18 @@ export type CoachingNoteRow = {
 }
 
 /**
+ * Every RosterRow key at its honest empty.
+ *
+ * The base for `meRow` below, so that adding a key to RosterRow forces a decision here rather than
+ * silently leaving the caller's own record missing it. Mirrors `EMPTY_PLAYER` in his file.
+ */
+const EMPTY_ROSTER_ROW: RosterRow = {
+  id: '', n: '', tier: '', zone: '', hcp: null, target: null, days: null, leak: '',
+  hand: '', carry: '', intake: '', sg: [], hist: {}, read: {}, note: {}, tone: {},
+  answer: {}, est: {}, grid: [], file: {}, drills: {}, notes: [],
+}
+
+/**
  * WHICH SECTIONS EACH ROLE SEES. This is the bifurcation — one list per audience, no second app.
  *
  * Luke's file is the whole product: twelve rail-routed player views plus a three-screen coach
@@ -230,6 +242,14 @@ export type AtlasData = {
      */
     notes: RosterRow['notes']
   }
+  /**
+   * The caller, shaped as a RosterRow — the SUBJECT of the profile screen when nobody else is.
+   *
+   * `me` above is the rail's shape (raw numeric strings, raw 'left'/'right'); this is the profile
+   * screen's shape (converted, labelled), and they are deliberately different because their
+   * consumers are. See the construction for why the conversion happens on this side.
+   */
+  meRow: RosterRow
 }
 
 /*
@@ -583,11 +603,59 @@ export async function buildAtlasData(
       notesBy.set(r.subjectUserId, list)
     }
 
+    /**
+     * THE CALLER'S OWN interview answers.
+     *
+     * Read from the BASE TABLE, not `atlas.student_intake`. That view is gated by
+     * `app_private.coaches(s.user_id)` — it answers "may I read my STUDENT's intake" — and nobody
+     * coaches themselves, so a player asking it about their own row gets nothing.
+     * `intake_submissions_select_own` is the policy that applies here.
+     *
+     * Only `interview` is selected. The row also carries `quality_flag` and IPIP01–20, which are
+     * private to the subject; they are theirs to see, but nothing on this page needs them and a
+     * column never selected cannot be leaked by a later change to the page.
+     */
+    const myIntake = (await db.execute(
+      // `updated_at`, not `created_at` — this table has no created_at. Caught by running it;
+      // raw SQL is invisible to the typechecker, so this would have 500'd every page load.
+      sql`select interview from atlas.intake_submissions
+          where user_id = ${me.id}::uuid and deleted_at is null
+          order by updated_at desc limit 1`,
+    )) as unknown as { rows: Array<{ interview: Record<string, string> | null }> }
+
     const meBlock = { ...meBase, notes: notesBy.get(me.id) ?? [] }
+
+    /**
+     * The caller, shaped EXACTLY like a RosterRow.
+     *
+     * His profile screen reads one variable — `who` — and until now a player had nothing to put in
+     * it: a player's roster is `[]`, so `who` fell back to EMPTY_PLAYER and a player opening their
+     * own profile saw a blank placeholder person with read-only fields. This is the record that
+     * makes `who` mean "the subject of this screen" for both audiences.
+     *
+     * Built HERE rather than in his file so the conversions happen once, in the place they are
+     * already tested: `toHcp` (which must not be `Number()` — a plus handicap is stored negative
+     * and `Number('')` is a scratch 0) and `handLabel`. A second copy in the client is a second
+     * chance to reintroduce the bug that printed a plus handicap as a minus.
+     *
+     * Everything without a producer is the same honest empty a real roster row carries.
+     */
+    const meRow: RosterRow = {
+      ...EMPTY_ROSTER_ROW,
+      id: me.id,
+      n: me.displayName ?? me.email ?? '',
+      hcp: toHcp(myProfile[0]?.handicapIndex),
+      target: toHcp(myProfile[0]?.targetHandicap),
+      hand: handLabel(myProfile[0]?.handedness),
+      carry: myProfile[0]?.driverCarryYds ? `${myProfile[0].driverCarryYds} yd driver carry` : '',
+      file: myIntake.rows[0]?.interview ?? {},
+      drills: myDrills,
+      notes: notesBy.get(me.id) ?? [],
+    }
 
     // The empty roster is a real, common answer — a coach with no students, or a player who opened
     // the page. It renders as an empty screen, which is correct.
-    if (ids.length === 0) return { view, hidden, roster: [], me: meBlock }
+    if (ids.length === 0) return { view, hidden, roster: [], me: meBlock, meRow }
 
     // ── 3. Identity tier ───────────────────────────────────────────────────────────────────────
     // Anything RLS refuses simply does not come back, so an edge pointing at an account the caller
@@ -721,6 +789,6 @@ export async function buildAtlasData(
       }
     })
 
-    return { view, hidden, roster, me: meBlock }
+    return { view, hidden, roster, me: meBlock, meRow }
   })
 }
