@@ -46,6 +46,61 @@ sees a roster and one dossier and nothing else, however much data we load.
 
 ---
 
+---
+
+# ⚠️ CORRECTION — 14 Sep 2026, written while executing this plan
+
+**The sequencing below is wrong, and this section supersedes it.** It was written from the *method
+count* (38 methods, 1 subject-aware) without measuring the *reachability set* — which sections a
+coach can actually open. Measured now:
+
+```
+HIDDEN_FOR_COACH = VIDEO_TEST_SECTIONS + PLAYER_ONLY + FITNESS_SCREEN + RAIL_METRICS
+PLAYER_ONLY        = today, cal, plan, build, fitness, transfer, perf, thread   ← 8 sections
+VIDEO_TEST_SECTIONS= intake, evidence                                           ← both audiences
+⇒ a coach reaches exactly TWO sections: roster and profile.
+```
+
+`profileVals` — the one subject-aware method — is what powers `profile`. **So all 24 `this.state`
+methods are real but unreachable by a coach, and there is no live misattribution in the sections.**
+Threading a subject through them today surfaces nothing, because the eight screens stay hidden.
+
+**And un-hiding them would not help either**, because the per-student data does not exist. Of
+`RosterRow`'s ~22 keys, the ones with a producer are: `id, n, hcp, target, carry, hand, intake,
+drills, notes, file`. `tier`, `zone`, `days`, `sg`, `leak`, `read`, `note`, `tone`, `answer`,
+`est`, `grid`, `hist` are all `''`/`{}`/`[]`/`null`. Subject-without-data un-hides blank screens;
+data-without-subject cannot render. **The dependency runs the opposite way to what is written below.**
+
+### What Layer 1 is actually for, and the live bug it fixes
+
+Its value is **not** the coach — it is the **player**, on the one screen both audiences share.
+
+`const self = who.id === 'hale'` is never true. A player's roster is `[]`, so
+`who` falls back to `EMPTY_PLAYER` (`id:''`, `n:''`, `hcp:null`, `file:{}`). **A player opening
+their own profile sees a blank placeholder person** — no name, no handicap, no handedness, no
+carry, an empty interview, and the fields `readOnly` because `readOnly: !self`. That is live today
+and it is the real content of "fix `self`".
+
+⚠️ **Do not simply make `self` true.** Three fabricated literals sit in its branches and would
+switch on: `'Day 41 of 90'` (`:4021`), `'265 yd driver carry'` (`:4031` — the very literal the
+`PLAYER_CARRY` work removed), and a default target handicap of `5` (`:3891`). Each self-branch must
+fall back to the subject's real value, not to a literal.
+
+### Corrected order
+
+| # | Work | Why here |
+| --- | --- | --- |
+| 1 | ~~Layer 3 — notes~~ | ✅ shipped 2026-09-14 (`dff6de5`, `087130a`) |
+| 2 | ~~Layer 2A — hide rail metrics~~ | ✅ shipped 2026-09-14 (`4361949`) |
+| 3 | **Layer 1, scoped to `profile`** | fixes the live player bug above; the screen is reachable TODAY |
+| 4 | **Per-student producers** (practice log, tier/zone, days) | must precede any un-hiding |
+| 5 | Layer 1 across the other 23 methods + un-hide sections | only pays off once 4 exists |
+
+Layer 1 across all 24 methods stays on the board — it is the gate for the eight hidden sections —
+but it is **not** the next thing, and doing it before step 4 buys nothing.
+
+---
+
 # Layer 1 — the SUBJECT  *(the real work; everything else is small)*
 
 ## What it is
