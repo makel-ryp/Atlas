@@ -20,7 +20,7 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-14 17:39 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-15 07:20 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-14 17:39 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.21.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.21.0.tgz`
-- **Atlas HEAD:** `ea38d83 A player can set their own name, so the roster stops printing email addresses`
+- **Atlas HEAD:** `2c69928 Disambiguate students who share a display name`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
