@@ -94,7 +94,27 @@ export type RosterRow = {
    * they watch the swing video in Parallax. `verifiedAt` null (or the key absent) means not yet
    * signed off; it never means the player did not do it, which is `tickedAt` and belongs to Forge.
    */
-  drills: Record<string, { verifiedAt: string | null; videoRef: string | null; verifyNote: string | null }>
+  drills: Record<
+    string,
+    {
+      verifiedAt: string | null
+      videoRef: string | null
+      verifyNote: string | null
+      /**
+       * THE PLAYER'S OWN CLAIM that they did the rep. Read-only here — `atlas_app` holds SELECT on
+       * this column and no INSERT or UPDATE (verified live 2026-09-15: only `neondb_owner` can
+       * write it). It belongs to the player's app; Atlas may look at it and must never set it.
+       *
+       * Why it travels: `ticked_at` set with `verified_at` null is a player WAITING ON THEIR
+       * COACH. Without it the sign-off list renders that case identically to a drill nobody has
+       * ever touched — which is what it did until now, while `Avery Lane / chip20` sat ticked with
+       * a Parallax ref from 2026-09-08 and no one could see it was outstanding.
+       */
+      tickedAt: string | null
+      /** The player watched the demo. Same ownership and the same read-only rule as `tickedAt`. */
+      watchedAt: string | null
+    }
+  >
   /**
    * Coaching notes ABOUT this student. REAL — atlas.coaching_notes.
    *
@@ -106,6 +126,22 @@ export type RosterRow = {
    * database's, not this file's — see the query for why that matters for `visibility`.
    */
   notes: CoachingNoteRow[]
+  /**
+   * WHEN THE STUDENT RAISED EACH REVIEW ITEM — keyed by `ReviewItem.id`, ISO timestamps.
+   *
+   * The trigger half of the review loop, resolved ONCE, server-side, for every source. A key
+   * present means this student has done their part and is waiting on a coach; the resolution is
+   * `drills[id].verifiedAt`, so the whole rule is:
+   *
+   *     waiting  =  submitted[id] && !drills[id]?.verifiedAt
+   *
+   * ⚠️ ONE RULE, ONE PLACE. The page used to derive this from `drills[id].tickedAt` itself, which
+   * worked only because every reviewable thing happened to be a drill. Anything whose trigger
+   * lives in another table (the intake already does) would have needed a second rule in the
+   * client, and two rules that mean the same thing are how a submission goes unnoticed. The page
+   * now reads this map and decides nothing.
+   */
+  submitted: Record<string, string>
   /**
    * What the PLAYER sees on their own Practice DNA result screen, projected down to the parts a
    * coach may read. REAL — scored on the fly from `atlas.intake_submissions`, never stored.
@@ -150,7 +186,7 @@ export type CoachingNoteRow = {
 const EMPTY_ROSTER_ROW: RosterRow = {
   id: '', n: '', tier: '', zone: '', hcp: null, target: null, days: null, leak: '',
   hand: '', carry: '', intake: '', dupe: '', sg: [], hist: {}, read: {}, note: {}, tone: {},
-  answer: {}, est: {}, grid: [], file: {}, drills: {}, notes: [], dna: null,
+  answer: {}, est: {}, grid: [], file: {}, drills: {}, notes: [], submitted: {}, dna: null,
 }
 
 /**
@@ -331,6 +367,63 @@ export type AtlasData = {
  * "Right-handed" — a fabricated fact under a real name, and one no reader would think to doubt.
  * Roughly 1 in 10 golfers is left-handed, so this would be wrong often, and silently.
  */
+/**
+ * THE TRIGGER RESOLVER — one function, every source.
+ *
+ * Answers "when did this student raise each reviewable thing?" for all of REVIEW_ITEMS at once.
+ * Each item declares where its trigger lives (`ReviewItem.source`); this is the only place that
+ * knows how to read each of those places, and the only place that decides what counts as raised.
+ *
+ * Adding a reviewable thing is therefore: one entry in shared/drills.ts, and a case here IF it
+ * introduces a genuinely new source. Nothing in the page, the route, the policies or the schema
+ * changes — resolution is always `golf.drill_progress.verified_at`.
+ *
+ * Returns ISO strings so the client formats and never parses semantics out of them.
+ */
+function resolveSubmitted(args: {
+  /** golf.drill_progress rows for this student, keyed by drill_id. */
+  drills: RosterRow['drills']
+  /** atlas.intake_submissions.completed_at for this student, if they finished one. */
+  intakeCompletedAt: Date | string | null
+  /**
+   * Whether that intake actually SCORED.
+   *
+   * ⚠️ `completed_at` alone is not enough, and using it alone was a real bug caught on live data:
+   * Avery Lane's row is marked completed while holding no profile at all, so the roster said "2
+   * waiting on you" while the panel underneath said "no Practice DNA read on file for this
+   * player". `status = 'completed'` on a row with nothing in it is a known state (docs/TASKS.md
+   * T-61) — the old client waved it through the intake gate for the same reason.
+   *
+   * A trigger has to mean "there is something here to review", not "a column is non-null".
+   */
+  intakeScored: boolean
+}): Record<string, string> {
+  const out: Record<string, string> = {}
+  const iso = (v: Date | string | null | undefined): string | null =>
+    !v ? null : v instanceof Date ? v.toISOString() : String(v)
+
+  for (const item of REVIEW_ITEMS) {
+    switch (item.source ?? 'drill') {
+      case 'drill': {
+        // The PLAYER's claim that the rep happened. Atlas reads it and can never write it — no
+        // self-insert policy on drill_progress and no column grant on ticked_at.
+        const t = args.drills[item.id]?.tickedAt
+        if (t) out[item.id] = t
+        break
+      }
+      case 'intake': {
+        // Finishing the intake is the student action — but only counts as raised when the run
+        // actually scored. See `intakeScored` above for the live case this guards.
+        if (!args.intakeScored) break
+        const t = iso(args.intakeCompletedAt)
+        if (t) out[item.id] = t
+        break
+      }
+    }
+  }
+  return out
+}
+
 function handLabel(handedness: string | null | undefined): string {
   if (handedness === 'left') return 'Left-handed'
   if (handedness === 'right') return 'Right-handed'
@@ -479,6 +572,11 @@ export async function buildAtlasData(
         verifiedAt: golfDrillProgress.verifiedAt,
         videoRef: golfDrillProgress.videoRef,
         verifyNote: golfDrillProgress.verifyNote,
+        // The player's own claim, read back to them. This is the one audience for whom these two
+        // columns are not somebody else's data, and it is still read-only here: nothing in Atlas
+        // may write them.
+        tickedAt: golfDrillProgress.tickedAt,
+        watchedAt: golfDrillProgress.watchedAt,
       })
       .from(golfDrillProgress)
       .where(eq(golfDrillProgress.userId, me.id))
@@ -489,6 +587,8 @@ export async function buildAtlasData(
         verifiedAt: r.verifiedAt ? r.verifiedAt.toISOString() : null,
         videoRef: r.videoRef,
         verifyNote: r.verifyNote,
+        tickedAt: r.tickedAt ? r.tickedAt.toISOString() : null,
+        watchedAt: r.watchedAt ? r.watchedAt.toISOString() : null,
       }
     }
 
@@ -673,7 +773,8 @@ export async function buildAtlasData(
     const myIntake = (await db.execute(
       // `updated_at`, not `created_at` — this table has no created_at. Caught by running it;
       // raw SQL is invisible to the typechecker, so this would have 500'd every page load.
-      sql`select interview, profile, volume, alloc, answers from atlas.intake_submissions
+      sql`select interview, profile, volume, alloc, answers, completed_at
+            from atlas.intake_submissions
           where user_id = ${me.id}::uuid and deleted_at is null
           order by updated_at desc limit 1`,
     )) as unknown as {
@@ -683,6 +784,7 @@ export async function buildAtlasData(
         volume: unknown
         alloc: unknown
         answers: unknown
+        completed_at: Date | string | null
       }>
     }
 
@@ -703,6 +805,10 @@ export async function buildAtlasData(
      *
      * Everything without a producer is the same honest empty a real roster row carries.
      */
+    // Scored ONCE. Both `dna` (what the panel renders) and `submitted` (whether the intake counts
+    // as raised for review) read this same value, so the card and the chip cannot disagree.
+    const myDna = myIntake.rows[0] ? summarizeRun(myIntake.rows[0]) : null
+
     const meRow: RosterRow = {
       ...EMPTY_ROSTER_ROW,
       id: me.id,
@@ -714,9 +820,18 @@ export async function buildAtlasData(
       file: myIntake.rows[0]?.interview ?? {},
       drills: myDrills,
       notes: notesBy.get(me.id) ?? [],
+      // The same resolver the roster uses. A player reads their own submissions back — "with your
+      // coach" rather than "awaiting your review" — off one rule, not a second copy of it.
+      submitted: resolveSubmitted({
+        drills: myDrills,
+        intakeCompletedAt: myIntake.rows[0]?.completed_at ?? null,
+        // Same guard as the roster: a row marked completed but holding nothing is not a
+        // submission. `myDna` is computed once and used by both this and `dna` below.
+        intakeScored: myDna !== null,
+      }),
       // Two-sided like `drills` and `notes`: the same panel, the same words, whichever side of the
       // conversation is reading it. That is the entire point of surfacing this to a coach.
-      dna: myIntake.rows[0] ? summarizeRun(myIntake.rows[0]) : null,
+      dna: myDna,
     }
 
     // The empty roster is a real, common answer — a coach with no students, or a player who opened
@@ -759,6 +874,10 @@ export async function buildAtlasData(
             verifiedAt: golfDrillProgress.verifiedAt,
             videoRef: golfDrillProgress.videoRef,
             verifyNote: golfDrillProgress.verifyNote,
+            // Read-only. See the note on RosterRow.drills — these are the player's columns, and
+            // the difference between "waiting on the coach" and "never started" is in them.
+            tickedAt: golfDrillProgress.tickedAt,
+            watchedAt: golfDrillProgress.watchedAt,
           })
           .from(golfDrillProgress)
           .where(inArray(golfDrillProgress.userId, ids))
@@ -780,7 +899,8 @@ export async function buildAtlasData(
      */
     const intakeRows = ids.length
       ? ((await db.execute(
-          sql`select user_id, interview, profile, volume, alloc, answers, tier_completed, status
+          sql`select user_id, interview, profile, volume, alloc, answers, tier_completed, status,
+                     completed_at
                 from atlas.student_intake`,
         )) as unknown as {
           rows: Array<{
@@ -792,6 +912,8 @@ export async function buildAtlasData(
             answers: unknown
             tier_completed: number | null
             status: string | null
+            /** The student action that raises the intake for review. See resolveSubmitted. */
+            completed_at: Date | string | null
           }>
         }).rows
       : []
@@ -806,7 +928,10 @@ export async function buildAtlasData(
      * `answers` itself must never be assigned onto a RosterRow — see server/dnaSummary.ts.
      */
     const dnaBy = new Map<string, DnaSummary>()
+    /** When each student finished their intake — the 'intake' trigger source. */
+    const intakeDoneBy = new Map<string, Date | string>()
     for (const r of intakeRows) {
+      if (r.completed_at) intakeDoneBy.set(r.user_id, r.completed_at)
       // Only the five interview answers travel into his `file` block — that is exactly what his
       // FIELDS renders (sport, years, limits, time, goal).
       if (r.interview) intakeBy.set(r.user_id, r.interview)
@@ -821,6 +946,8 @@ export async function buildAtlasData(
         verifiedAt: r.verifiedAt ? r.verifiedAt.toISOString() : null,
         videoRef: r.videoRef,
         verifyNote: r.verifyNote,
+        tickedAt: r.tickedAt ? r.tickedAt.toISOString() : null,
+        watchedAt: r.watchedAt ? r.watchedAt.toISOString() : null,
       }
       progressBy.set(r.userId, bucket)
     }
@@ -843,6 +970,13 @@ export async function buildAtlasData(
         dupe: '',
         drills: progressBy.get(person.id) ?? {},
         notes: notesBy.get(person.id) ?? [],
+        // One rule, one place — see resolveSubmitted. The page reads this and decides nothing.
+        submitted: resolveSubmitted({
+          drills: progressBy.get(person.id) ?? {},
+          intakeCompletedAt: intakeDoneBy.get(person.id) ?? null,
+          // The same object the panel renders from, so the chip and the panel cannot disagree.
+          intakeScored: dnaBy.has(person.id),
+        }),
         // The player's own result vocabulary — archetype, zones, growth zone, time split. null
         // when there is no scoreable run, which the page renders as "no read on file".
         dna: dnaBy.get(person.id) ?? null,

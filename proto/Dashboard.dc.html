@@ -541,7 +541,7 @@
 
       <div style="display:flex; flex-direction:column; gap:10px;">
         <sc-for list="{{ pfDrills }}" as="d" hint-placeholder-count="3">
-        <div onClick="{{ d.toggle }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 16px; border:1px solid rgba(20,25,31,0.14); border-radius:10px; background:#1a222e;">
+        <div onClick="{{ d.toggle }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 16px; border:1px solid {{ d.cardBorderTop }}; border-radius:10px; background:#1a222e;">
           <div style="min-width:0;">
             <div style="font-family:'Archivo'; font-weight:700; font-size:15px; color:#ece7db;">{{ d.name }}</div>
             <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#8d99a8; margin-top:4px;">{{ d.domain }} &middot; {{ d.shots }}</div>
@@ -601,7 +601,7 @@
 
           <div style="display: {{ st.drillsShow }}; flex-direction:column; gap:8px; padding:2px 14px 14px 14px;">
             <sc-for list="{{ st.drills }}" as="d" hint-placeholder-count="4">
-            <div onClick="{{ d.toggle }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:12px 14px; border:1px solid rgba(255,255,255,0.07); border-radius:8px; background:rgba(255,255,255,0.02);">
+            <div onClick="{{ d.toggle }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:12px 14px; border:1px solid {{ d.cardBorder }}; border-radius:8px; background:rgba(255,255,255,0.02);">
               <div style="min-width:0;">
                 <div style="font-family:'Archivo'; font-weight:700; font-size:14px; color:#ece7db;">{{ d.name }}</div>
                 <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#8d99a8; margin-top:4px;">{{ d.shots }}</div>
@@ -728,6 +728,25 @@
         </div>
         </sc-for>
       </div>
+
+      <!-- THE INTAKE AS A REVIEW ITEM. Finishing the intake is a STUDENT action on a
+           student-owned table, and until now nothing recorded that a coach had read the result.
+           It resolves through golf.drill_progress.verified_at like everything else — drill_id is
+           free text, so a non-drill review item needs no migration and no second mechanism. -->
+      <div style="display: {{ pfIntakeReviewShow }}; flex-direction:column; gap:10px; margin-top:14px;">
+        <sc-for list="{{ pfIntakeReview }}" as="d" hint-placeholder-count="1">
+        <div onClick="{{ d.toggle }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 16px; border:1px solid {{ d.cardBorderTop }}; border-radius:10px; background:#1a222e;">
+          <div style="min-width:0;">
+            <div style="font-family:'Archivo'; font-weight:700; font-size:15px; color:#ece7db;">{{ d.name }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#8d99a8; margin-top:4px;">{{ d.domain }} &middot; {{ d.shots }}</div>
+          </div>
+          <div style="flex:none; text-align:right;">
+            <div style="display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; padding:6px 11px; border-radius:999px; color: {{ d.markColor }}; background: {{ d.markBg }};">{{ d.mark }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.1em; color:#8d99a8; margin-top:6px;">{{ d.when }}</div>
+          </div>
+        </div>
+        </sc-for>
+      </div>
     </div>
 
     <!-- ============ COACHING NOTES · the written half of the loop ============ -->
@@ -781,7 +800,7 @@
     <div>
       <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.28em; text-transform:uppercase; color:#d9885e; margin-bottom:14px;">Coach view · {{ rosterCount }}</div>
       <h1 style="font-family:'Archivo'; font-weight:800; font-size:clamp(30px,7vw,46px); line-height:1.04; letter-spacing:-0.03em; color:#ece7db; margin:0 0 12px;">Who needs you today.</h1>
-      <p style="font-family:'Newsreader',serif; font-size:clamp(16px,2.6vw,18px); line-height:1.55; color:#97a2af; margin:0 0 22px; max-width:640px;">Sorted by silence, not by handicap. A player who hasn't logged in a week is a player about to quit — and {{ rosterFlat }}, which is the quieter problem.</p>
+      <p style="font-family:'Newsreader',serif; font-size:clamp(16px,2.6vw,18px); line-height:1.55; color:#97a2af; margin:0 0 22px; max-width:640px;">{{ rosterBlurb }}</p>
 
       <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:22px;">
         <sc-for list="{{ rosterSorts }}" as="c" hint-placeholder-count="3">
@@ -797,6 +816,11 @@
               <span style="display:flex; align-items:center; gap:9px; flex-wrap:wrap;">
                 <span style="font-family:'Newsreader',serif; font-size:19px; color:#ece7db;">{{ p.name }}</span>
                 <span style="display: {{ p.flagShow }}; font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.16em; text-transform:uppercase; color:#d9885e; border:1px solid rgba(217,136,94,0.4); padding:3px 8px; border-radius:999px;">Call</span>
+                <!-- Added 2026-09-15. Things this student has SUBMITTED and nobody has judged.
+                     Solid gold rather than outlined, because unlike 'Call' — which is inferred
+                     from a practice log that has no producer — this one is a person on the other
+                     end who has already done their part. -->
+                <span style="display: {{ p.waitingShow }}; font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.16em; text-transform:uppercase; color:#0E141B; background:#c8a05e; padding:3px 8px; border-radius:999px;">{{ p.waitingLabel }}</span>
                 <!-- Only when another student on THIS roster has the same display name. Two real
                      people can be called John Smith, and the meta line below is no help — tier,
                      zone and practice days have no producer, so it reads identically for everyone.
@@ -4171,10 +4195,29 @@ class Component extends DCLogic {
     // One source: the subject. `who` is the caller's own row when the viewer is a player, so this
     // does not need to reach for ATLAS_ME separately — and cannot disagree with itself.
     const drillSrc = who.drills || {};
+    // When the subject raised each reviewable thing. Resolved server-side across every source —
+    // this page never works out what counts as "submitted".
+    const SUBMITTED = who.submitted || {};
 
     const buildDrill = item => {
       const got = drillSrc[item.id] || {};
       const on = !!got.verifiedAt;
+      // ── THE THIRD STATE ──────────────────────────────────────────────────────────────────
+      // A submission the student has made and no coach has judged: they are WAITING ON A COACH.
+      // Until this existed the list drew that identically to something nobody had ever touched —
+      // and on live data `Avery Lane / chip20` had sat ticked, with a Parallax ref, since
+      // 2026-09-08 with no way to see it was outstanding.
+      //
+      // ⚠️ THE PAGE DOES NOT DECIDE THIS. `SUBMITTED` is one server-side map covering every
+      // source (server/protoData.ts `resolveSubmitted`) — a drill's trigger is
+      // golf.drill_progress.ticked_at, the intake's is atlas.intake_submissions.completed_at, and
+      // the next one will be its own column. Deriving it here from `tickedAt` worked only while
+      // every reviewable thing happened to be a drill; anything else would have needed a second
+      // rule in the client, and two rules meaning the same thing are how a submission goes unseen.
+      //
+      // The vocabulary is Luke's own: the roadmap already computes `pending` and labels it
+      // 'Awaiting review' (:3778). Same words, same gold, now on the persisted list.
+      const waiting = !on && !!SUBMITTED[item.id];
       return {
         id: item.id,
         name: item.name,
@@ -4192,15 +4235,30 @@ class Component extends DCLogic {
         // "the player did not do it" — that claim is ticked_at, which is Forge's column and which
         // atlas_app has no grant to write. Same for watched_at, despite this feature being called
         // "have you watched": the write below lands on verified_at.
-        mark: on ? '\u2713 Signed off' : 'Not signed off',
-        when: on ? new Date(got.verifiedAt).toLocaleDateString() : '',
+        waiting,
+        // Three states, three sentences. 'Awaiting your review' is addressed to the coach because
+        // that is whose action is missing; the player's side of the same row reads differently below.
+        mark: on ? '\u2713 Signed off' : waiting ? (isViewingSelf ? 'With your coach' : 'Awaiting your review') : 'Not signed off',
+        // Signed off ⇒ the date of the JUDGEMENT. Waiting ⇒ the date the player submitted, which is
+        // the number a coach actually needs: it is how long someone has been waiting.
+        when: on ? new Date(got.verifiedAt).toLocaleDateString()
+          : waiting ? 'Submitted ' + new Date(SUBMITTED[item.id]).toLocaleDateString() : '',
         ref: got.videoRef || '',
         note: got.verifyNote || '',
         // Luke's DARK palette. These were #2f6b47 on rgba(20,25,31,0.05) — a dark green on a
         // near-white wash, which is a light-theme pill. This block sits outside the cream dossier
         // pane (that closes at :474) on the dark page, so the whole card read as greyed-out.
-        markColor: on ? '#7fae8e' : '#8d99a8',
-        markBg: on ? 'rgba(127,174,142,0.12)' : 'rgba(255,255,255,0.04)',
+        // Luke's dark palette. Green = done, GOLD = it wants you, grey = nothing has happened.
+        // Gold is the file's attention colour everywhere else, so this needs no new idiom.
+        markColor: on ? '#7fae8e' : waiting ? '#0E141B' : '#8d99a8',
+        markBg: on ? 'rgba(127,174,142,0.12)' : waiting ? '#c8a05e' : 'rgba(255,255,255,0.04)',
+        // A waiting row gets a gold edge so it is findable while scanning a folded-open step,
+        // not only readable once you are on it.
+        cardBorder: waiting ? 'rgba(200,160,94,0.45)' : 'rgba(255,255,255,0.07)',
+        // Two keys, not one, because the two card styles have DIFFERENT resting borders in Luke's
+        // design — the nested plan card a faint light edge, the top-level assessment card a dark
+        // one. Collapsing them would have restyled a block this change has no business restyling.
+        cardBorderTop: waiting ? 'rgba(200,160,94,0.45)' : 'rgba(20,25,31,0.14)',
         // A player may READ their sign-off state and may not write it — the tick is the coach's
         // judgement. `drill_progress_coach_update` would refuse the write anyway; this stops the
         // UI from offering an action the database will reject.
@@ -4217,6 +4275,10 @@ class Component extends DCLogic {
     // "anything else that needs review via the plan". This replaces `state.signed = [1, 2]`, a
     // hardcoded array local to the browser tab that reset on reload and that the student never saw.
     const pfSteps = REVIEW_ITEMS.filter(d => d.group === 'step').map(buildDrill);
+    // The intake review item — the same card, the same write path, a different TRIGGER. It sits on
+    // the Practice DNA panel because that is the thing it is a review OF; nothing about the
+    // mechanism is special, which is the point of making `source` a field rather than a branch.
+    const pfIntake = REVIEW_ITEMS.filter(d => d.group === 'intake').map(buildDrill);
 
     // ── FOLD-DOWN BARS, ONE PER STEP ────────────────────────────────────────────────────────
     // Makel, 2026-09-15: "for a cleaner ui can we use either a fold down bar or a logic that wont
@@ -4249,8 +4311,13 @@ class Component extends DCLogic {
         chevron: open ? '\u25be' : '\u25b8',
         // Whole-step progress, visible while folded. This is the "entire progress" the bar owes a
         // coach — counted from the same objects the rows render from.
-        count: done + ' / ' + kids.length + ' signed off',
-        countColor: kids.length > 0 && done === kids.length ? '#7fae8e' : '#8d99a8',
+        // Progress, visible while FOLDED. This is what the bar owes a coach — and it has to
+        // separate "waiting on you" from "nobody has started", or a submitted rep stays invisible
+        // behind a closed bar, which is the exact failure the fold-down could otherwise introduce.
+        count: done + ' / ' + kids.length + ' signed off'
+          + (kids.filter(d => d.waiting).length ? ' \u00b7 ' + kids.filter(d => d.waiting).length + ' waiting on you' : ''),
+        countColor: kids.filter(d => d.waiting).length ? '#c8a05e'
+          : kids.length > 0 && done === kids.length ? '#7fae8e' : '#8d99a8',
         mark: completion ? completion.mark : '',
         markColor: completion ? completion.markColor : '#8d99a8',
         markBg: completion ? completion.markBg : 'rgba(255,255,255,0.04)',
@@ -4271,6 +4338,9 @@ class Component extends DCLogic {
     // they are the judgement the filmed drills add up to.
     const planReview = REVIEW_ITEMS.filter(d => (d.group === 'plan' || d.group === 'step') && d.review);
     const planReviewOpen = planReview.filter(d => !(drillSrc[d.id] || {}).verifiedAt).length;
+    // Submitted by the player and not yet judged — across the whole plan, steps included.
+    const planWaiting = REVIEW_ITEMS.filter(d => d.group === 'plan' || d.group === 'step')
+      .filter(d => SUBMITTED[d.id] && !(drillSrc[d.id] || {}).verifiedAt).length;
 
     // ── COACHING NOTES ───────────────────────────────────────────────────────────────────────
     // The written half of the loop. The tick says a rep happened; this says what to do about it.
@@ -4362,6 +4432,15 @@ class Component extends DCLogic {
     return {
       pfDrills,
       pfNotes,
+      // ⚠️ NOT `pfIntake` — that key was already taken, by `pfIntake: who.intake` further down
+      // this same object (the dossier footer line at :519 that says how the student joined the
+      // roster). An object literal takes the LAST key, so naming this one `pfIntake` handed the
+      // sc-for a string instead of an array and the card silently never rendered. Nothing failed:
+      // typecheck, node --check and the tag-balance checks all passed, and only loading the page
+      // showed it. Renamed, and the footer line is untouched.
+      pfIntakeReview: pfIntake,
+      // Only once there is a read to have reviewed — the card is meaningless before then.
+      pfIntakeReviewShow: (who.dna && pfIntake.length) ? 'flex' : 'none',
       // A coach with no student selected has who = EMPTY_PLAYER, so guard on who.id exactly the
       // way pfDrillsShow does — a compose box there would POST to .../students/undefined/notes.
       pfNotesShow: ROSTER.length > 0 ? !!who.id : pfNotes.length > 0,
@@ -4423,10 +4502,16 @@ class Component extends DCLogic {
       // waits on a coach. Deliberately not worded 'filmed drills': five of the fourteen are not
       // films, and a count that describes itself wrongly is the same class of error as a fabricated
       // number.
-      pfPlanCount: planReviewOpen === 0
-        ? 'All ' + planReview.length + ' items reviewed'
-        : planReviewOpen + ' of ' + planReview.length + ' items awaiting your review',
-      pfPlanCountColor: planReviewOpen === 0 ? '#7fae8e' : '#c8a05e',
+      // Two different facts, and conflating them is what made a three-week-old submission
+      // invisible. `planWaiting` is work the player has DONE and handed over; `planReviewOpen` is
+      // simply everything not yet signed off, most of which nobody has started. The waiting count
+      // leads when there is one, because it is the only half with somebody on the other end of it.
+      pfPlanCount: planWaiting > 0
+        ? planWaiting + (planWaiting === 1 ? ' submission waiting on you' : ' submissions waiting on you')
+        : planReviewOpen === 0
+          ? 'All ' + planReview.length + ' items reviewed'
+          : planReviewOpen + ' of ' + planReview.length + ' items not yet signed off',
+      pfPlanCountColor: planWaiting > 0 ? '#c8a05e' : planReviewOpen === 0 ? '#7fae8e' : '#8d99a8',
 
       // ── WHAT THE PLAYER SEES ───────────────────────────────────────────────────────────────
       dnaShow: dna ? 'block' : 'none',
@@ -4731,12 +4816,22 @@ class Component extends DCLogic {
 
   // Coach-side: twenty players on one screen, sorted by who needs a call.
   rosterVals() {
-    const sortBy = this.state.rosterSort || 'silence';
+    const sortBy = this.state.rosterSort || 'waiting';
     const rows = ROSTER.map(p => {
       const now = p.sg[p.sg.length - 1], was = p.sg[0];
-      return Object.assign({}, p, { now: now, delta: +(now - was).toFixed(1), flag: p.days > 7 });
+      // ── HOW MANY THINGS THIS STUDENT IS WAITING ON THIS COACH FOR ──────────────────────────
+      // The same rule the player file uses, off the same server-resolved map: submitted by them,
+      // not yet judged by anyone. Counted HERE as well as there because a signal a coach can only
+      // find by opening all five files is not a signal — it is a search.
+      const sub = p.submitted || {}, dr = p.drills || {};
+      const waiting = Object.keys(sub).filter(id => !(dr[id] || {}).verifiedAt).length;
+      return Object.assign({}, p, { now: now, delta: +(now - was).toFixed(1), flag: p.days > 7, waiting: waiting });
     });
     const SORTS = {
+      // Most waiting first. ⚠️ THIS IS THE DEFAULT, deliberately: 'silence' sorts on `p.days`,
+      // which has no producer and is null for every student, so that sort has always been a no-op
+      // dressed as a priority. This one is backed by rows that actually exist.
+      waiting: (a, b) => (b.waiting - a.waiting) || (b.flag - a.flag),
       silence: (a, b) => (b.flag - a.flag) || (b.days - a.days),
       movement: (a, b) => a.delta - b.delta,
       standing: (a, b) => a.now - b.now
@@ -4748,7 +4843,19 @@ class Component extends DCLogic {
     const lo = Math.min.apply(null, all), hi = Math.max.apply(null, all);
     const span = hi - lo || 1;
     return {
+      // ⚠️ WAS HARDCODED as "Sorted by silence, not by handicap." That stopped being true when the
+      // default sort changed to 'waiting' — and it was never quite true anyway, since `p.days` has
+      // no producer and the silence sort could not order anything. A page that narrates a sort it
+      // is not performing is the same class of error as a fabricated number.
+      rosterBlurb: sortBy === 'waiting'
+        ? 'Sorted by who is waiting on you \u2014 work a player has submitted and nobody has judged yet. A submission that sits is a player learning their reps do not get looked at.'
+        : sortBy === 'silence'
+          ? 'Sorted by silence, not by handicap. A player who hasn\u2019t logged in a week is a player about to quit \u2014 though nothing records practice yet, so this order is not yet meaningful.'
+          : sortBy === 'movement'
+            ? 'Sorted by least movement across five reads. No strokes-gained reads exist yet, so this order is not yet meaningful.'
+            : 'Sorted by who is furthest from their target. Handicap index is real; the target is only set for players who have one on file.',
       rosterSorts: [
+        { k: 'waiting', label: 'Waiting on you' },
         { k: 'silence', label: 'Who to call' },
         { k: 'movement', label: 'Least movement' },
         { k: 'standing', label: 'Furthest behind' }
@@ -4787,7 +4894,11 @@ class Component extends DCLogic {
         last: p.days === 0 ? 'Today' : isNum(p.days) ? p.days + 'd ago' : 'never logged',
         lastColor: p.days > 7 ? '#d9885e' : p.days > 3 ? '#c8a05e' : '#66717f',
         flagShow: p.flag ? 'inline-block' : 'none',
-        border: p.flag ? 'rgba(217,136,94,0.34)' : 'rgba(255,255,255,0.08)',
+        // Gold beats the silence flag: something submitted and unjudged is a person actively
+        // waiting, which outranks a guess about someone having gone quiet.
+        border: p.waiting ? 'rgba(200,160,94,0.45)' : p.flag ? 'rgba(217,136,94,0.34)' : 'rgba(255,255,255,0.08)',
+        waitingShow: p.waiting ? 'inline-block' : 'none',
+        waitingLabel: p.waiting === 1 ? '1 waiting on you' : p.waiting + ' waiting on you',
         open: () => this.setState(Object.assign({ view: 'profile', profileOf: p.id, railOpen: false }, NOTE_RESET))
       })),
       // GUARDED, both counts. `flag: p.days > 7` is `false` for `days: null`, so an un-guarded
@@ -4798,9 +4909,10 @@ class Component extends DCLogic {
         ? rows.filter(p => p.flag).length + ' need a call'
         : 'no practice log',
       rosterCount: rows.length + ' active',
-      rosterFlat: rows.some(p => isNum(p.delta))
-        ? rows.filter(p => Math.abs(p.delta) <= 0.2).length + ' flat across five reads'
-        : 'no strokes-gained reads exist yet'
+      // `rosterFlat` was removed 2026-09-15 along with its only consumer — the hardcoded half of
+      // the roster blurb, now `rosterBlurb` above. It counted players flat across five
+      // strokes-gained reads, and `sg` is Forge's with no producer, so it only ever resolved to
+      // its own empty-state string. Kept in git history, not in the file.
     };
   }
   /**

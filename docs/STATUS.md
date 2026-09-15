@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-15 12:28 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-15 12:44 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **8 file(s)** | pushed |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **5 file(s)** | **1 ahead** |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | **2 ahead** |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-15 12:28 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.21.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.21.0.tgz`
-- **Atlas HEAD:** `76cfb32 Docs: close out T-62 — renames plus the general disambiguator`
+- **Atlas HEAD:** `3177728 Coach sees what the player sees; sign-off widened 3 -> 34 items`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -144,6 +144,19 @@ never renders. Left alone on purpose.
 
 The player file now reads: Handicap history → The interview → the assessment sign-off list →
 **the plan, as five fold-down bars** → **what the player sees (Practice DNA)** → coaching notes.
+
+### 🟢 One review-trigger structure, every source — 2026-09-15
+
+"Awaiting your review" is a model, not a property of drill cards. Every reviewable thing has the
+same three parts, and only the third is shared:
+
+| | |
+| --- | --- |
+| **(1) the student's claim** | a student-owned column. `ReviewItem.source` says which one: `drill` → `golf.drill_progress.ticked_at`, `intake` → `atlas.intake_submissions.completed_at`. |
+| **(2) the coach's view of it** | `resolveSubmitted()` in protoData.ts — the ONE place that knows how to read each source, emitting a single `submitted` map per student. The page reads it and decides nothing. |
+| **(3) the coach's resolution** | always `golf.drill_progress.verified_at`. `drill_id` is free text, so a non-drill review item needs no migration and no second mechanism. |
+| **what a student can actually raise today** | ⚠️ **Not a drill.** `golf.drill_progress` has only `drill_progress_coach_insert`/`_coach_update` — **no self-insert policy** — and `atlas_app` holds no column grant on `ticked_at`; the rows carrying it were written by `neondb_owner`. Nor a message: `coaching_notes_insert` requires `coaches(subject_user_id)` and nobody coaches themselves. **The intake is the one path**, hence the `intake:practice-dna` review item. The read side is complete and lights up when the owning app writes. |
+| **surfaced at the roster** | a gold "N waiting on you" chip, a gold row edge outranking the silence flag, and a new default sort. The old default keyed on `p.days`, which has no producer, so it never ordered anything; the blurb now describes the sort actually running. |
 
 ### 🟢 The coach can see what the player sees — 2026-09-15
 

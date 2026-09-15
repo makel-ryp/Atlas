@@ -37,7 +37,7 @@
  * video_ref / updated_at only. Writing `watched_at` would raise 42501.
  */
 
-export type DrillGroup = 'assessment' | 'plan' | 'step'
+export type DrillGroup = 'assessment' | 'plan' | 'step' | 'intake'
 
 export type ReviewItem = {
   /** Stable key in `golf.drill_progress.drill_id`. */
@@ -65,6 +65,29 @@ export type ReviewItem = {
    * renamed label silently empties a section.
    */
   step?: number
+  /**
+   * WHERE THE STUDENT'S SUBMISSION COMES FROM — the trigger half of the review loop.
+   *
+   * Every reviewable thing in Atlas has the same three parts:
+   *   (1) a student-owned column that records the claim  → `source`
+   *   (2) a coach-readable projection of it              → RosterRow.submitted
+   *   (3) a coach action that resolves it                → golf.drill_progress.verified_at
+   *
+   * Only (3) is shared by every item, which is why resolution lives in one table for all of them
+   * regardless of what was submitted. `source` is what makes (1) pluggable: a new reviewable thing
+   * declares where its trigger lives and needs no new pill, route, or policy.
+   *
+   *   'drill'  → golf.drill_progress.ticked_at   (the player's claim that they did the rep)
+   *   'intake' → atlas.intake_submissions.completed_at
+   *
+   * ⚠️ NO ATLAS WRITER EXISTS FOR 'drill' TODAY. `golf.drill_progress` has only
+   * `drill_progress_coach_insert` / `_coach_update` — there is no self-insert policy — and
+   * `atlas_app` holds no column grant on `ticked_at`. A student therefore cannot raise a drill for
+   * review from inside Atlas; the rows that carry `ticked_at` today were written by
+   * `neondb_owner`. The READ side below is complete and will light up the moment the owning app
+   * writes. Recorded rather than hidden: see docs/TASKS.md.
+   */
+  source?: 'drill' | 'intake'
 }
 
 /**
@@ -150,10 +173,35 @@ const STEP_COMPLETIONS: ReviewItem[] = [
 ]
 
 /**
- * Assessments first, then the plan in step order, then the five step completions. The order a
- * coach reads them in: what was measured, what was practised, what that adds up to.
+ * THE INTAKE — the one reviewable thing a student can actually trigger in Atlas today.
+ *
+ * `atlas.intake_submissions` is student-owned (`intake_submissions_insert_own` /
+ * `_update_own`) and coach-readable through the `atlas.student_intake` view, so a student
+ * finishing their Practice DNA IS a student-triggered event a coach should act on. It had no
+ * resolution state anywhere — the coach could read the result and nothing recorded that they had.
+ *
+ * It resolves the same way everything else does: a row in `golf.drill_progress` keyed by this id.
+ * `drill_id` is free text with no CHECK and no FK, so a non-drill review item costs no migration
+ * and no second mechanism. That is the whole point of the `source` field above.
  */
-export const REVIEW_ITEMS: readonly ReviewItem[] = [...ASSESSMENTS, ...PLAN, ...STEP_COMPLETIONS]
+const INTAKE: ReviewItem[] = [
+  {
+    id: 'intake:practice-dna',
+    name: 'Practice DNA read',
+    context: 'Intake',
+    detail: 'Read through with the player',
+    group: 'intake',
+    review: true,
+    source: 'intake',
+  },
+]
+
+/**
+ * Assessments first, then the plan in step order, then the five step completions, then the intake.
+ * The order a coach reads them in: what was measured, what was practised, what that adds up to,
+ * and who they are.
+ */
+export const REVIEW_ITEMS: readonly ReviewItem[] = [...ASSESSMENTS, ...PLAN, ...STEP_COMPLETIONS, ...INTAKE]
 
 /**
  * The id allowlist the verify route checks a path param against. A Set so the check is O(1) and so
