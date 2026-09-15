@@ -46,6 +46,17 @@ export type RosterRow = {
   hand: string
   /** Status line describing how this student got onto the roster. From the edge / the membership. */
   intake: string
+  /**
+   * The student's email, but ONLY when another student on this roster shares their display name.
+   * '' otherwise.
+   *
+   * Two real people can be called John Smith, and a roster that shows the name alone then gives a
+   * coach no way to tell which row is which — the meta line underneath is no help either, since
+   * tier, zone and practice days have no producer and read identically for everyone. Filled in
+   * below, after the rows exist, because whether a name is ambiguous is a property of the SET and
+   * not of the person.
+   */
+  dupe: string
 
   // ── NO PRODUCER. Present so his render finds the key, empty because nothing writes it. ────────
   /** Atlas curriculum tier. Not built. */
@@ -122,7 +133,7 @@ export type CoachingNoteRow = {
  */
 const EMPTY_ROSTER_ROW: RosterRow = {
   id: '', n: '', tier: '', zone: '', hcp: null, target: null, days: null, leak: '',
-  hand: '', carry: '', intake: '', sg: [], hist: {}, read: {}, note: {}, tone: {},
+  hand: '', carry: '', intake: '', dupe: '', sg: [], hist: {}, read: {}, note: {}, tone: {},
   answer: {}, est: {}, grid: [], file: {}, drills: {}, notes: [],
 }
 
@@ -772,6 +783,8 @@ export async function buildAtlasData(
         carry: profile?.driverCarryYds ? `${profile.driverCarryYds} yd driver carry` : '',
         hand: handLabel(profile?.handedness),
         intake: intakeLine(meta),
+        // Filled in after the map — see below.
+        dupe: '',
         drills: progressBy.get(person.id) ?? {},
         notes: notesBy.get(person.id) ?? [],
 
@@ -800,6 +813,24 @@ export async function buildAtlasData(
         file: intakeBy.get(person.id) ?? {},
       }
     })
+
+    /**
+     * Disambiguate students who share a display name.
+     *
+     * Only the ones that actually collide get an email, and only on a roster where the collision
+     * exists — a name is ambiguous relative to the set it sits in, so this cannot be decided while
+     * building a single row. The coach already sees these addresses (an account with no name
+     * renders its email AS the name), so nothing is disclosed that was not already on screen.
+     */
+    const nameCount = new Map<string, number>()
+    for (const r of roster) nameCount.set(r.n, (nameCount.get(r.n) ?? 0) + 1)
+    for (const r of roster) {
+      if ((nameCount.get(r.n) ?? 0) < 2) continue
+      const person = people.find((x) => x.id === r.id)
+      // Never fall back to the name here: repeating an ambiguous name under itself is noise, and
+      // an account with no email at all has nothing to disambiguate WITH.
+      r.dupe = person?.email ?? ''
+    }
 
     return { view, hidden, roster, me: meBlock, meRow }
   })

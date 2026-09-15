@@ -421,6 +421,8 @@
             <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.26em; text-transform:uppercase; color:#8a6a2f; margin-bottom:8px;">Player file</div>
             <h1 style="font-family:'Archivo'; font-weight:800; font-size:clamp(28px,6vw,42px); line-height:1; letter-spacing:-0.03em; color:#14191f; margin:0 0 8px;">{{ pfName }}</h1>
             <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#6f7681;">{{ pfMeta }}</div>
+            <!-- LIGHT palette: this is inside the cream dossier pane. -->
+            <div style="display: {{ pfDupeShow }}; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.06em; color:#8a6a2f; margin-top:5px;">{{ pfDupe }}</div>
 
             <!-- ============ YOUR NAME · self only ============ -->
             <!-- Added 2026-09-14. A coach's roster was printing EMAIL ADDRESSES where names belong,
@@ -622,6 +624,11 @@
               <span style="display:flex; align-items:center; gap:9px; flex-wrap:wrap;">
                 <span style="font-family:'Newsreader',serif; font-size:19px; color:#ece7db;">{{ p.name }}</span>
                 <span style="display: {{ p.flagShow }}; font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.16em; text-transform:uppercase; color:#d9885e; border:1px solid rgba(217,136,94,0.4); padding:3px 8px; border-radius:999px;">Call</span>
+                <!-- Only when another student on THIS roster has the same display name. Two real
+                     people can be called John Smith, and the meta line below is no help — tier,
+                     zone and practice days have no producer, so it reads identically for everyone.
+                     Quieter than the name on purpose: it is a tiebreaker, not a second title. -->
+                <span style="display: {{ p.dupeShow }}; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.08em; color:#66717f; text-transform:none;">{{ p.dupe }}</span>
               </span>
               <!-- GUARDED: was two bindings joined by a literal ' · '; an empty tier or zone (no
               plan/zone assigned yet) rendered as bare punctuation with nothing on one side. p.meta
@@ -4096,6 +4103,11 @@ class Component extends DCLogic {
         ? 'Your coach watches the submission in Parallax and ticks it here. A tick is their judgement that the rep happened.'
         : 'Watch the submission in Parallax, then tick it here. A tick is your judgement that the rep happened \u2014 it is not the player\u2019s claim, which is theirs to make and lives elsewhere.',
       pfName: who.n,
+      // Same tiebreaker as the roster row, carried onto the file the coach opens from it — landing
+      // on a dossier headed by one of three identical names, with no way to tell which, is the
+      // half of the problem that clicking through does not solve.
+      pfDupe: who.dupe || '',
+      pfDupeShow: who.dupe ? 'block' : 'none',
 
       // ── YOUR NAME · self only ───────────────────────────────────────────────────────────────
       // The coach's roster prints `display_name ?? email`, so an account without a name shows an
@@ -4371,6 +4383,9 @@ class Component extends DCLogic {
         { onClick: () => this.setState({ rosterSort: o.k }) })),
       rosterRows: sorted.map(p => ({
         name: p.n,
+        // Server-decided: '' unless this name collides with another on the same roster.
+        dupe: p.dupe || '',
+        dupeShow: p.dupe ? 'inline' : 'none',
         initials: p.n.split(' ').map(w => w[0]).join(''),
         tier: p.tier,
         zone: 'Zone ' + p.zone,
