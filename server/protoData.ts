@@ -10,6 +10,8 @@ import {
   users,
 } from '@ryp/eco/schema'
 import { pool } from './db'
+import { summarizeRun, type DnaSummary } from './dnaSummary'
+import { REVIEW_ITEMS, type ReviewItem } from '../shared/drills'
 
 /**
  * The data half of serving Luke's prototype: builds the single blob the page reads as
@@ -104,6 +106,20 @@ export type RosterRow = {
    * database's, not this file's — see the query for why that matters for `visibility`.
    */
   notes: CoachingNoteRow[]
+  /**
+   * What the PLAYER sees on their own Practice DNA result screen, projected down to the parts a
+   * coach may read. REAL — scored on the fly from `atlas.intake_submissions`, never stored.
+   *
+   * null means "no read on file": either no submission, or a submission whose profile block is
+   * incomplete and therefore not scoreable. It is not the same as a read that came back thin —
+   * a thin read has `depth: 'baseline'` and mostly `locked` zones, which is a real answer.
+   *
+   * ⚠️ The shape is an ALLOWLIST built in server/dnaSummary.ts. The full `PracticeDnaResult`
+   * carries the attention-check report, the raw personality scale scores and the Mini-IPIP
+   * traits; none of them reach this type, and the raw `answers` they are derived from never
+   * leaves the server. See the header of that file before adding a field here.
+   */
+  dna: DnaSummary | null
 }
 
 /**
@@ -134,7 +150,7 @@ export type CoachingNoteRow = {
 const EMPTY_ROSTER_ROW: RosterRow = {
   id: '', n: '', tier: '', zone: '', hcp: null, target: null, days: null, leak: '',
   hand: '', carry: '', intake: '', dupe: '', sg: [], hist: {}, read: {}, note: {}, tone: {},
-  answer: {}, est: {}, grid: [], file: {}, drills: {}, notes: [],
+  answer: {}, est: {}, grid: [], file: {}, drills: {}, notes: [], dna: null,
 }
 
 /**
@@ -222,6 +238,17 @@ export type AtlasData = {
    */
   hidden: readonly string[]
   roster: RosterRow[]
+  /**
+   * EVERYTHING A COACH SIGNS OFF — the six assessment drills plus the twenty-three plan drills.
+   *
+   * Injected rather than hardcoded in the page because the VERIFY ROUTE validates against the same
+   * list (server/routes/coach.ts). A list in the HTML and a list in the route are two lists, and
+   * the failure mode is a card a coach can click that the server then rejects.
+   *
+   * This is a catalogue, not per-player state. Whether a given player has been signed off on a
+   * given item is `RosterRow.drills`, keyed by these ids.
+   */
+  reviewItems: readonly ReviewItem[]
   /** The signed-in coach. `hcp` is the raw `numeric` string here — see the type note below. */
   me: {
     name: string | null
@@ -634,17 +661,30 @@ export async function buildAtlasData(
      * coaches themselves, so a player asking it about their own row gets nothing.
      * `intake_submissions_select_own` is the policy that applies here.
      *
-     * Only `interview` is selected. The row also carries `quality_flag` and IPIP01–20, which are
-     * private to the subject; they are theirs to see, but nothing on this page needs them and a
-     * column never selected cannot be leaked by a later change to the page.
+     * `quality_flag` is still never selected. It is private to the subject even from the subject
+     * in this file: nothing on this page needs it, and a column never selected cannot be leaked by
+     * a later change to the page.
+     *
+     * `answers` IS selected here — a player's own row, read under `intake_submissions_select_own`,
+     * so this is their own data and it includes IPIP01–20. It is passed straight into
+     * `summarizeRun` and never assigned onto the row; the same discipline as the roster path
+     * above, for the same reason: the projection is what travels, not the source.
      */
     const myIntake = (await db.execute(
       // `updated_at`, not `created_at` — this table has no created_at. Caught by running it;
       // raw SQL is invisible to the typechecker, so this would have 500'd every page load.
-      sql`select interview from atlas.intake_submissions
+      sql`select interview, profile, volume, alloc, answers from atlas.intake_submissions
           where user_id = ${me.id}::uuid and deleted_at is null
           order by updated_at desc limit 1`,
-    )) as unknown as { rows: Array<{ interview: Record<string, string> | null }> }
+    )) as unknown as {
+      rows: Array<{
+        interview: Record<string, string> | null
+        profile: unknown
+        volume: unknown
+        alloc: unknown
+        answers: unknown
+      }>
+    }
 
     const meBlock = { ...meBase, notes: notesBy.get(me.id) ?? [] }
 
@@ -674,11 +714,14 @@ export async function buildAtlasData(
       file: myIntake.rows[0]?.interview ?? {},
       drills: myDrills,
       notes: notesBy.get(me.id) ?? [],
+      // Two-sided like `drills` and `notes`: the same panel, the same words, whichever side of the
+      // conversation is reading it. That is the entire point of surfacing this to a coach.
+      dna: myIntake.rows[0] ? summarizeRun(myIntake.rows[0]) : null,
     }
 
     // The empty roster is a real, common answer — a coach with no students, or a player who opened
     // the page. It renders as an empty screen, which is correct.
-    if (ids.length === 0) return { view, hidden, roster: [], me: meBlock, meRow }
+    if (ids.length === 0) return { view, hidden, reviewItems: REVIEW_ITEMS, roster: [], me: meBlock, meRow }
 
     // ── 3. Identity tier ───────────────────────────────────────────────────────────────────────
     // Anything RLS refuses simply does not come back, so an edge pointing at an account the caller
@@ -737,13 +780,16 @@ export async function buildAtlasData(
      */
     const intakeRows = ids.length
       ? ((await db.execute(
-          sql`select user_id, interview, profile, tier_completed, status
+          sql`select user_id, interview, profile, volume, alloc, answers, tier_completed, status
                 from atlas.student_intake`,
         )) as unknown as {
           rows: Array<{
             user_id: string
             interview: Record<string, string> | null
             profile: Record<string, unknown> | null
+            volume: unknown
+            alloc: unknown
+            answers: unknown
             tier_completed: number | null
             status: string | null
           }>
@@ -751,11 +797,21 @@ export async function buildAtlasData(
       : []
 
     const intakeBy = new Map<string, Record<string, string>>()
+    /**
+     * The coach-safe read of each student's Practice DNA run.
+     *
+     * ⚠️ `r.answers` IS THE RAW ITEM RESPONSES. The view strips IPIP01–20 but NOT ATTN01/ATTN02,
+     * so this object still carries the attention-check basis of `quality_flag`. It is consumed
+     * here, inside `summarizeRun`, and the only thing that survives is the allowlisted projection.
+     * `answers` itself must never be assigned onto a RosterRow — see server/dnaSummary.ts.
+     */
+    const dnaBy = new Map<string, DnaSummary>()
     for (const r of intakeRows) {
       // Only the five interview answers travel into his `file` block — that is exactly what his
-      // FIELDS renders (sport, years, limits, time, goal). The profile and status are read here so
-      // a later change has them without a second round trip.
+      // FIELDS renders (sport, years, limits, time, goal).
       if (r.interview) intakeBy.set(r.user_id, r.interview)
+      const dna = summarizeRun(r)
+      if (dna) dnaBy.set(r.user_id, dna)
     }
 
     const progressBy = new Map<string, RosterRow['drills']>()
@@ -787,6 +843,9 @@ export async function buildAtlasData(
         dupe: '',
         drills: progressBy.get(person.id) ?? {},
         notes: notesBy.get(person.id) ?? [],
+        // The player's own result vocabulary — archetype, zones, growth zone, time split. null
+        // when there is no scoreable run, which the page renders as "no read on file".
+        dna: dnaBy.get(person.id) ?? null,
 
         // ── no producer. 44 of the 81 metrics on these screens are Forge outputs and Forge has not
         //    shipped, so most of his UI going quiet is the CORRECT outcome, not a regression. ──
@@ -832,6 +891,6 @@ export async function buildAtlasData(
       r.dupe = person?.email ?? ''
     }
 
-    return { view, hidden, roster, me: meBlock, meRow }
+    return { view, hidden, reviewItems: REVIEW_ITEMS, roster, me: meBlock, meRow }
   })
 }

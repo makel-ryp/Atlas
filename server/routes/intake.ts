@@ -15,7 +15,8 @@ import { users, golfPlayerProfile, golfHandicapHistory, atlasIntakeSubmissions }
 import { pool } from '../db'
 import { ensureAtlasAccess } from '../ensureAtlasAccess'
 import { PROFILE_FIELDS, ITEM_BY_CODE, type Profile, type Answers, type AnswerValue } from '../../shared/practice-dna/items'
-import { computeResult, type PracticeDnaResult } from '../../shared/practice-dna/scoring'
+import { type PracticeDnaResult } from '../../shared/practice-dna/scoring'
+import { isProfileComplete, tryComputeResult } from '../dnaSummary'
 import { computeVolumeBreakdown } from '../../shared/volume'
 import { validateVolumeInput } from '../../shared/contract'
 import { validateInterviewPartial } from '../../shared/interview'
@@ -90,47 +91,12 @@ const RLS_VIOLATION = '42501'
 // about the golfer.
 type SubmissionRow = typeof atlasIntakeSubmissions.$inferSelect
 
-function isProfileComplete(profile: Record<string, unknown>): profile is Record<string, unknown> & Profile {
-  return PROFILE_FIELDS.every((f) => profile[f.code] !== undefined && profile[f.code] !== null && profile[f.code] !== '')
-}
-
-// Recompute, never store — the whole point being that a run scored today survives the instrument
-// changing later. Only attempted once the profile is fully filled in: the live data shows the
-// profile block is observed ALL-OR-NOTHING (7/7 fields on every scored profile in 110/118 runs), and
-// computeResult takes a `Profile`, not a `Partial<Profile>` — calling it against a partial object
-// would silently score against `undefined` fields rather than refuse.
-/**
- * Scores a run. `volume` and `alloc` are the RAW inputs; the engine wants shares of effective total,
- * which only the volume adapter can produce — so ALLOC is derived HERE, into a copy, and never
- * persisted. Mirrors `tgt/server/service.ts:180-191` deliberately.
- *
- * ⚠️ An earlier version of this route stored a CLIENT-computed ALLOC into `answers`, the column eco
- * calls "the re-score lifeline — every raw item response". That put a derived, client-produced value
- * in the raw column with no provenance, and dropped the raw minutes/hours entirely, so a run could
- * never be re-scored after the adapter changed. Raw goes in `volume`/`alloc`; derived is computed on
- * every read.
+/*
+ * `isProfileComplete` and `tryComputeResult` used to live here as module-private functions. They
+ * moved to server/dnaSummary.ts on 2026-09-15 because the coach's player file needs to score a
+ * student's run too, and a private copy is the trap `cookieOrBearer` hit three separate times.
+ * Nothing about the scoring changed — see the imports at the top of this file.
  */
-function tryComputeResult(
-  profile: unknown,
-  answers: unknown,
-  volume?: unknown,
-  alloc?: unknown,
-): PracticeDnaResult | null {
-  const p = (profile ?? {}) as Record<string, unknown>
-  const a = { ...((answers ?? {}) as Answers) }
-  if (!isProfileComplete(p)) return null
-  try {
-    if (volume && alloc) {
-      a.ALLOC = computeVolumeBreakdown(volume as never, alloc as never).alloc
-    }
-    return computeResult(p as unknown as Profile, a)
-  } catch {
-    // Scoring is defensive by design (Confidence grades partial `answers`), but a malformed stored
-    // value should read as "not scoreable yet", not crash the request that's just trying to show
-    // progress.
-    return null
-  }
-}
 
 function toEnvelope(row: SubmissionRow) {
   return {

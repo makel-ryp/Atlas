@@ -14,6 +14,7 @@ import {
 } from '@ryp/eco/schema'
 import { pool } from '../db'
 import { cookieOrBearer } from '../cookieOrBearer'
+import { isReviewItemId } from '../../shared/drills'
 import { ensureAtlasAccess } from '../ensureAtlasAccess'
 
 const schema = {
@@ -280,6 +281,24 @@ coachRouter.post(
       const me = (req as any).user as typeof users.$inferSelect
       const subjectId = req.params.userId as string
       const drillId = req.params.drillId as string
+
+      /**
+       * `drill_id` is unbounded `text` with no CHECK and no FK, so until this line any string a
+       * coach could put in a URL became a permanent row in golf.drill_progress. That was tolerable
+       * while the page hardcoded three ids; on 2026-09-15 the sign-off list widened to 29 across
+       * two namespaces (shared/drills.ts), which is the point at which "whatever is in the path"
+       * stops being a small surface.
+       *
+       * Checked against the SAME list the page renders from, so the two cannot drift: an id the
+       * client can display is an id the server accepts, and nothing else is.
+       *
+       * Verified before shipping that every drill_id already in the live table (`chip20`, `sga30`)
+       * is in the list — otherwise this would have made existing sign-offs impossible to revoke.
+       */
+      if (!isReviewItemId(drillId)) {
+        res.status(400).json({ error: 'unknown_drill' })
+        return
+      }
 
       const row = await withRls(
         pool,

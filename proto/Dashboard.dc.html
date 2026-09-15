@@ -557,6 +557,179 @@
     </div>
     </sc-if>
 
+    <!-- ============ THE PLAN · every drill in the five steps ============ -->
+    <!-- Added 2026-09-15. The sign-off block above covers the six assessment drills; this covers
+         the twenty-three the PLAN defines, nine of which are filmed. Same card, same write path,
+         same column — a second list, not a second mechanism. Dark palette like its neighbours
+         (#1a222e card, #ece7db name, #8d99a8 meta): this sits OUTSIDE the cream dossier pane,
+         which closes at :474. -->
+    <div style="display: {{ pfPlanShow }}; padding:34px 0 30px; border-bottom:1px solid rgba(20,25,31,0.18);">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.22em; text-transform:uppercase; color:#8a6a2f; margin-bottom:8px;">The plan</div>
+      <h2 style="font-family:'Newsreader',serif; font-size:clamp(23px,4.2vw,30px); color:#ece7db; margin:0 0 8px;">{{ pfPlanTitle }}</h2>
+      <p style="font-family:'Newsreader',serif; font-size:17px; line-height:1.5; color:#66717f; margin:0 0 14px; max-width:62ch;">{{ pfPlanBlurb }}</p>
+      <div style="display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; padding:6px 11px; border-radius:999px; color: {{ pfPlanCountColor }}; background:rgba(255,255,255,0.04); margin-bottom:20px;">{{ pfPlanCount }}</div>
+
+      <!-- ── FOLD-DOWN BARS, ONE PER STEP ──────────────────────────────────────────────────
+           Makel 2026-09-15: "for a cleaner ui can we use either a fold down bar ... the coach
+           should still be able to see the entire progress, so the fold down bar makes more sense."
+
+           Folded by default. The BAR carries the whole progress — the step's own sign-off pill and
+           an n/m count of the drills under it — so five bars tell a coach where the player is
+           without a single click. Expanding reveals the rows, not the state.
+
+           The bar toggles the fold; the pill inside it ticks the step and stops the event, or one
+           click would do both. Nested sc-for, the idiom the calendar already uses (`c.tags` inside
+           `cells`, :863). -->
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <sc-for list="{{ planSteps }}" as="st" hint-placeholder-count="5">
+        <div style="border:1px solid rgba(200,160,94,0.20); border-radius:10px; background:#1a222e; overflow:hidden;">
+
+          <div onClick="{{ st.toggleFold }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:13px 16px;">
+            <div style="display:flex; align-items:flex-start; gap:11px; min-width:0;">
+              <span style="flex:none; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#8a6a2f; line-height:1.4;">{{ st.chevron }}</span>
+              <span style="min-width:0;">
+                <span style="display:block; font-family:'Archivo'; font-weight:700; font-size:14.5px; color:#ece7db;">{{ st.name }}</span>
+                <span style="display:block; font-family:'Newsreader',serif; font-size:13.5px; color:#66717f; margin-top:5px;">{{ st.cond }}</span>
+                <span style="display:block; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color: {{ st.countColor }}; margin-top:7px;">{{ st.count }}</span>
+              </span>
+            </div>
+            <div style="flex:none; text-align:right;">
+              <div onClick="{{ st.tick }}" style="display:inline-block; cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; padding:6px 11px; border-radius:999px; color: {{ st.markColor }}; background: {{ st.markBg }};">{{ st.mark }}</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.1em; color:#8d99a8; margin-top:6px;">{{ st.when }}</div>
+            </div>
+          </div>
+
+          <div style="display: {{ st.drillsShow }}; flex-direction:column; gap:8px; padding:2px 14px 14px 14px;">
+            <sc-for list="{{ st.drills }}" as="d" hint-placeholder-count="4">
+            <div onClick="{{ d.toggle }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:12px 14px; border:1px solid rgba(255,255,255,0.07); border-radius:8px; background:rgba(255,255,255,0.02);">
+              <div style="min-width:0;">
+                <div style="font-family:'Archivo'; font-weight:700; font-size:14px; color:#ece7db;">{{ d.name }}</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#8d99a8; margin-top:4px;">{{ d.shots }}</div>
+                <div style="font-family:'Newsreader',serif; font-size:13px; color:#66717f; margin-top:5px;">{{ d.ref }}</div>
+              </div>
+              <div style="flex:none; text-align:right;">
+                <div style="display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; padding:5px 10px; border-radius:999px; color: {{ d.markColor }}; background: {{ d.markBg }};">{{ d.mark }}</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.1em; color:#8d99a8; margin-top:5px;">{{ d.when }}</div>
+              </div>
+            </div>
+            </sc-for>
+          </div>
+
+        </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <!-- ============ WHAT THE PLAYER SEES · the shared vocabulary ============ -->
+    <!-- Added 2026-09-15. NOT a copy of the player's result screen — no map, no heat kernels, no
+         share card. The WORDS only, so a coach and a player in the same room use one vocabulary.
+         Every value here is the allowlisted projection from server/dnaSummary.ts; the attention
+         report, the raw scale scores and the Mini-IPIP traits are not in the payload at all. -->
+    <div style="display: {{ dnaEmptyShow }}; padding:34px 0 30px; border-bottom:1px solid rgba(20,25,31,0.18);">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.22em; text-transform:uppercase; color:#8a6a2f; margin-bottom:8px;">Practice DNA</div>
+      <p style="font-family:'Newsreader',serif; font-size:16px; line-height:1.5; color:#66717f; margin:0; max-width:62ch;">{{ dnaEmptyText }}</p>
+    </div>
+
+    <div style="display: {{ dnaShow }}; padding:34px 0 30px; border-bottom:1px solid rgba(20,25,31,0.18);">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.22em; text-transform:uppercase; color:#8a6a2f; margin-bottom:8px;">Practice DNA</div>
+      <h2 style="font-family:'Newsreader',serif; font-size:clamp(23px,4.2vw,30px); color:#ece7db; margin:0 0 8px;">{{ dnaTitle }}</h2>
+      <p style="font-family:'Newsreader',serif; font-size:17px; line-height:1.5; color:#66717f; margin:0 0 22px; max-width:62ch;">{{ dnaBlurb }}</p>
+
+      <!-- READ DEPTH. A thin panel must read as early, not broken — so it says which tiers it
+           rests on before it says anything it concluded. -->
+      <div style="display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:22px;">
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:#c8a05e;">{{ dnaDepth }}</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.1em; color:#66717f;">{{ dnaBasis }}</span>
+      </div>
+
+      <!-- ARCHETYPE — the headline the player was given, with the instrument's own hedge. -->
+      <div style="padding:18px 20px; border:1px solid rgba(200,160,94,0.22); border-radius:10px; background:#1a222e; margin-bottom:14px;">
+        <div style="display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;">
+          <span style="font-family:'Newsreader',serif; font-size:24px; color:#ece7db;">{{ dnaArchetype }}</span>
+          <span style="display: {{ dnaProvisionalShow }}; font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8; border:1px solid rgba(255,255,255,0.12); border-radius:999px; padding:4px 9px;">{{ dnaProvisional }}</span>
+        </div>
+        <p style="font-family:'Newsreader',serif; font-size:16px; line-height:1.5; color:#c3cdd9; margin:8px 0 0;">{{ dnaTagline }}</p>
+        <p style="font-family:'Newsreader',serif; font-size:14.5px; line-height:1.55; color:#66717f; margin:10px 0 0;">{{ dnaCoachLine }}</p>
+      </div>
+
+      <!-- TENDENCY — a position on a line, as the player saw it. A bare number reads as a score. -->
+      <div style="padding:18px 20px; border:1px solid rgba(20,25,31,0.14); border-radius:10px; background:#1a222e; margin-bottom:14px;">
+        <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+          <span style="font-family:'Archivo'; font-weight:700; font-size:15px; color:#ece7db;">{{ dnaTendency }}</span>
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8;">{{ dnaTendencyNote }}</span>
+        </div>
+        <div style="position:relative; height:4px; border-radius:999px; background:rgba(255,255,255,0.08);">
+          <span style="position:absolute; top:-3px; left: {{ dnaTendencyPos }}%; width:10px; height:10px; margin-left:-5px; border-radius:50%; background:#c8a05e;"></span>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-top:8px; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f;">
+          <span>Engineer</span><span>Artist</span>
+        </div>
+      </div>
+
+      <!-- THE FOUR ZONES — status, plus where their time goes against where it should. -->
+      <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;">
+        <sc-for list="{{ dnaZones }}" as="z" hint-placeholder-count="4">
+        <div style="padding:16px 18px; border:1px solid rgba(20,25,31,0.14); border-radius:10px; background:#1a222e;">
+          <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+            <span style="font-family:'Archivo'; font-weight:700; font-size:15px; color: {{ z.nameColor }};">{{ z.label }}<span style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.14em; text-transform:uppercase; color:#c8a05e; margin-left:10px;">{{ z.growthTag }}</span></span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ z.statusColor }};">{{ z.status }}</span>
+          </div>
+          <p style="font-family:'Newsreader',serif; font-size:14px; line-height:1.5; color:#66717f; margin:8px 0 12px;">{{ z.line }}</p>
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
+            <span style="flex:none; width:86px; font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8;">Their time</span>
+            <span style="flex:1 1 auto; height:4px; border-radius:999px; background:rgba(255,255,255,0.06);"><span style="display:block; height:4px; border-radius:999px; width: {{ z.actualW }}%; background:#8d99a8;"></span></span>
+            <span style="flex:none; width:46px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:10px; color:#c3cdd9;">{{ z.actual }}</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="flex:none; width:86px; font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8;">Recommended</span>
+            <span style="flex:1 1 auto; height:4px; border-radius:999px; background:rgba(255,255,255,0.06);"><span style="display:block; height:4px; border-radius:999px; width: {{ z.recW }}%; background:#c8a05e;"></span></span>
+            <span style="flex:none; width:46px; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:10px; color:#c3cdd9;">{{ z.rec }}</span>
+          </div>
+        </div>
+        </sc-for>
+      </div>
+
+      <!-- GROWTH ZONE — the prescription the player was given, verbatim. -->
+      <div style="padding:18px 20px; border:1px solid rgba(200,160,94,0.22); border-radius:10px; background:#1a222e; margin-bottom:14px;">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#8a6a2f; margin-bottom:6px;">Build next &middot; {{ dnaGrowth }}</div>
+        <div style="font-family:'Newsreader',serif; font-size:18px; color:#ece7db; margin-bottom:10px;">{{ dnaGrowthHeadline }}</div>
+        <sc-for list="{{ dnaGrowthMoves }}" as="m" hint-placeholder-count="3">
+        <div style="font-family:'Newsreader',serif; font-size:14.5px; line-height:1.55; color:#66717f; margin-bottom:6px;">&middot; {{ m.text }}</div>
+        </sc-for>
+      </div>
+
+      <!-- EFFICIENCY + MECHANICS INDEX. -->
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+        <div style="flex:1 1 220px; padding:16px 18px; border:1px solid rgba(20,25,31,0.14); border-radius:10px; background:#1a222e;">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.18em; text-transform:uppercase; color:#8d99a8; margin-bottom:8px;">Efficiency</div>
+          <div style="font-family:'Newsreader',serif; font-size:24px; color: {{ dnaEfficiencyColor }};">{{ dnaEfficiency }}</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f; margin-top:6px;">{{ dnaEfficiencyLabel }}</div>
+        </div>
+        <div style="display: {{ dnaMiShow }}; flex:1 1 220px; padding:16px 18px; border:1px solid rgba(20,25,31,0.14); border-radius:10px; background:#1a222e;">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.18em; text-transform:uppercase; color:#8d99a8; margin-bottom:8px;">Mechanics index</div>
+          <div style="font-family:'Newsreader',serif; font-size:24px; color:#ece7db;">{{ dnaMi }}</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.1em; color:#66717f; margin-top:6px;">handicap {{ dnaMiHcp }} &middot; gap {{ dnaMiGap }}</div>
+          <p style="font-family:'Newsreader',serif; font-size:14px; line-height:1.5; color:#66717f; margin:10px 0 0;">{{ dnaMiVerdict }}</p>
+        </div>
+      </div>
+
+      <!-- PATTERN + BEHAVIOURAL CHIPS. Not personality scores — see server/dnaSummary.ts. -->
+      <div style="display: {{ dnaPatternShow }}; padding:18px 20px; border:1px solid rgba(207,125,92,0.25); border-radius:10px; background:#1a222e; margin-bottom:14px;">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#cf7d5c; margin-bottom:6px;">Pattern &middot; {{ dnaPattern }}</div>
+        <div style="font-family:'Newsreader',serif; font-size:18px; color:#ece7db; margin-bottom:8px;">{{ dnaPatternHeadline }}</div>
+        <p style="font-family:'Newsreader',serif; font-size:14.5px; line-height:1.55; color:#66717f; margin:0;">{{ dnaPatternFix }}</p>
+      </div>
+
+      <div style="display: {{ dnaChipsShow }}; flex-direction:column; gap:10px;">
+        <sc-for list="{{ dnaChips }}" as="c" hint-placeholder-count="2">
+        <div style="padding:14px 16px; border:1px solid rgba(20,25,31,0.14); border-radius:10px; background:#1a222e;">
+          <div style="font-family:'Archivo'; font-weight:700; font-size:14px; color:#ece7db;">{{ c.label }}</div>
+          <p style="font-family:'Newsreader',serif; font-size:14px; line-height:1.5; color:#66717f; margin:6px 0 0;">{{ c.blurb }}</p>
+        </div>
+        </sc-for>
+      </div>
+    </div>
+
     <!-- ============ COACHING NOTES · the written half of the loop ============ -->
     <!-- Added 2026-09-14. Two-sided like the sign-off block above it: a coach reads the selected
          student's notes and writes one; a player reads their own and gets no compose box. The
@@ -3979,30 +4152,47 @@ class Component extends DCLogic {
     // `drill_progress_select` to students this coach actually coaches. A pending student's rows do
     // not come back at all, so this list is simply empty for them rather than wrong.
     //
-    // Only the three drills the file actually defines. DRILL_DEFS is the authority; inventing a
-    // fourth here would put a drill on screen that no session can run.
-    const pfDrills = ['sga30', 'chip20', 'ryp20'].map(id => {
-      const def = DRILL_DEFS[id] || {};
-      // WHOSE sign-off state. A coach reads the selected student's; a PLAYER reads their own,
-      // injected as __ATLAS_DATA__.me.drills. Until now the player branch did not exist: `drills`
-      // rode only on roster rows, a player's roster is empty, so the coach's tick landed in
-      // golf.drill_progress and the student it was about never saw it.
-      const isViewingSelf = ROSTER.length === 0;
-      // One source: the subject. `who` is now the caller's own row when the viewer is a player, so
-      // this no longer needs to reach for ATLAS_ME separately — and cannot disagree with itself.
-      const drillSrc = who.drills || {};
-      const got = drillSrc[id] || {};
+    // ── WHAT GETS SIGNED OFF ────────────────────────────────────────────────────────────────
+    // WAS `['sga30','chip20','ryp20']`, hardcoded here. That was three of the six drills
+    // DRILL_DEFS defines and none of the twenty-three the PLAN (STEPS) defines — so most of the
+    // work a player is actually asked to do, including every camera drill whose entire point is
+    // that somebody watches it, had no persisted review state at all.
+    //
+    // The list now arrives from the server (shared/drills.ts via __ATLAS_DATA__.reviewItems),
+    // because POST .../drills/:drillId/verify validates against that SAME list. A list here and a
+    // list in the route are two lists, and the failure mode is a card a coach can click that the
+    // server then rejects.
+    //
+    // Falls back to [] rather than to a guessed list: an empty panel is a visible, honest failure,
+    // whereas a stale hardcoded fallback would quietly disagree with the server.
+    const REVIEW_ITEMS = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.reviewItems) || [];
+
+    const isViewingSelf = ROSTER.length === 0;
+    // One source: the subject. `who` is the caller's own row when the viewer is a player, so this
+    // does not need to reach for ATLAS_ME separately — and cannot disagree with itself.
+    const drillSrc = who.drills || {};
+
+    const buildDrill = item => {
+      const got = drillSrc[item.id] || {};
       const on = !!got.verifiedAt;
       return {
-        id,
-        name: def.name || id,
-        domain: def.domain || '',
-        shots: def.shots || '',
+        id: item.id,
+        name: item.name,
+        // 'Chipping' / 'Step 2 · Freezers'. The plan drills carry their step here, which is what
+        // makes a flat list of twenty-three readable.
+        domain: item.context || '',
+        // '30 shots' for an assessment; the drill's standard for a plan drill. The Parallax tag is
+        // appended for the camera drills — the ones "needs review via the plan" refers to.
+        // The Parallax tag marks a FILMED clip, so it belongs to plan drills only. A step
+        // completion is also `review: true` — a coach has to make the call — but there is no video
+        // behind it, and tagging one Parallax would send a coach looking for a clip that is not there.
+        shots: (item.detail || '') + (item.group === 'plan' && item.review ? ' \u00b7 Parallax' : ''),
         on,
         // A tick is a coach's judgement with a date on it. Unticked says "not signed off", NOT
         // "the player did not do it" — that claim is ticked_at, which is Forge's column and which
-        // atlas_app has no grant to write.
-        mark: on ? '✓ Signed off' : 'Not signed off',
+        // atlas_app has no grant to write. Same for watched_at, despite this feature being called
+        // "have you watched": the write below lands on verified_at.
+        mark: on ? '\u2713 Signed off' : 'Not signed off',
         when: on ? new Date(got.verifiedAt).toLocaleDateString() : '',
         ref: got.videoRef || '',
         note: got.verifyNote || '',
@@ -4015,9 +4205,72 @@ class Component extends DCLogic {
         // judgement. `drill_progress_coach_update` would refuse the write anyway; this stops the
         // UI from offering an action the database will reject.
         readOnly: isViewingSelf,
-        toggle: isViewingSelf ? (() => {}) : (() => this.tickDrill(who.id, id, !on)),
+        toggle: isViewingSelf ? (() => {}) : (() => this.tickDrill(who.id, item.id, !on)),
+      };
+    };
+
+    // Two rendered lists, not one of twenty-nine. The split is the server's `group` field, so the
+    // page is not re-deciding what an assessment is.
+    const pfDrills = REVIEW_ITEMS.filter(d => d.group === 'assessment').map(buildDrill);
+    const pfPlanDrills = REVIEW_ITEMS.filter(d => d.group === 'plan').map(buildDrill);
+    // The five STEP COMPLETIONS — the step-level twin of the drill tick, and the other half of
+    // "anything else that needs review via the plan". This replaces `state.signed = [1, 2]`, a
+    // hardcoded array local to the browser tab that reset on reload and that the student never saw.
+    const pfSteps = REVIEW_ITEMS.filter(d => d.group === 'step').map(buildDrill);
+
+    // ── FOLD-DOWN BARS, ONE PER STEP ────────────────────────────────────────────────────────
+    // Makel, 2026-09-15: "for a cleaner ui can we use either a fold down bar or a logic that wont
+    // populate the next required review item? ... the coach should still be able to see the entire
+    // progress, so the fold down bar makes more sense."
+    //
+    // So: FOLDED BY DEFAULT, and the bar itself carries the whole progress — the step's own
+    // sign-off pill plus an n/m count of the drills under it. A coach reads all five steps without
+    // expanding anything; expanding is for the detail, not for the state. That is the difference
+    // between a fold-down and hiding: nothing on the closed bar is missing, only the rows.
+    //
+    // Multi-open rather than an accordion: comparing step 2 against step 4 is a normal thing to do
+    // and an accordion would fight it. `planOpen` is a plain object keyed by step number.
+    const planOpen = this.state.planOpen || {};
+    const planSteps = [1, 2, 3, 4, 5].map(n => {
+      const completion = pfSteps.filter(d => d.id === 'plan:step-' + n)[0];
+      const kids = REVIEW_ITEMS.filter(d => d.group === 'plan' && d.step === n).map(buildDrill);
+      const done = kids.filter(d => d.on).length;
+      const open = !!planOpen[n];
+      return {
+        name: completion ? completion.name : 'Step ' + n,
+        cond: completion ? completion.shots : '',
+        // The bar toggles the fold. The pill inside it ticks the step — two actions in one strip,
+        // so the pill stops the event rather than doing both at once.
+        toggleFold: () => this.setState(st => {
+          const next = Object.assign({}, st.planOpen || {});
+          if (next[n]) delete next[n]; else next[n] = true;
+          return { planOpen: next };
+        }),
+        chevron: open ? '\u25be' : '\u25b8',
+        // Whole-step progress, visible while folded. This is the "entire progress" the bar owes a
+        // coach — counted from the same objects the rows render from.
+        count: done + ' / ' + kids.length + ' signed off',
+        countColor: kids.length > 0 && done === kids.length ? '#7fae8e' : '#8d99a8',
+        mark: completion ? completion.mark : '',
+        markColor: completion ? completion.markColor : '#8d99a8',
+        markBg: completion ? completion.markBg : 'rgba(255,255,255,0.04)',
+        when: completion ? completion.when : '',
+        // ⚠️ stopPropagation, or ticking the step also folds the bar it sits on. support.js maps
+        // `onclick` to React's `onClick` (support.js:318), so the handler receives a real event and
+        // the inner click would otherwise bubble to the bar.
+        tick: ev => {
+          if (ev && ev.stopPropagation) ev.stopPropagation();
+          if (completion) completion.toggle();
+        },
+        drillsShow: open ? 'flex' : 'none',
+        drills: kids
       };
     });
+    // How much of the filmed work is still waiting on somebody. Counted from the SAME objects that
+    // render, so the headline cannot disagree with the list under it. Step completions count too —
+    // they are the judgement the filmed drills add up to.
+    const planReview = REVIEW_ITEMS.filter(d => (d.group === 'plan' || d.group === 'step') && d.review);
+    const planReviewOpen = planReview.filter(d => !(drillSrc[d.id] || {}).verifiedAt).length;
 
     // ── COACHING NOTES ───────────────────────────────────────────────────────────────────────
     // The written half of the loop. The tick says a rep happened; this says what to do about it.
@@ -4065,6 +4318,47 @@ class Component extends DCLogic {
     });
     const noteVis = this.state.noteVis || 'coaching_team';
 
+    // ── WHAT THE PLAYER SEES · the shared vocabulary ────────────────────────────────────────
+    // Makel, 2026-09-15: "we do need to surface the metrics and categories that the players are
+    // seeing so that if they are speaking in person theres some correlative understanding there."
+    //
+    // NOT a copy of the player's result screen — deliberately ("I dont think we need to recreate
+    // the views of the player for the coach"). No map, no heat kernels, no share card. What a
+    // coach gets is the WORDS: the archetype, the zone names, the growth zone, the time split.
+    // If Luke says "your Transfer Zone is dim" and the player read "Transfer Zone" on their own
+    // screen, they are talking about the same thing. That is the entire feature.
+    //
+    // `who.dna` is the ALLOWLISTED projection built in server/dnaSummary.ts. The full scoring
+    // result also carries the attention-check report, the raw personality scale scores and the
+    // Mini-IPIP traits; none of them are in this object and the raw answers they come from never
+    // leave the server. Nothing here filters — there is nothing to filter.
+    const dna = who.dna || null;
+    // Thin reads must read as EARLY, not broken. A first read has a provisional archetype and
+    // mostly unmeasured zones, which is a real answer — so the panel says which tiers it rests on
+    // rather than leaving a coach to wonder what went wrong.
+    const dnaZones = dna ? dna.zones.map(z => ({
+      label: z.label,
+      status: z.statusLabel,
+      // The line the PLAYER was shown about this zone at this status. Their words, not a
+      // paraphrase — the point of the panel is that both sides have the same sentence.
+      line: z.statusLine,
+      // A dash, never a number, when ALLOC was never answered. The engine falls back to an even
+      // 25% split internally; printing that beside a real recommendation would be a fabricated
+      // value, which is the one failure this project treats as worse than a blank.
+      actual: z.actual === null ? '\u2014' : z.actual + '%',
+      rec: z.recommended + '%',
+      delta: z.delta === null ? '' : (z.delta > 0 ? '+' : '') + z.delta,
+      deltaColor: z.delta === null ? '#66717f' : Math.abs(z.delta) >= 15 ? '#cf7d5c' : '#8d99a8',
+      // Bar widths. Capped at 100 so a malformed value cannot blow the row open.
+      actualW: z.actual === null ? 0 : Math.min(100, z.actual),
+      recW: Math.min(100, z.recommended),
+      statusColor: z.status === 'strong' ? '#7fae8e'
+        : z.status === 'building' ? '#c8a05e'
+        : z.status === 'dim' ? '#cf7d5c' : '#66717f',
+      nameColor: z.growth ? '#c8a05e' : '#ece7db',
+      growthTag: z.growth ? 'Build next' : ''
+    })) : [];
+
     return {
       pfDrills,
       pfNotes,
@@ -4096,12 +4390,91 @@ class Component extends DCLogic {
       pfNoteErrShow: this.state.noteErr ? 'block' : 'none',
       tickErr: this.state.tickErr || '',
       tickErrShow: this.state.tickErr ? 'block' : 'none',
+      // A coach with a student open always gets the panel. A PLAYER gets it only once something
+      // has been ticked for them — an untouched player has no sign-off history, and twenty-nine
+      // 'Not signed off' rows is not information, it is a wall.
       pfDrillsShow: ROSTER.length > 0 ? !!who.id : Object.keys(who.drills || {}).length > 0,
       // The same list means two different things depending on who is reading it.
       pfDrillsTitle: ROSTER.length === 0 ? 'What your coach has verified.' : 'What you have watched.',
       pfDrillsBlurb: ROSTER.length === 0
         ? 'Your coach watches the submission in Parallax and ticks it here. A tick is their judgement that the rep happened.'
         : 'Watch the submission in Parallax, then tick it here. A tick is your judgement that the rep happened \u2014 it is not the player\u2019s claim, which is theirs to make and lives elsewhere.',
+
+      // ── THE PLAN'S OWN DRILLS ──────────────────────────────────────────────────────────────
+      // Twenty-three items across five steps, nine of them filmed. Same card, same write path,
+      // same column (verified_at) — a second list rather than a second mechanism.
+      // The five fold-down bars. `pfPlanDrills` / `pfSteps` are no longer rendered flat — they
+      // survive as the inputs `planSteps` is assembled from, and as the source of the counts.
+      planSteps,
+      // A COACH always gets the list once a student is open — they are the one who ticks, so an
+      // all-unticked plan is the normal starting state and hiding it would hide the work.
+      // A PLAYER gets it only once something in the plan has actually been reviewed: twenty-three
+      // rows of 'Not signed off' is not information, and they already have the plan itself on
+      // their own `plan` screen. Same rule as pfDrillsShow directly above.
+      pfPlanShow: pfPlanDrills.length === 0 ? 'none'
+        : ROSTER.length > 0 ? (who.id ? 'block' : 'none')
+        : (pfPlanDrills.concat(pfSteps).some(d => d.on) ? 'block' : 'none'),
+      pfPlanTitle: ROSTER.length === 0 ? 'What your coach has reviewed in the plan.' : 'The plan, step by step.',
+      pfPlanBlurb: ROSTER.length === 0
+        ? 'The five steps and every drill in them. A tick means your coach has watched that rep \u2014 the ones tagged Parallax are the ones that are filmed.'
+        : 'Every drill in the five steps. The ones tagged Parallax are filmed and are the ones waiting on your eyes. Step 1 has two routes \u2014 the Cannon and the Anchor \u2014 that share these reps; nothing records which one this player is on, so the finish is named neutrally here.',
+      // Counted from the same objects that render, so the headline cannot disagree with the list.
+      // Counts the nine filmed drills AND the five step completions — everything in the plan that
+      // waits on a coach. Deliberately not worded 'filmed drills': five of the fourteen are not
+      // films, and a count that describes itself wrongly is the same class of error as a fabricated
+      // number.
+      pfPlanCount: planReviewOpen === 0
+        ? 'All ' + planReview.length + ' items reviewed'
+        : planReviewOpen + ' of ' + planReview.length + ' items awaiting your review',
+      pfPlanCountColor: planReviewOpen === 0 ? '#7fae8e' : '#c8a05e',
+
+      // ── WHAT THE PLAYER SEES ───────────────────────────────────────────────────────────────
+      dnaShow: dna ? 'block' : 'none',
+      // An explicit empty state rather than a hidden block: "this player has not finished an
+      // intake" is a thing a coach needs to know, and a missing panel does not say it.
+      dnaEmptyShow: dna ? 'none' : (ROSTER.length > 0 && who.id ? 'block' : 'none'),
+      dnaEmptyText: 'No Practice DNA read on file for this player yet. The panel fills in once they finish the intake.',
+      dnaTitle: ROSTER.length === 0 ? 'What your coach sees of your read.' : 'What this player sees.',
+      dnaBlurb: ROSTER.length === 0
+        ? 'The same words your own result screen used. Your coach reads this before a lesson so you are both using one vocabulary.'
+        : 'Their Practice DNA read, in the words they were shown. Not their answers and not their personality scores \u2014 the conclusions, so an in-person conversation starts from the same page they did.',
+      dnaDepth: dna ? dna.depthLabel : '',
+      dnaBasis: dna ? dna.depthBasis : '',
+      dnaArchetype: dna ? dna.archetype : '',
+      dnaTagline: dna ? dna.archetypeTagline : '',
+      dnaCoachLine: dna ? dna.archetypeCoachLine : '',
+      // 'Provisional' is the instrument's own hedge and it travels. A coach told an archetype with
+      // no qualifier will use it like a verdict; the player was told it might move.
+      dnaProvisional: dna && dna.archetypeProvisional ? 'Provisional \u2014 may change with a deeper read' : '',
+      dnaProvisionalShow: dna && dna.archetypeProvisional ? 'inline-block' : 'none',
+      dnaTendency: dna ? dna.tendencyName : '',
+      dnaTendencyPole: dna ? dna.tendencyPole : '',
+      // 0 = pure Engineer, 100 = pure Artist. Rendered as a position on a line, which is how the
+      // player saw it — a bare number would invite reading it as a score.
+      dnaTendencyPos: dna ? Math.max(0, Math.min(100, dna.tendency)) : 50,
+      dnaTendencyNote: dna && dna.tendencyProvisional ? 'Provisional' : '',
+      dnaGrowth: dna && dna.growthZone ? dna.growthZone : '\u2014',
+      dnaGrowthHeadline: dna ? dna.growthHeadline : '',
+      dnaGrowthMoves: dna ? dna.growthMoves.map(m => ({ text: m })) : [],
+      dnaZones,
+      dnaEfficiency: dna ? dna.efficiency + ' / 100' : '\u2014',
+      dnaEfficiencyLabel: dna ? dna.efficiencyLabel : '',
+      dnaEfficiencyColor: !dna ? '#66717f' : dna.efficiency >= 75 ? '#7fae8e' : dna.efficiency >= 50 ? '#c8a05e' : '#cf7d5c',
+      dnaPattern: dna && dna.pattern ? dna.pattern : '',
+      dnaPatternShow: dna && dna.pattern ? 'block' : 'none',
+      dnaPatternHeadline: dna ? dna.patternHeadline : '',
+      dnaPatternFix: dna ? dna.patternFix : '',
+      dnaChips: dna ? dna.chips.map(c => ({ label: c.label, blurb: c.blurb })) : [],
+      dnaChipsShow: dna && dna.chips.length ? 'block' : 'none',
+      // Mechanics Index vs handicap. `value` is a point when measured and a band midpoint when
+      // estimated, so the range is printed rather than the midpoint alone wherever one exists.
+      dnaMiShow: dna && dna.mi.state !== 'none' ? 'block' : 'none',
+      dnaMi: !dna ? '\u2014'
+        : dna.mi.range ? dna.mi.range[0] + '\u2013' + dna.mi.range[1] + ' (estimated)'
+        : dna.mi.value === null ? '\u2014' : String(dna.mi.value),
+      dnaMiHcp: dna && dna.mi.handicap !== null ? String(dna.mi.handicap) : '\u2014',
+      dnaMiGap: dna && dna.mi.gap !== null ? (dna.mi.gap > 0 ? '+' : '') + dna.mi.gap.toFixed(1) : '\u2014',
+      dnaMiVerdict: dna ? dna.mi.verdict : '',
       pfName: who.n,
       // Same tiebreaker as the roster row, carried onto the file the coach opens from it — landing
       // on a dossier headed by one of three identical names, with no way to tell which, is the

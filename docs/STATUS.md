@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-15 07:20 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-15 12:28 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **1 file(s)** | **1 ahead** |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **8 file(s)** | pushed |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | **2 ahead** |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-15 07:20 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.21.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.21.0.tgz`
-- **Atlas HEAD:** `2c69928 Disambiguate students who share a display name`
+- **Atlas HEAD:** `76cfb32 Docs: close out T-62 — renames plus the general disambiguator`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -142,8 +142,25 @@ contain the strike map and must NOT contain "Handicap history" or "The interview
 A second copy remains inside the `intake` section, which is hidden from both roles and therefore
 never renders. Left alone on purpose.
 
-The player file now reads: Handicap history → The interview → the coach sign-off list → **coaching
-notes** (added 2026-09-14).
+The player file now reads: Handicap history → The interview → the assessment sign-off list →
+**the plan, as five fold-down bars** → **what the player sees (Practice DNA)** → coaching notes.
+
+### 🟢 The coach can see what the player sees — 2026-09-15
+
+Two halves of one ask: give a coach the player's own vocabulary, and let them sign off everything
+the plan actually asks for.
+
+| | |
+| --- | --- |
+| **The shared vocabulary** | `server/dnaSummary.ts` scores a run server-side and projects it to a coach-safe **allowlist** — archetype + the instrument's own coach line, tendency, the four zones with status and their-time-vs-recommended, growth zone + the three prescribed moves, efficiency, Mechanics Index, pattern, chips. Every term is one the player already read on their result screen. Not a copy of that screen: no map, no heat kernels, no share card. |
+| **Allowlist, never a delete-list** | `PracticeDnaResult` carries `attention` (the `quality_flag` basis), `scaleScores` (which includes `neuroticism`/`extraversion`/`agreeableness`/`conscientiousness`) and `architect`. A new object is built field by field, so anything added upstream is excluded by default — the same reasoning that made `atlas.student_intake` a view rather than a policy. |
+| **`answers` never leaves the server** | The view strips IPIP01–20 but **not** ATTN01/02, so the raw column is read, scored and dropped inside one function. Verified by string-scanning the **actual wire payload** for a real 5-student roster — clean, both audiences. |
+| **A fabrication caught before shipping** | The first guard on "their time %" tested `zoneIntensity > 0`. That is never false: `getAlloc` (scoring.ts:262) falls back to `{25,25,25,25}` and the volume factor floors at 0.4, so an unanswered run reads ≈0.16 on every zone and four invented 25%s would have printed beside a real recommendation. The signal has to come from the **input**; proved by scoring one real run twice, with and without volume/alloc — dashes, not 25s. |
+| **Sign-off widened 3 → 34** | Was three ids hardcoded in the page, of the six `DRILL_DEFS` defines and none of the 23 the plan defines. Now `shared/drills.ts`: 6 assessments (bare ids kept, so no live sign-off is orphaned) + 23 plan drills (`plan:<step>-<ref>`) + 5 step completions (`plan:step-N`), replacing `state.signed = [1,2]` — a literal array local to the browser tab. 14 items need a coach's judgement. **No migration**: `drill_id` is unbounded `text`, no CHECK, no FK. |
+| **Still `verified_at`, not `watched_at`** | Despite the feature being called "have you watched", `atlas_app` holds no column grant on `watched_at` or `ticked_at` — the player's own claim, forge_app's to write. |
+| **Fold-down bars** | Folded by default, and the **closed** bar carries the whole progress: the step's sign-off pill plus `n / m signed off`. Five bars place the player without a click. The bar folds, the pill inside it ticks and stops the event, or one click would do both. |
+| **A hole the widening opened** | The verify route took `:drillId` straight from the path into the INSERT — any string in a URL became a permanent row. Now checked against the **same list the page renders from**, injected as `AtlasData.reviewItems` rather than hardcoded, because two lists drift. |
+| **Verified** | Live tick+untick of `plan:2-P1` through `withRls` as the coach succeeded; the same write against a `pending` student was refused **42501**. Both views driven in a browser: 0 unbound bindings, fold opens to 7 drills with the others folded, the step pill leaves the bar open and surfaces a failed write rather than a false sign-off. ⚠️ The independent refutation pass did **not** run — all six agents died on the org monthly spend limit. |
 
 ### 🟢 The coaching loop closed — 2026-09-14
 
