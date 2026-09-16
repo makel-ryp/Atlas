@@ -4308,6 +4308,11 @@ class Component extends DCLogic {
       const kids = REVIEW_ITEMS.filter(d => d.group === 'plan' && d.step === n).map(buildDrill);
       const done = kids.filter(d => d.on).length;
       const open = !!planOpen[n];
+      // The step's OWN completion counts as waiting too — it is one of the 14 items a coach must
+      // judge, and `planWaiting` in the header counts it. Leaving it out here made the header
+      // disagree with the sum of the bars the moment a student submitted a step completion
+      // (header 7, bars 2+4=6, verified live 2026-09-16).
+      const waitingHere = kids.filter(d => d.waiting).length + (completion && completion.waiting ? 1 : 0);
       return {
         name: completion ? completion.name : 'Step ' + n,
         cond: completion ? completion.shots : '',
@@ -4325,8 +4330,8 @@ class Component extends DCLogic {
         // separate "waiting on you" from "nobody has started", or a submitted rep stays invisible
         // behind a closed bar, which is the exact failure the fold-down could otherwise introduce.
         count: done + ' / ' + kids.length + ' signed off'
-          + (kids.filter(d => d.waiting).length ? ' \u00b7 ' + kids.filter(d => d.waiting).length + (isViewingSelf ? ' with your coach' : ' waiting on you') : ''),
-        countColor: kids.filter(d => d.waiting).length ? '#c8a05e'
+          + (waitingHere ? ' \u00b7 ' + waitingHere + (isViewingSelf ? ' with your coach' : ' waiting on you') : ''),
+        countColor: waitingHere ? '#c8a05e'
           : kids.length > 0 && done === kids.length ? '#7fae8e' : '#8d99a8',
         mark: completion ? completion.mark : '',
         markColor: completion ? completion.markColor : '#8d99a8',
