@@ -81,13 +81,22 @@ export type RosterRow = {
   note: Record<string, string>
   /** Per-axis tone flags. Forge. */
   tone: Record<string, string>
-  /** Intake answers. No producer. */
+  /**
+   * Intake answers. REAL in the database — `atlas.intake_submissions.answers`, 59 items on a full
+   * Tier 1A+1B+2 run — and deliberately NOT sent here. They are the player's raw item responses;
+   * a coach gets the CONCLUSIONS via `dna`, never the answer sheet. Empty by policy, not by
+   * absence, which is why it is not in the "no producer" group above.
+   */
   answer: Record<string, number>
   /** Coach estimates. No producer. */
   est: Record<string, number>
   /** Dispersion grid. Forge. */
   grid: number[]
-  /** Intake file prose. No producer. */
+  /**
+   * Intake file prose — the five free-text interview answers. REAL since the intake's `interview`
+   * block landed: `atlas.intake_submissions.interview`, read at :820 for the player and :1006 for
+   * a coach. Empty only for a run that never reached the interview screen.
+   */
   file: Record<string, string>
   /**
    * Coach sign-off state, keyed by drill id. REAL — golf.drill_progress, written by a coach after
