@@ -82,10 +82,19 @@ export type RosterRow = {
   /** Per-axis tone flags. Forge. */
   tone: Record<string, string>
   /**
-   * Intake answers. REAL in the database — `atlas.intake_submissions.answers`, 59 items on a full
-   * Tier 1A+1B+2 run — and deliberately NOT sent here. They are the player's raw item responses;
-   * a coach gets the CONCLUSIONS via `dna`, never the answer sheet. Empty by policy, not by
-   * absence, which is why it is not in the "no producer" group above.
+   * NOT the intake answer sheet — I got this wrong on 2026-09-16 and the correction matters, because
+   * the wrong reading invites someone to wire `atlas.intake_submissions.answers` to it and leak
+   * personality and attention-check items to a coach.
+   *
+   * It is the player's four SELF-ESTIMATE bands (0-4) keyed by `path`/`face`/`contact`/`lowpoint`
+   * — `who.answer[k]` in the CATS block at Dashboard.dc.html:4136-4139, sitting beside `read`,
+   * `tone` and `note` for the same four axes. It belongs to the ten-shot video test, REMOVED
+   * 2026-09-03 (see the note at Dashboard.dc.html:464-480; Makel: "we cant complete it properly").
+   *
+   * So this is permanently empty, not withheld and not awaiting a producer: the feature was
+   * cancelled, its consumer was deleted, and the sections that rendered it (`intake`, `evidence`)
+   * are hidden from BOTH audiences. The intake answers are a different thing entirely and never
+   * leave the server — see `dnaSummary.ts`.
    */
   answer: Record<string, number>
   /** Coach estimates. No producer. */

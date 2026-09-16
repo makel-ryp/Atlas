@@ -6034,7 +6034,13 @@ class Component extends DCLogic {
       ...this.rosterVals(),
       isPlan: view === 'plan' && !isHidden('plan'), goPlan: this.nav('plan'),
       cPlan: r.plan.c, bPlan: r.plan.b,
-      tierName: TIERS[s.tier].name,
+      // ⚠️ BLANK, not TIERS[s.tier].name. `s.tier` is the literal 'builder' seeded at :3151, so this
+      // printed "BUILDER" on EVERY player's rail as a statement about that player's curriculum tier.
+      // Nothing records a tier: ryp-core has no such column (checked across all 22 tables), and
+      // atlas.intake_submissions.tier_completed is the QUIZ ladder, a different construct. Same class
+      // as T-52's 'Day 41 of 90'. The Plan SCREEN behind this badge is still Luke's unwired prototype
+      // and needs its own pass — this only stops the rail asserting a tier as fact.
+      tierName: '',
       ...this.planVals(),
       ...this.clockVals(),
       ...this.fitnessVals(),
@@ -6046,10 +6052,17 @@ class Component extends DCLogic {
       cTransfer: r.transfer.c, bTransfer: r.transfer.b,
       isPerf: view === 'perf' && !isHidden('perf'), goPerf: this.nav('perf'),
       cPerf: r.perf.c, bPerf: r.perf.b,
-      zoneBuild: 'Step ' + (s.signed.length + 1) + '/5',
-      zoneCal: 'Plotted',
-      zoneTransfer: 'Active',
-      zonePerf: 'Locked',
+      // ⚠️ ALL FOUR BLANK. These were a literal derived from `signed: [1,2]` (:3148, browser-local,
+      // resets on reload — so "Step 3/5" for everyone forever) and three bare strings. They read as
+      // this player's standing in each zone, and they CONTRADICTED the player's own Practice DNA two
+      // panels away: Casey Flint's scored run has Transfer and Performance both 'dim' while the rail
+      // said ACTIVE and LOCKED. `dnaZones` already carries the real per-zone status where a run
+      // exists. Whether this nav badge should mirror that is Luke's call, not something to infer
+      // here — an empty badge is correct until he says.
+      zoneBuild: '',
+      zoneCal: '',
+      zoneTransfer: '',
+      zonePerf: '',
       isFitness: view === 'fitness' && !isHidden('fitness'), goFitness: this.nav('fitness'),
       cFitness: r.fitness.c, bFitness: r.fitness.b,
       weekRead: weekDone + '/6',
