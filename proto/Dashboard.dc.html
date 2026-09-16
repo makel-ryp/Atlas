@@ -4325,7 +4325,7 @@ class Component extends DCLogic {
         // separate "waiting on you" from "nobody has started", or a submitted rep stays invisible
         // behind a closed bar, which is the exact failure the fold-down could otherwise introduce.
         count: done + ' / ' + kids.length + ' signed off'
-          + (kids.filter(d => d.waiting).length ? ' \u00b7 ' + kids.filter(d => d.waiting).length + ' waiting on you' : ''),
+          + (kids.filter(d => d.waiting).length ? ' \u00b7 ' + kids.filter(d => d.waiting).length + (isViewingSelf ? ' with your coach' : ' waiting on you') : ''),
         countColor: kids.filter(d => d.waiting).length ? '#c8a05e'
           : kids.length > 0 && done === kids.length ? '#7fae8e' : '#8d99a8',
         mark: completion ? completion.mark : '',
@@ -4517,7 +4517,7 @@ class Component extends DCLogic {
       // simply everything not yet signed off, most of which nobody has started. The waiting count
       // leads when there is one, because it is the only half with somebody on the other end of it.
       pfPlanCount: planWaiting > 0
-        ? planWaiting + (planWaiting === 1 ? ' submission waiting on you' : ' submissions waiting on you')
+        ? planWaiting + (planWaiting === 1 ? ' submission' : ' submissions') + (isViewingSelf ? ' with your coach' : ' waiting on you')
         : planReviewOpen === 0
           ? 'All ' + planReview.length + ' items reviewed'
           : planReviewOpen + ' of ' + planReview.length + ' items not yet signed off',
