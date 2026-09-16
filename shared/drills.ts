@@ -113,12 +113,20 @@ const ASSESSMENTS: ReviewItem[] = [
  * nothing stores a player's route, so this file cannot know it and must not print a name implying
  * it does. The names below are therefore the SHARED movement, with the route-specific finish left
  * out; the panel says so in as many words.
+ *
+ * ⚠️ THE STANDARDS, HOWEVER, ARE VERBATIM. An adversarial review (2026-09-15) caught this file
+ * PARAPHRASING them: `1-1b` read "No early move", a string that appears NOWHERE in the plan (the
+ * Cannon says "No early extension", the Anchor "No sway past trail hip"), and `1-1a` had taken the
+ * ANCHOR's standard while its name followed the Cannon. A coach would have been signing off
+ * against a criterion that does not exist, with the real one visible on the roadmap screen one tab
+ * away. Where the two routes differ the card now names BOTH — which is the true state of a player
+ * whose route nothing records — and where they agree it is the single shared string.
  */
 const PLAN: ReviewItem[] = [
   // Step 1 · Pivot — route-dependent, see above.
-  { id: 'plan:1-1a', name: 'Kickstand', context: 'Step 1 · Pivot', detail: 'Trail heel loaded', step: 1, group: 'plan', review: false },
-  { id: 'plan:1-1b', name: 'Regular stance', context: 'Step 1 · Pivot', detail: 'No early move', step: 1, group: 'plan', review: false },
-  { id: 'plan:1-2', name: 'Shift', context: 'Step 1 · Pivot', detail: 'Lead hip clears', step: 1, group: 'plan', review: false },
+  { id: 'plan:1-1a', name: 'Kickstand', context: 'Step 1 · Pivot', detail: 'Cannon: trail heel down · Anchor: trail heel loaded', step: 1, group: 'plan', review: false },
+  { id: 'plan:1-1b', name: 'Regular stance', context: 'Step 1 · Pivot', detail: 'Cannon: no early extension · Anchor: no sway past trail hip', step: 1, group: 'plan', review: false },
+  { id: 'plan:1-2', name: 'Shift', context: 'Step 1 · Pivot', detail: 'Lead hip clears (Cannon) · lead hip posts (Anchor)', step: 1, group: 'plan', review: false },
   { id: 'plan:1-3', name: 'Load, shift, finish', context: 'Step 1 · Pivot', detail: 'Sequence intact', step: 1, group: 'plan', review: true },
 
   // Step 2 · Freezers
@@ -128,7 +136,7 @@ const PLAN: ReviewItem[] = [
   { id: 'plan:2-P1', name: 'Proof Swing — path at zero', context: 'Step 2 · Freezers', detail: 'Path at zero', step: 2, group: 'plan', review: true },
   { id: 'plan:2-P2', name: 'Proof Swing — shaft lean', context: 'Step 2 · Freezers', detail: 'Shaft lean right', step: 2, group: 'plan', review: true },
   { id: 'plan:2-P3', name: 'Proof Swing — ground force', context: 'Step 2 · Freezers', detail: 'Force excellent', step: 2, group: 'plan', review: true },
-  { id: 'plan:2-P4', name: 'Proof Swing — trunk angle', context: 'Step 2 · Freezers', detail: 'Decreases 5°+', step: 2, group: 'plan', review: true },
+  { id: 'plan:2-P4', name: 'Proof Swing — trunk angle', context: 'Step 2 · Freezers', detail: 'Decreases 5°+ (low dynamic lie angle)', step: 2, group: 'plan', review: true },
 
   // Step 3 · Smoothie
   { id: 'plan:3-S1', name: 'Time your smoothie', context: 'Step 3 · Smoothie', detail: 'Baseline logged', step: 3, group: 'plan', review: false },

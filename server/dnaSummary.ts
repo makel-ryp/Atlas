@@ -116,6 +116,8 @@ export type DnaSummary = {
   /** The line the instrument writes FOR a coach. Already exists; this is its intended reader. */
   archetypeCoachLine: string
   archetypeProvisional: boolean
+  /** The chip's wording — names WHY it is provisional. */
+  archetypeProvisionalNote: string
 
   /** 0 = pure Engineer (thinker) · 100 = pure Artist (doer). */
   tendency: number
@@ -133,10 +135,26 @@ export type DnaSummary = {
 
   zones: DnaZoneRow[]
 
-  /** 0–100: how much of their practice moves their handicap. */
-  efficiency: number
-  /** 'Dialed in' | 'Leaking strokes' | 'Misallocated'. */
+  /**
+   * 0–100: how much of their practice moves their handicap. **null when it cannot be computed
+   * from answers the player actually gave.**
+   *
+   * ⚠️ FOUND BY AN ADVERSARIAL REVIEW, 2026-09-15, and confirmed by execution. This is a weighted
+   * blend — 0.5·allocationFit + 0.3·practiceQuality + 0.2·transferTerm — and EVERY term has a
+   * flattering fallback (scoring.ts:441-466): allocationFit off `getAlloc`'s invented
+   * `{25,25,25,25}`, practiceQuality at a PERFECT 1.0 because `scales.comfortCreature ?? 0`, and
+   * transferTerm at 0.5 because `mastery.transfer` is null. A player who answered NOTHING scored
+   * `86 / "Dialed in"` — byte-identical to a player who reported a real even split, and BETTER
+   * than one who honestly reported a badly skewed 85/5/5/5 (61 / "Leaking strokes").
+   *
+   * It printed in green beside four zone rows that correctly read "Their time —" / "Not measured".
+   * The author guarded those and missed this. All three inputs are now required.
+   */
+  efficiency: number | null
+  /** '' when `efficiency` is null. */
   efficiencyLabel: string
+  /** What is still unanswered, when `efficiency` is null. '' otherwise. */
+  efficiencyMissing: string
 
   /** 'The Ghost' etc, '' when no pattern fired. */
   pattern: string
@@ -159,6 +177,17 @@ export type DnaSummary = {
     gap: number | null
     /** '' when there is no verdict yet. */
     verdict: string
+    /**
+     * False when the estimate rests on nothing.
+     *
+     * ⚠️ FOUND BY AN ADVERSARIAL REVIEW, 2026-09-15. `estimateMi` (scoring.ts:482-486) is
+     * `scales.mechanics ?? 50`, so with the mechanics scale unanswered the shift is exactly 0, the
+     * estimate equals the handicap, the gap is structurally 0.0 and the verdict is ALWAYS
+     * "Your swing and your scoring are in step." Every unanswered player read as perfectly
+     * balanced — indistinguishable from a real balanced measurement, and a stated finding about a
+     * student's swing derived from a default. The panel hides the card when this is false.
+     */
+    estimable: boolean
   }
 }
 
@@ -217,7 +246,34 @@ export function toCoachSummary(result: PracticeDnaResult, hasAlloc: boolean): Dn
   const tendency = TENDENCIES[result.tendencyLabel]
   const growth = result.growthZone ? GROWTH[result.growthZone] : null
   const pattern = result.pattern ? PATTERNS[result.pattern] : null
-  const band = efficiencyBand(result.efficiency)
+  /**
+   * ── THE THREE GUARDS ────────────────────────────────────────────────────────────────────────
+   * Each one asks whether the PLAYER supplied the input, never whether the engine produced a
+   * number — the engine always produces a number, which is exactly the problem. See the field
+   * comments on DnaSummary for the executed evidence behind each.
+   */
+  const scales = result.scaleScores
+  // Efficiency needs all three of its terms, because a missing term is not a small error: it is
+  // silently replaced by a FLATTERING constant (1.0 for quality, 0.5 for transfer).
+  const effMissing: string[] = []
+  if (!hasAlloc) effMissing.push('their practice split')
+  if (scales.comfortCreature === undefined || scales.quickFixJunkie === undefined) {
+    effMissing.push('the practice-quality questions')
+  }
+  if (result.mastery.transfer === null) effMissing.push('their Transfer self-rating')
+  const effOk = effMissing.length === 0
+  const band = effOk ? efficiencyBand(result.efficiency) : null
+
+  // The Mechanics Index estimate is `handicap − ((mechanics − 50)/50)·8`. Unanswered ⇒ shift 0 ⇒
+  // the "estimate" is just the handicap back, and the gap is 0 by construction.
+  const miEstimable = result.mi.state === 'measured' || scales.mechanics !== undefined
+
+  // An archetype is a claim about zones. With none measured, the instrument's own
+  // `archetypeProvisional` can still read false (it keys off tendency items, which are Tier 1A),
+  // so a coach was handed "no zone is starving" as an unhedged 24px headline above four rows
+  // reading "Not measured". The hedge is forced here rather than the claim suppressed, because the
+  // archetype NAME is the shared vocabulary this panel exists to provide.
+  const noZoneMeasured = ZONE_ORDER.every((z) => result.masteryStatus[z] === 'locked')
 
   const zones: DnaZoneRow[] = ZONE_ORDER.map((z) => {
     const status = result.masteryStatus[z]
@@ -257,7 +313,11 @@ export function toCoachSummary(result: PracticeDnaResult, hasAlloc: boolean): Dn
     archetype: archetype.name,
     archetypeTagline: archetype.tagline,
     archetypeCoachLine: archetype.coachLine,
-    archetypeProvisional: result.archetypeProvisional,
+    archetypeProvisional: result.archetypeProvisional || noZoneMeasured,
+    /** Why it is provisional, so the chip says something a coach can act on. */
+    archetypeProvisionalNote: noZoneMeasured
+      ? 'Provisional \u2014 no zone measured yet'
+      : 'Provisional \u2014 may change with a deeper read',
 
     tendency: result.tendency,
     tendencyName: tendency.name,
@@ -270,8 +330,9 @@ export function toCoachSummary(result: PracticeDnaResult, hasAlloc: boolean): Dn
 
     zones,
 
-    efficiency: result.efficiency,
-    efficiencyLabel: band.label,
+    efficiency: effOk ? result.efficiency : null,
+    efficiencyLabel: band ? band.label : '',
+    efficiencyMissing: effOk ? '' : 'Needs ' + effMissing.join(' and ') + '.',
 
     pattern: pattern?.name ?? '',
     patternHeadline: pattern?.headline ?? '',
@@ -285,8 +346,11 @@ export function toCoachSummary(result: PracticeDnaResult, hasAlloc: boolean): Dn
       handicap: result.mi.handicap,
       value: result.mi.mi,
       range: result.mi.miRange,
-      gap: result.mi.gap,
-      verdict: result.mi.verdict ? MI_VERDICTS[result.mi.verdict].headline : '',
+      // Both suppressed when the estimate rests on the `?? 50` default: a gap of 0.0 and
+      // "in step" are the arithmetic of an unanswered question, not a finding about a swing.
+      gap: miEstimable ? result.mi.gap : null,
+      verdict: miEstimable && result.mi.verdict ? MI_VERDICTS[result.mi.verdict].headline : '',
+      estimable: miEstimable,
     },
   }
 }

@@ -689,8 +689,13 @@
         </sc-for>
       </div>
 
-      <!-- GROWTH ZONE — the prescription the player was given, verbatim. -->
-      <div style="padding:18px 20px; border:1px solid rgba(200,160,94,0.22); border-radius:10px; background:#1a222e; margin-bottom:14px;">
+      <!-- GROWTH ZONE — the prescription the player was given, verbatim.
+           GATED: `growthZone` is null until at least one zone is measured, and this card was the
+           only one in the panel with no display condition — it rendered as an empty gold box
+           reading "BUILD NEXT · —" with no headline and no moves. Seen in a browser on a synthetic
+           empty-intake payload; an adversarial verifier had refuted this one, and the render
+           settled it. -->
+      <div style="display: {{ dnaGrowthShow }}; padding:18px 20px; border:1px solid rgba(200,160,94,0.22); border-radius:10px; background:#1a222e; margin-bottom:14px;">
         <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#8a6a2f; margin-bottom:6px;">Build next &middot; {{ dnaGrowth }}</div>
         <div style="font-family:'Newsreader',serif; font-size:18px; color:#ece7db; margin-bottom:10px;">{{ dnaGrowthHeadline }}</div>
         <sc-for list="{{ dnaGrowthMoves }}" as="m" hint-placeholder-count="3">
@@ -4278,7 +4283,12 @@ class Component extends DCLogic {
     // The intake review item — the same card, the same write path, a different TRIGGER. It sits on
     // the Practice DNA panel because that is the thing it is a review OF; nothing about the
     // mechanism is special, which is the point of making `source` a field rather than a branch.
-    const pfIntake = REVIEW_ITEMS.filter(d => d.group === 'intake').map(buildDrill);
+    const pfIntake = REVIEW_ITEMS.filter(d => d.group === 'intake').map(buildDrill).map(d => Object.assign({}, d, {
+      // The catalogue's wording is addressed to the COACH ("Read through with the player"). On the
+      // player's own file that instructs them to read their result through with themselves. Same
+      // row, same state, audience-appropriate words — the pfDrills/pfNotes pattern.
+      shots: isViewingSelf ? 'Your coach reads this before a lesson' : d.shots
+    }));
 
     // ── FOLD-DOWN BARS, ONE PER STEP ────────────────────────────────────────────────────────
     // Makel, 2026-09-15: "for a cleaner ui can we use either a fold down bar or a logic that wont
@@ -4530,7 +4540,10 @@ class Component extends DCLogic {
       dnaCoachLine: dna ? dna.archetypeCoachLine : '',
       // 'Provisional' is the instrument's own hedge and it travels. A coach told an archetype with
       // no qualifier will use it like a verdict; the player was told it might move.
-      dnaProvisional: dna && dna.archetypeProvisional ? 'Provisional \u2014 may change with a deeper read' : '',
+      // The server words the chip, because it knows WHY it is provisional — "no zone measured
+      // yet" is a different warning from "may change with a deeper read", and the first one is the
+      // one that has to sit beside a tagline claiming no zone is starving.
+      dnaProvisional: dna && dna.archetypeProvisional ? dna.archetypeProvisionalNote : '',
       dnaProvisionalShow: dna && dna.archetypeProvisional ? 'inline-block' : 'none',
       dnaTendency: dna ? dna.tendencyName : '',
       dnaTendencyPole: dna ? dna.tendencyPole : '',
@@ -4538,13 +4551,21 @@ class Component extends DCLogic {
       // player saw it — a bare number would invite reading it as a score.
       dnaTendencyPos: dna ? Math.max(0, Math.min(100, dna.tendency)) : 50,
       dnaTendencyNote: dna && dna.tendencyProvisional ? 'Provisional' : '',
+      // Hidden when the instrument has not chosen a zone — which it cannot until something is
+      // measured. An empty prescription card is not an honest empty, it is a blank promise.
+      dnaGrowthShow: dna && dna.growthZone ? 'block' : 'none',
       dnaGrowth: dna && dna.growthZone ? dna.growthZone : '\u2014',
       dnaGrowthHeadline: dna ? dna.growthHeadline : '',
       dnaGrowthMoves: dna ? dna.growthMoves.map(m => ({ text: m })) : [],
       dnaZones,
-      dnaEfficiency: dna ? dna.efficiency + ' / 100' : '\u2014',
-      dnaEfficiencyLabel: dna ? dna.efficiencyLabel : '',
-      dnaEfficiencyColor: !dna ? '#66717f' : dna.efficiency >= 75 ? '#7fae8e' : dna.efficiency >= 50 ? '#c8a05e' : '#cf7d5c',
+      // ⚠️ `efficiency` is NULL whenever any of its three inputs is unanswered — see
+      // server/dnaSummary.ts. It used to print a green 86 / "Dialed in" for a player who had
+      // answered nothing, beside four zone rows correctly reading "Their time —". A dash and a
+      // sentence naming what is missing is the honest render of the same state.
+      dnaEfficiency: (dna && dna.efficiency !== null) ? dna.efficiency + ' / 100' : '\u2014',
+      dnaEfficiencyLabel: (dna && dna.efficiency !== null) ? dna.efficiencyLabel : (dna ? dna.efficiencyMissing : ''),
+      dnaEfficiencyColor: (!dna || dna.efficiency === null) ? '#66717f'
+        : dna.efficiency >= 75 ? '#7fae8e' : dna.efficiency >= 50 ? '#c8a05e' : '#cf7d5c',
       dnaPattern: dna && dna.pattern ? dna.pattern : '',
       dnaPatternShow: dna && dna.pattern ? 'block' : 'none',
       dnaPatternHeadline: dna ? dna.patternHeadline : '',
@@ -4553,7 +4574,9 @@ class Component extends DCLogic {
       dnaChipsShow: dna && dna.chips.length ? 'block' : 'none',
       // Mechanics Index vs handicap. `value` is a point when measured and a band midpoint when
       // estimated, so the range is printed rather than the midpoint alone wherever one exists.
-      dnaMiShow: dna && dna.mi.state !== 'none' ? 'block' : 'none',
+      // Hidden unless the estimate rests on a real answer. With the mechanics scale unanswered the
+      // gap is 0.0 and the verdict "in step" BY CONSTRUCTION, for every player alive.
+      dnaMiShow: dna && dna.mi.state !== 'none' && dna.mi.estimable ? 'block' : 'none',
       dnaMi: !dna ? '\u2014'
         : dna.mi.range ? dna.mi.range[0] + '\u2013' + dna.mi.range[1] + ' (estimated)'
         : dna.mi.value === null ? '\u2014' : String(dna.mi.value),

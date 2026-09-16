@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-15 12:44 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-15 21:06 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **5 file(s)** | **1 ahead** |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **5 file(s)** | **2 ahead** |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | **2 ahead** |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-15 12:44 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.21.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.21.0.tgz`
-- **Atlas HEAD:** `3177728 Coach sees what the player sees; sign-off widened 3 -> 34 items`
+- **Atlas HEAD:** `912793e One review-trigger structure, for every source a student can raise`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -144,6 +144,19 @@ never renders. Left alone on purpose.
 
 The player file now reads: Handicap history → The interview → the assessment sign-off list →
 **the plan, as five fold-down bars** → **what the player sees (Practice DNA)** → coaching notes.
+
+### 🔴→🟢 Three more fabrications on the DNA panel, found by review — 2026-09-15
+
+An adversarial pass (15 agents, 11 findings, 6 survived) on the two commits above. The pattern is
+worth keeping: **I guarded one fabrication on that panel and shipped three more beside it.**
+
+| | |
+| --- | --- |
+| **Efficiency** | Every term of the blend has a flattering fallback. A player who answered NOTHING scored `86 / "Dialed in"` in green — identical to one reporting a real even split, and better than one honestly reporting 85/5/5/5 (`61`). Now null unless all three inputs exist. |
+| **Mechanics Index** | `estimateMi` is `scales.mechanics ?? 50`, so unanswered ⇒ shift 0 ⇒ gap **0.0** and "your swing and your scoring are in step" **for every player alive**. Card hidden unless answered. |
+| **Archetype** | "no zone is starving" as an unhedged headline above four "Not measured" rows. Forced provisional; the chip names why. |
+| **A fabricated standard** | `plan:1-1b` read "No early move" — **a string that appears nowhere in the plan**. My own pre-review check compared ids/steps/cam-flags/contexts but NOT standard text, and I reported it as broader than it was. All 23 now verified verbatim. |
+| **"Build next" empty box** | Rendered `BUILD NEXT · —` with no gate. ⚠️ A verifier **refuted** this; the browser settled it. Trust the render over the verdict. |
 
 ### 🟢 One review-trigger structure, every source — 2026-09-15
 
