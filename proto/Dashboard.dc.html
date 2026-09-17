@@ -179,7 +179,7 @@
     <!-- ============ TODAY ============ -->
     <sc-if value="{{ isToday }}" hint-placeholder-val="{{ true }}">
     <div>
-      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.28em; text-transform:uppercase; color:#c8a05e; margin-bottom:14px;">Sunday · July 26</div>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.28em; text-transform:uppercase; color:#c8a05e; margin-bottom:14px;">{{ todayLine }}</div>
       <h1 style="font-family:'Archivo'; font-weight:800; font-size:clamp(30px,7vw,46px); line-height:1.04; letter-spacing:-0.03em; color:#ece7db; margin:0 0 12px;">One thing today.</h1>
       <p style="font-family:'Newsreader',serif; font-size:clamp(16px,2.6vw,18px); line-height:1.55; color:#97a2af; margin:0 0 34px; max-width:600px;">Fifteen minutes. You don't choose what to practice — the build does.</p>
 
@@ -880,7 +880,7 @@
 
         <div style="flex:1 1 520px; min-width:0; border:1px solid rgba(255,255,255,0.09); border-radius:18px; background:#1a222e; padding:clamp(17px,3.4vw,28px);">
           <div style="display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap; margin-bottom:22px;">
-            <h2 style="font-family:'Newsreader',serif; font-size:28px; color:#ece7db; margin:0; white-space:nowrap;">July 2026</h2>
+            <h2 style="font-family:'Newsreader',serif; font-size:28px; color:#ece7db; margin:0; white-space:nowrap;">{{ monthLabel }}</h2>
             <div style="display:flex; align-items:center; flex-wrap:wrap; justify-content:flex-end; gap:9px 16px;">
               <div style="display:flex; align-items:center; gap:7px;"><span style="width:16px; height:3px; border-radius:2px; background:#c8a05e;"></span><span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8;">Construction</span></div>
               <div style="display:flex; align-items:center; gap:7px;"><span style="width:16px; height:3px; border-radius:2px; background:#7fa8c9;"></span><span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8;">Calibration</span></div>
@@ -921,7 +921,7 @@
 
           <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:26px; border-top:1px solid rgba(255,255,255,0.08); margin-top:26px; padding-top:20px;">
             <div><div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f; margin-bottom:6px; white-space:nowrap;">Streak</div><div style="font-family:'Archivo'; font-weight:800; font-size:25px; color:#ece7db; white-space:nowrap;">{{ streak }}<span style="font-size:13px; font-weight:500; color:#8d99a8;"> days</span></div></div>
-            <div><div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f; margin-bottom:6px; white-space:nowrap;">Practiced</div><div style="font-family:'Archivo'; font-weight:800; font-size:25px; color:#ece7db; white-space:nowrap;">{{ pDays }}<span style="font-size:13px; font-weight:500; color:#8d99a8;"> / 26</span></div></div>
+            <div><div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f; margin-bottom:6px; white-space:nowrap;">Practiced</div><div style="font-family:'Archivo'; font-weight:800; font-size:25px; color:#ece7db; white-space:nowrap;">{{ pDays }}<span style="font-size:13px; font-weight:500; color:#8d99a8;"> / {{ daysSoFar }}</span></div></div>
             <div><div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f; margin-bottom:6px; white-space:nowrap;">Hours</div><div style="font-family:'Archivo'; font-weight:800; font-size:25px; color:#ece7db; white-space:nowrap;">{{ totalHrs }}<span style="font-size:13px; font-weight:500; color:#8d99a8;"> hrs</span></div></div>
             <div><div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f; margin-bottom:6px; white-space:nowrap;">Workouts</div><div style="font-family:'Archivo'; font-weight:800; font-size:25px; color:#ece7db; white-space:nowrap;">{{ wDays }}</div></div>
           </div>
@@ -2824,18 +2824,29 @@ const ZONE_COLOR = { Construction: '#c8a05e', Calibration: '#7fa8c9', Transfer: 
 const ZONE_LETTER = { Construction: 'C', Calibration: 'L', Transfer: 'T', Performance: 'P' };
 const WORKS = ['Lift', 'Mobility', 'Speed', 'Rest'];
 const DOWS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const OFFSET = 3, DAYS = 31, TODAY = 26;
+const DOWS_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+// ── THE CALENDAR'S SENSE OF TIME — REAL, 2026-09-17 ────────────────────────────────────────
+// Was `OFFSET = 3, DAYS = 31, TODAY = 26`: the app believed the date was permanently 26 July
+// 2026. That is not only the "Sunday · July 26" header — TODAY decides which cells render as
+// past vs future (:6015), the practice streak (:6036), the last-seven-days strip (:6040), and
+// which day "Log today" writes to (:6168). Practice logged in September was filed under July 26.
+const _NOW = new Date();
+const OFFSET = new Date(_NOW.getFullYear(), _NOW.getMonth(), 1).getDay();
+const DAYS = new Date(_NOW.getFullYear(), _NOW.getMonth() + 1, 0).getDate();
+const TODAY = _NOW.getDate();
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTH_LABEL = MONTHS[_NOW.getMonth()] + ' ' + _NOW.getFullYear();
+const TODAY_LINE = DOWS_FULL[_NOW.getDay()] + ' \u00b7 ' + MONTHS[_NOW.getMonth()] + ' ' + TODAY;
 
-const SEED = {
-  1:{m:15,b:'Construction'}, 2:{m:30,b:'Construction',w:'Lift'}, 3:{m:15,b:'Construction'},
-  4:{m:45,b:'Calibration'}, 6:{m:15,b:'Construction',w:'Mobility'}, 7:{m:30,b:'Construction'},
-  8:{m:15,b:'Calibration',w:'Lift'}, 9:{m:15,b:'Construction'}, 10:{m:30,b:'Construction'},
-  11:{m:45,b:'Performance',w:'Speed'}, 13:{m:15,b:'Construction'}, 14:{m:15,b:'Construction',w:'Lift'},
-  15:{m:30,b:'Transfer'}, 16:{m:15,b:'Construction'}, 17:{m:15,b:'Transfer',w:'Mobility'},
-  18:{m:60,b:'Performance'}, 20:{m:15,b:'Construction',w:'Lift'}, 21:{m:30,b:'Transfer'},
-  22:{m:15,b:'Calibration'}, 23:{m:15,b:'Transfer',w:'Speed'}, 24:{m:30,b:'Construction'},
-  25:{m:45,b:'Performance',w:'Lift'}
-};
+// ── EMPTY, AND IT HAS TO BE ─────────────────────────────────────────────────────────────────
+// This was 22 fully-specified practice sessions — minutes, zone and workout per day — rendered
+// under a real person's name beneath copy reading "the record is what your coach reads before he
+// reads your swing", plus the streak / practiced / hours / workouts totals computed off it.
+// Nothing records practice: there is no practice-session table anywhere in ryp-core.
+// It had to go WITH the date fix above, not after it: real dates over invented sessions would
+// simply have relabelled somebody else's July onto the current month.
+// A player now opens the calendar on the real month with nothing logged, which is the truth.
+const SEED = {};
 
 const STEPS = [
   { n: 1, title: 'Pivot', body: 'Ground force earned without a ball in the way. Each drill builds on the last — do not move on because you are bored of the one you are on.', cond: 'All four drills verified on camera.', opener: true,
@@ -3637,14 +3648,19 @@ class Component extends DCLogic {
 
   teamVals() {
     const s = this.state;
-    const ALLOW = {
-      foundation: { luke: 1, brock: 0, yannick: 0, phil: 0 },
-      builder: { luke: 2, brock: 1, yannick: 1, phil: 1 },
-      competitive: { luke: 4, brock: 2, yannick: 2, phil: 2 }
-    }[s.tier];
-    const USED = { luke: 1, brock: 1, yannick: 0, phil: 0 };
-    const BANKED = { luke: 1, brock: 0, yannick: 2, phil: 0 };
-    const EXPIRY = { luke: '18 days', brock: null, yannick: '6 days', phil: null };
+    // ── MONTHLY ALLOWANCE — REAL, given by Makel 2026-09-17 ──────────────────────────────────
+    // "2 Yannick visits a mo, 4 phil visits a mo, 1 luke vist a mo, and 4 brock visits a mo."
+    // Flat, not tier-keyed: the old table selected a row with `s.tier`, and `tier` has no producer
+    // (protoData.ts ships it as ''), so the lookup was reading the literal 'builder'. If the
+    // allowance really does vary by tier, that needs a tier producer first — see TASKS.md.
+    const ALLOW = { luke: 1, brock: 4, yannick: 2, phil: 4 };
+    // ── BALANCE — NO PRODUCER, so it is not rendered ─────────────────────────────────────────
+    // USED/BANKED/EXPIRY were literals ({luke:1,...}, '18 days', '6 days'). A balance needs a
+    // record of sessions taken; `public.coaching_credits` has 0 rows and nothing writes it. So
+    // "2 available", "1 banked" and "expires in 18 days" were three claims about credits this
+    // player owns, invented. The allowance above is a fact about the PLAN and is safe to state;
+    // what is left of it this month is a fact about the PERSON and nobody has recorded it.
+    const USED = null, BANKED = null, EXPIRY = null;
     const COACHES = [
       { k: 'luke', name: 'Dr. Luke Benoit', role: 'Method · swing construction', cred: 'PhD · PGA', initials: 'LB' },
       { k: 'brock', name: 'Brock Winter\n', role: 'Swing', cred: 'PGA', initials: 'BW' },
@@ -3653,32 +3669,38 @@ class Component extends DCLogic {
     ];
     let totalLeft = 0;
     const cards = COACHES.map(c => {
-      const allow = ALLOW[c.k], used = Math.min(USED[c.k], allow), banked = BANKED[c.k];
-      const left = Math.max(0, allow - used) + banked;
-      totalLeft += left;
-      const locked = allow === 0 && banked === 0;
+      const allow = ALLOW[c.k];
+      totalLeft += allow;
+      const locked = allow === 0;
       return {
         name: c.name, role: c.role, cred: c.cred, initials: c.initials,
-        allowRead: locked ? 'Not in Foundation' : allow + ' / month',
-        leftRead: locked ? '—' : left + ' available',
-        leftColor: locked ? '#4d5765' : left ? '#ece7db' : '#66717f',
-        bankedRead: banked ? banked + ' banked' : '',
-        hasBanked: banked > 0,
-        expiry: EXPIRY[c.k],
-        hasExpiry: !!EXPIRY[c.k] && banked > 0,
-        pips: Array.from({ length: Math.max(allow, 1) }, (_, i) => ({
-          bg: locked ? 'rgba(255,255,255,0.04)' : i < allow - used ? '#7fa8c9' : 'rgba(255,255,255,0.07)',
-          border: locked ? 'rgba(255,255,255,0.08)' : i < allow - used ? '#7fa8c9' : 'rgba(255,255,255,0.12)'
+        allowRead: locked ? 'Not included' : allow + ' / month',
+        // The balance line stays a dash until sessions taken are recorded. '0 available' would be
+        // its own fabrication — "nobody counted" is not "you have none left".
+        leftRead: '—',
+        leftColor: '#66717f',
+        bankedRead: '',
+        hasBanked: false,
+        expiry: null,
+        hasExpiry: false,
+        // Pips now mark the ALLOWANCE, all in the same neutral tone. They previously filled
+        // `allow - used` of them, which drew a consumed-vs-remaining split off a literal.
+        pips: Array.from({ length: Math.max(allow, 1) }, () => ({
+          bg: locked ? 'rgba(255,255,255,0.04)' : 'rgba(127,168,201,0.35)',
+          border: locked ? 'rgba(255,255,255,0.08)' : 'rgba(127,168,201,0.5)'
         })),
-        cta: locked ? 'Upgrade to book' : left ? 'Book' : 'None left this month',
-        ctaColor: locked || !left ? '#66717f' : '#0E141B',
-        ctaBg: locked || !left ? 'transparent' : '#7fa8c9',
-        ctaBorder: locked || !left ? 'rgba(255,255,255,0.12)' : '#7fa8c9',
+        // No booking endpoint exists, so the button must not promise one.
+        cta: locked ? 'Not included' : 'Ask your coach',
+        ctaColor: '#66717f',
+        ctaBg: 'transparent',
+        ctaBorder: 'rgba(255,255,255,0.12)',
         border: locked ? 'rgba(255,255,255,0.06)' : 'rgba(127,168,201,0.28)',
         opacity: locked ? '0.55' : '1'
       };
     });
-    return { coachCards: cards, sessionsLeft: totalLeft + ' left' };
+    // Rail badge was `totalLeft + ' left'` — a remaining balance. It is now the monthly
+    // allowance, which is the only half of that number anybody has recorded.
+    return { coachCards: cards, sessionsLeft: totalLeft + ' / mo' };
   }
 
   // What the plan asked for that weekday, in minutes. The ghost bar behind the
@@ -5948,6 +5970,11 @@ class Component extends DCLogic {
     };
   }
 
+  // The real month and the real day, replacing two hardcoded strings in the markup.
+  // `daysSoFar` was the literal ' / 26' in the markup — the old hardcoded TODAY. It is the
+  // denominator of "Practiced n / N", so it has to be days elapsed this month, not a constant.
+  dateVals() { return { monthLabel: MONTH_LABEL, todayLine: TODAY_LINE, daysSoFar: String(TODAY) }; }
+
   renderVals() {
     const s = this.state, log = s.log, sel = s.sel, view = s.view;
     const dv = this.demoVals();
@@ -6111,6 +6138,7 @@ class Component extends DCLogic {
       tierName: '',
       ...this.planVals(),
       ...this.clockVals(),
+      ...this.dateVals(),
       ...this.fitnessVals(),
       ...this.teamVals(),
       ...this.forgeVals(),
