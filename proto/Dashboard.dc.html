@@ -1003,7 +1003,13 @@
         <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; white-space:nowrap;">Whole build</div>
         <div style="flex:1 1 200px; height:4px; border-radius:3px; background:rgba(255,255,255,0.07); overflow:hidden;"><div style="height:100%; background:linear-gradient(90deg,#7fa8c9,#c8a05e); width: {{ buildPct }};"></div></div>
         <div style="font-family:'Archivo'; font-weight:700; font-size:15px; color:#ece7db; white-space:nowrap;">{{ buildRead }}</div>
-        <div onClick="{{ toggleCoach }}" style="cursor:pointer; display:flex; align-items:center; gap:10px; padding:8px 14px; border-radius:999px; border:1px solid {{ coachBorder }}; background: {{ coachBg }};">
+        <!-- "Coach view" toggle — HIDDEN 2026-09-17. It flipped `coachMode`, whose only consumer
+             surfaced `toggleVerify` on each drill: the COACH's judgement, editable from the
+             player's own browser. `build` is PLAYER_ONLY, so the only person who could ever press
+             this was the player. The consumer is now hard-false; this hides the dead control so it
+             does not read as a feature and does not invite re-wiring. A coach verifies through the
+             route in profileVals. -->
+        <div onClick="{{ toggleCoach }}" style="display:none; cursor:pointer; align-items:center; gap:10px; padding:8px 14px; border-radius:999px; border:1px solid {{ coachBorder }}; background: {{ coachBg }};">
           <span style="width:7px; height:7px; border-radius:50%; background: {{ coachDot }};"></span>
           <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ coachColor }}; white-space:nowrap;">{{ coachLabel }}</span>
         </div>
@@ -3145,9 +3151,47 @@ class Component extends DCLogic {
       ]
     },
     speeds: [94, 95, 93, 96, 97, 96, 98, 99],
-    ticked: DONE, openStep: 3, signed: [1, 2],
-    verified: ['1-3', '2-P1', '2-P2', '2-P3', '3-S2'],
-    watched: DONE.slice(), coachMode: false, demo: null,
+    // ── THE WORKBOOK, SEEDED FROM REAL DATA (2026-09-17) ─────────────────────────────────────
+    // Was: ticked: DONE (12 hardcoded refs), signed: [1,2], verified: [5 refs], watched: DONE.
+    // Those literals told EVERY player "12 of 23 drills completed" with steps 1 and 2 ✓, beside
+    // copy reading "your coach sees the same page you do" — while the coach's own sign-off list,
+    // built from golf.drill_progress, showed zero. Two screens, one dataset, opposite answers.
+    //
+    // The ids line up exactly: the workbook's key is `st.n + '-' + d.ref` ('2-P1'), and the review
+    // item is 'plan:2-P1'. Step completions are 'plan:step-N'. So this is a prefix, not a mapping
+    // table that could drift.
+    //
+    //   ticked   ← tickedAt   the PLAYER'S OWN CLAIM that the rep happened. Read-only here: the
+    //                         column belongs to forge_app and `atlas_app` holds no write grant
+    //                         (42501, verified live 2026-09-15). Atlas may show it, never set it.
+    //   verified ← verifiedAt the COACH'S judgement, written by the verify route.
+    //   signed   ← the same field on 'plan:step-N', so a step reads Completed only when the coach
+    //                         actually signed the step off.
+    //   watched  ← [] — "have you opened the demo video", genuine per-session UI state. Seeding it
+    //                         from DONE suppressed the gold "not watched yet" dot on 12 drills.
+    //   openStep ← the first step not yet signed off, rather than the literal 3.
+    //
+    // Empty stays empty: a player with no drill rows reads 0 of 23 and "Not started", which is the
+    // truth. No literal is substituted for a missing one.
+    ...(() => {
+      const drills = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.me || {}).drills || {};
+      const refs = (pick) => Object.keys(drills)
+        .filter(id => id.indexOf('plan:') === 0 && id.indexOf('plan:step-') !== 0 && pick(drills[id]))
+        .map(id => id.slice(5));
+      const signed = Object.keys(drills)
+        .filter(id => id.indexOf('plan:step-') === 0 && drills[id] && drills[id].verifiedAt)
+        .map(id => Number(id.slice(10)))
+        .filter(n => n >= 1 && n <= 5);
+      let open = 1;
+      while (open <= 5 && signed.indexOf(open) > -1) open++;
+      return {
+        ticked: refs(d => d && d.tickedAt),
+        verified: refs(d => d && d.verifiedAt),
+        signed: signed,
+        openStep: Math.min(open, 5),
+      };
+    })(),
+    watched: [], coachMode: false, demo: null,
     tier: 'builder', phase: 2, rebuild: false, fitnessOn: true,
     clock: null, now: Date.now(), lastSession: null,
     lifts: ['lift-a', 'speed-1'],
@@ -3876,6 +3920,13 @@ class Component extends DCLogic {
     };
   }
 
+  // ⚠️ DEAD AS OF 2026-09-17 AND IT MUST STAY DEAD. Both call sites were removed when `ticked`
+  // and `verified` were wired to golf.drill_progress. Do not re-attach it:
+  //   · `atlas_app` has NO write grant on ticked_at (42501) — a local tick can never persist.
+  //   · it also mutated `verified`, the COACH's judgement, from the player's own browser. Over the
+  //     old demo literals that was harmless; over real data it would let a player show themselves
+  //     a verification their coach never gave.
+  // A real "send for review" needs a producer that owns ticked_at — see TASKS.md.
   toggleDrill = key => () => {
     const t = this.state.ticked;
     const off = t.indexOf(key) > -1;
@@ -3979,14 +4030,25 @@ class Component extends DCLogic {
           const vd = ver.indexOf(key) > -1;
           const pending = d.cam && on && !vd;
           const frozen = locked || isSigned;
-          const showCoach = s.coachMode && d.cam && on && !locked;
+          // ⚠️ HARD FALSE. `s.coachMode` is flipped by a "Coach view" button in this same screen
+          // (:6227), and `build` is PLAYER_ONLY — so the only person who could ever press it is the
+          // player. It surfaced `toggleVerify`, which writes `verified`: the COACH's judgement,
+          // editable from the player's own browser. Harmless over the old demo literals; over real
+          // drill_progress data it lets a player show themselves verifications they were never
+          // given. A coach verifies through the route in profileVals, never here.
+          const showCoach = false && s.coachMode && d.cam && on && !locked;
           return {
             ref: d.ref, name: d.name,
             std: vd ? 'Verified' : pending ? 'Awaiting review' : on ? 'Completed' : d.std,
             camTag: d.cam ? '· Parallax' : '',
             why: WHY[d.name] || '',
-            onClick: frozen ? () => {} : this.toggleDrill(key),
-            cursor: locked ? 'not-allowed' : isSigned ? 'default' : 'pointer',
+            // READ-ONLY. `ticked` now mirrors golf.drill_progress.ticked_at, and `atlas_app` has
+            // no write grant on that column (42501) — so a toggle here could only ever change the
+            // pixel and lose it on reload, while the row says "Mark done — send for review". A
+            // control that cannot do what it says is worse over real data than over demo data.
+            // The player's claim belongs to the app that owns the column; Atlas displays it.
+            onClick: () => {},
+            cursor: 'default',
             openDemo: this.openDemo(st.n, d.ref),
             thumbBorder: locked ? 'rgba(255,255,255,0.06)' : 'rgba(200,160,94,0.22)',
             playColor: locked ? '#4d5765' : 'rgba(200,160,94,0.9)',
@@ -4011,7 +4073,11 @@ class Component extends DCLogic {
         signBg: isSigned ? 'transparent' : all && !locked ? '#f2ede1' : 'transparent',
         signBorder: isSigned ? 'rgba(127,168,201,0.4)' : all && !locked ? '#f2ede1' : 'rgba(255,255,255,0.12)',
         signCursor: all && !locked && !isSigned ? 'pointer' : 'default',
-        signOff: all && !locked ? this.requestSignOff(st.n) : () => {}
+        // INERT. `signed` now means "the coach signed this step off" (golf.drill_progress on
+        // 'plan:step-N'). Letting the player append to it locally would paint a green ✓ and
+        // "Completed" over a step no coach has seen — on a screen whose own copy says the coach
+        // sees the same page. The real request path needs a producer that owns ticked_at.
+        signOff: () => {}
       };
     });
   }
@@ -5870,8 +5936,10 @@ class Component extends DCLogic {
       whyShow: WHY[d.name] ? 'block' : 'none',
       status: vd ? 'Verified by Dr. Benoit' : pending ? 'Awaiting Parallax review' : on ? 'Logged by you' : 'Not started',
       statusColor: vd ? GREEN : pending ? GOLD : on ? GOLD : '#8d99a8',
-      onTick: signedStep ? () => {} : this.toggleDrill(key),
-      tickLabel: signedStep ? 'Locked — step completed' : on ? 'Untick this drill' : d.cam ? 'Mark done — send for review' : 'Mark done',
+      // Same reason as the workbook row above: no write grant on ticked_at, so the button is
+      // inert and must not advertise an action. It states where the tick comes from instead.
+      onTick: () => {},
+      tickLabel: signedStep ? 'Locked — step completed' : on ? 'You marked this done' : 'Not yet marked done',
       tickColor: signedStep ? '#66717f' : on ? '#8d99a8' : '#0E141B',
       tickBg: signedStep || on ? 'transparent' : '#f2ede1',
       tickBorder: signedStep ? 'rgba(255,255,255,0.1)' : on ? 'rgba(255,255,255,0.16)' : '#f2ede1',
