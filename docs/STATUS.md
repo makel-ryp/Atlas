@@ -20,7 +20,7 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-18 10:11 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-18 11:10 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-18 10:11 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.21.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.21.0.tgz`
-- **Atlas HEAD:** `895d877 Ask for target handicap in the interview, and reconcile it into the profile`
+- **Atlas HEAD:** `8fd5c07 Restyle the Practice DNA flow to the Atlas palette`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
