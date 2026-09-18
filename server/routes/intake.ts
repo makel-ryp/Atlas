@@ -19,7 +19,7 @@ import { type PracticeDnaResult } from '../../shared/practice-dna/scoring'
 import { isProfileComplete, tryComputeResult } from '../dnaSummary'
 import { computeVolumeBreakdown } from '../../shared/volume'
 import { validateVolumeInput } from '../../shared/contract'
-import { validateInterviewPartial } from '../../shared/interview'
+import { validateInterviewPartial, TARGET_MIN, TARGET_MAX } from '../../shared/interview'
 // The 17 zone-prior sliders Tier 2 appends. They are NOT in the instrument's item bank on purpose —
 // `shared/practice-dna/` is Forge's canonical copy and adding to it would fork our version from
 // theirs invisibly (see zone-grades.ts) — so the route has to learn about them separately or it
@@ -601,6 +601,24 @@ intakeRouter.post('/intake/:id/complete', ...identityChain, async (req, res, nex
         const hcpNumeric = parseHandicapIndex(hcpNow)
         if (hcpNumeric !== null) {
           profileValues.handicapIndex = String(hcpNumeric)
+        }
+
+        // ── TARGET HANDICAP — interview answer → the shared golf truth layer ───────────────────
+        // Makel, 2026-09-17: "We need to ask the target handicap in the intake and then use that a
+        // profile reference every login." The asking is INTERVIEW_FIELDS' new `target`; this is the
+        // half that makes it a profile reference. `golf.player_profile.target_handicap` is what
+        // `__ATLAS_DATA__.me.target` reads, so the rail, every "reads against your target" caption
+        // and the coach's dossier all key on this column — an answer that stopped at the jsonb
+        // would change nothing on any screen.
+        //
+        // Re-validated here rather than trusted from the patch: the row may predate the field, and
+        // a value outside the column's CHECK (-6..30) would abort the whole completion transaction
+        // — losing the submission over a typo. Out of range or unparseable is left unwritten, which
+        // reads as "no target set" rather than as a wrong one.
+        const interviewTarget = ((row.interview as Record<string, unknown> | null) ?? {}).target
+        const targetNumeric = parseHandicapIndex(interviewTarget)
+        if (targetNumeric !== null && targetNumeric >= TARGET_MIN && targetNumeric <= TARGET_MAX) {
+          profileValues.targetHandicap = String(targetNumeric)
         }
 
         await db

@@ -22,6 +22,8 @@
  * source that rule could ever read. See docs/reports/PROTOTYPE-WHAT-LUKE-ALREADY-BUILT-2026-09-10.md §3.
  */
 
+import { parseHandicapIndex } from './handicap'
+
 export interface InterviewField {
   /** Key in the stored jsonb AND in the prototype's `file` object. Luke's markup reads these. */
   key: InterviewKey
@@ -29,7 +31,7 @@ export interface InterviewField {
   hint: string
 }
 
-export type InterviewKey = 'sport' | 'years' | 'limits' | 'time' | 'goal'
+export type InterviewKey = 'sport' | 'years' | 'limits' | 'time' | 'goal' | 'target'
 
 export const INTERVIEW_FIELDS: readonly InterviewField[] = [
   {
@@ -57,6 +59,27 @@ export const INTERVIEW_FIELDS: readonly InterviewField[] = [
     label: 'Why you are here',
     hint: 'In one sentence, in your own words.',
   },
+  /**
+   * TARGET HANDICAP — the one interview answer that is not prose, added 2026-09-17 on Makel's
+   * ask: "We need to ask the target handicap in the intake and then use that a profile reference
+   * every login."
+   *
+   * It lives here rather than in the item bank for the same reason the other five do: it is an
+   * Atlas concept, it is not scored, and it feeds no scale. But unlike the other five it does not
+   * stop at the jsonb — on completion it is reconciled into `golf.player_profile.target_handicap`,
+   * which is what `__ATLAS_DATA__.me.target` reads and therefore what the rail, the benchmarks and
+   * the coach's dossier all key on. Storing it only in the interview blob would answer the
+   * question and change nothing on the page.
+   *
+   * Kept a STRING in the jsonb like its siblings, so the save-as-you-type patch path, the column
+   * and the validator are unchanged; it is parsed at the reconciliation step. Plus handicaps are
+   * entered the way a golfer writes them ("+2") and `parseHandicapIndex` signs them negative.
+   */
+  {
+    key: 'target',
+    label: 'Target handicap',
+    hint: 'The number you are actually chasing. Every benchmark on your dashboard reads against it.',
+  },
 ]
 
 export const INTERVIEW_KEYS: readonly InterviewKey[] = INTERVIEW_FIELDS.map((f) => f.key)
@@ -82,6 +105,23 @@ export function validateInterviewPartial(input: Record<string, unknown>): string
     if (!INTERVIEW_KEYS.includes(key as InterviewKey)) return `unknown_interview_field:${key}`
     if (typeof value !== 'string') return `invalid_interview_value:${key}`
     if (value.length > INTERVIEW_MAX_LEN) return `interview_value_too_long:${key}`
+    // `target` is the one field that becomes a NUMBER downstream — it is reconciled into
+    // golf.player_profile.target_handicap, whose CHECK is -6..30. Rejecting a bad value at the
+    // patch is better than accepting it here and silently dropping it at completion, which would
+    // read to the golfer as "I answered that and it did nothing".
+    // Empty stays legal: it means "not answered yet", same as every other field.
+    if (key === 'target' && value.trim() !== '') {
+      const n = parseHandicapIndex(value)
+      if (n === null) return 'invalid_interview_value:target'
+      if (n < TARGET_MIN || n > TARGET_MAX) return 'interview_value_out_of_range:target'
+    }
   }
   return null
 }
+
+/**
+ * The bounds on `golf.player_profile.target_handicap`, mirrored from the live CHECK constraint
+ * `player_profile_target_handicap_range` (-6 .. 30) so the client refuses what the column would.
+ */
+export const TARGET_MIN = -6
+export const TARGET_MAX = 30

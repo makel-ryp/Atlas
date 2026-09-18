@@ -34,8 +34,10 @@ export function InterviewStage({
 }) {
   const [draft, setDraft] = useState<Partial<Record<InterviewKey, string>>>(initial ?? {})
 
-  const set = (k: InterviewKey) => (e: React.ChangeEvent<HTMLTextAreaElement>) =>
-    setDraft((d) => ({ ...d, [k]: e.target.value.slice(0, INTERVIEW_MAX_LEN) }))
+  // Widened to cover both controls: `target` renders as an <input>, the other five as <textarea>.
+  const set = (k: InterviewKey) =>
+    (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) =>
+      setDraft((d) => ({ ...d, [k]: e.target.value.slice(0, INTERVIEW_MAX_LEN) }))
 
   const canContinue = !!draft.goal?.trim() && !busy
 
@@ -57,14 +59,32 @@ export function InterviewStage({
             <label key={f.key} className="flex flex-col gap-1.5">
               <span className="font-medium">{f.label}</span>
               <span className="text-sm text-muted">{f.hint}</span>
-              <textarea
-                value={draft[f.key] ?? ''}
-                onChange={set(f.key)}
-                disabled={busy}
-                rows={f.key === 'limits' || f.key === 'sport' ? 3 : 2}
-                maxLength={INTERVIEW_MAX_LEN}
-                className="mt-1 w-full resize-y rounded-lg border border-ink/20 bg-transparent px-3 py-2 leading-relaxed disabled:opacity-50"
-              />
+              {/* `target` is the one field that is a number, not prose — it is reconciled into
+                  golf.player_profile.target_handicap on completion. A textarea invites a sentence,
+                  and a sentence fails parseHandicapIndex and silently sets no target. inputMode
+                  "decimal" so phones open the number pad; type stays "text" because a golfer writes
+                  a plus handicap as "+2" and type="number" rejects the leading plus. */}
+              {f.key === 'target' ? (
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="e.g. 8, or +2 if you are better than scratch"
+                  value={draft[f.key] ?? ''}
+                  onChange={set(f.key)}
+                  disabled={busy}
+                  maxLength={6}
+                  className="mt-1 w-full rounded-lg border border-ink/20 bg-transparent px-3 py-2 leading-relaxed disabled:opacity-50"
+                />
+              ) : (
+                <textarea
+                  value={draft[f.key] ?? ''}
+                  onChange={set(f.key)}
+                  disabled={busy}
+                  rows={f.key === 'limits' || f.key === 'sport' ? 3 : 2}
+                  maxLength={INTERVIEW_MAX_LEN}
+                  className="mt-1 w-full resize-y rounded-lg border border-ink/20 bg-transparent px-3 py-2 leading-relaxed disabled:opacity-50"
+                />
+              )}
             </label>
           ))}
         </div>
