@@ -929,7 +929,7 @@
 
         <div style="flex:1 1 340px; min-width:0; max-width:358px; border:1px solid rgba(200,160,94,0.32); border-radius:18px; background:linear-gradient(170deg,#1e2733,#161d28); padding:clamp(17px,3.4vw,28px);">
           <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.18em; text-transform:uppercase; color:#c8a05e; margin-bottom:10px;">{{ selWeekday }}</div>
-          <h3 style="font-family:'Newsreader',serif; font-size:clamp(24px,4.8vw,30px); color:#ece7db; margin:0 0 4px;">July {{ selDay }}</h3>
+          <h3 style="font-family:'Newsreader',serif; font-size:clamp(24px,4.8vw,30px); color:#ece7db; margin:0 0 4px;">{{ monthName }} {{ selDay }}</h3>
           <p style="font-family:'Newsreader',serif; font-size:15px; line-height:1.5; color:#97a2af; margin:0 0 26px;">{{ selSummary }}</p>
 
           <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:12px;">
@@ -5973,7 +5973,17 @@ class Component extends DCLogic {
   // The real month and the real day, replacing two hardcoded strings in the markup.
   // `daysSoFar` was the literal ' / 26' in the markup — the old hardcoded TODAY. It is the
   // denominator of "Practiced n / N", so it has to be days elapsed this month, not a constant.
-  dateVals() { return { monthLabel: MONTH_LABEL, todayLine: TODAY_LINE, daysSoFar: String(TODAY) }; }
+  // `monthName` was the literal "July" hard-typed in front of {{ selDay }} in the day panel —
+  // missed on the first date pass because the grid header and the Today line were separate
+  // strings. Caught by opening the calendar and reading "FRI · TODAY / July 18" in September.
+  dateVals() {
+    return {
+      monthLabel: MONTH_LABEL,
+      todayLine: TODAY_LINE,
+      daysSoFar: String(TODAY),
+      monthName: MONTHS[_NOW.getMonth()],
+    };
+  }
 
   renderVals() {
     const s = this.state, log = s.log, sel = s.sel, view = s.view;
