@@ -183,18 +183,11 @@
       <h1 style="font-family:'Archivo'; font-weight:800; font-size:clamp(30px,7vw,46px); line-height:1.04; letter-spacing:-0.03em; color:#ece7db; margin:0 0 12px;">One thing today.</h1>
       <p style="font-family:'Newsreader',serif; font-size:clamp(16px,2.6vw,18px); line-height:1.55; color:#97a2af; margin:0 0 34px; max-width:600px;">Fifteen minutes. You don't choose what to practice — the build does.</p>
 
-      <sc-if value="{{ stakeOn }}" hint-placeholder-val="{{ true }}">
-        <div style="display:flex; align-items:center; gap:22px; flex-wrap:wrap; border:1px solid rgba(200,160,94,0.28); border-radius:14px; background:#161d28; padding:16px 22px; margin-bottom:18px;">
-          <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; white-space:nowrap;">This week</span>
-          <div style="flex:1 1 220px; min-width:0;">
-            <div style="height:4px; border-radius:3px; background:rgba(255,255,255,0.07); overflow:hidden;"><div style="height:100%; background: {{ weekColor }}; width: {{ weekBar }};"></div></div>
-            <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.12em; text-transform:uppercase; color:#66717f; margin-top:7px;">Completed at {{ thresholdRead }}</div>
-          </div>
-          <span style="font-family:'Archivo'; font-weight:800; font-size:19px; color: {{ weekColor }};">{{ weekPct }}</span>
-          <span style="font-family:'Newsreader',serif; font-size:16px; color:#c3cdd9; white-space:nowrap;">{{ weekVerdict }}</span>
-          <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#c8a05e; white-space:nowrap;">{{ atRisk }}</span>
-        </div>
-      </sc-if>
+      <!-- The weekly stake bar ("$25 AT RISK", the 80% threshold, the compliance %) was removed
+           2026-09-17 on Makel's instruction: "eliminate the stake feature." Every number in it came
+           from literals — `stake: {active:true, amount:25, pledged:true}` and a bare `const logged = 3.5`
+           — and no table anywhere records a pledge, a forfeit or a practice hour. Its own guard was the
+           literal `active: true`, so it rendered for every player including one who never opted in. -->
 
       <div style="border:1px solid rgba(255,255,255,0.09); border-radius:18px; background:#161d28; padding:22px 26px; margin-bottom:18px;">
         <sc-if value="{{ clockRunning }}" hint-placeholder-val="{{ false }}">
@@ -2384,39 +2377,10 @@
 
 
 
-          <div style="border:1px solid rgba(200,160,94,0.32); border-radius:18px; background:#161d28; padding:26px 24px;">
-            <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:16px;">
-              <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#c8a05e;">The stake</span>
-              <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.12em; text-transform:uppercase; color:#66717f;">Optional</span>
-            </div>
-            <p style="font-family:'Newsreader',serif; font-size:15px; line-height:1.5; color:#8d99a8; margin:0 0 18px;">Put money behind the week. Miss 80% of your floor and it is gone — and you watch yourself explain, at the start of the phase, why you wouldn't.</p>
-
-            <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f; margin-bottom:10px;">Amount</div>
-            <div style="display:flex; gap:8px; margin-bottom:18px;">
-              <sc-for list="{{ stakeChips }}" as="c" hint-placeholder-count="4">
-                <div onClick="{{ c.onClick }}" style="cursor:pointer; flex:1; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.1em; color: {{ c.color }}; background: {{ c.bg }}; border:1px solid {{ c.border }}; padding:9px 0; border-radius:999px;">{{ c.label }}</div>
-              </sc-for>
-            </div>
-
-            <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f; margin-bottom:10px;">If you forfeit</div>
-            <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:18px;">
-              <sc-for list="{{ destChips }}" as="d" hint-placeholder-count="2">
-                <div onClick="{{ d.onClick }}" style="cursor:pointer; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color: {{ d.color }}; background: {{ d.bg }}; border:1px solid {{ d.border }}; padding:9px 0; border-radius:999px;">{{ d.label }}</div>
-              </sc-for>
-            </div>
-
-            <div onClick="{{ recordPledge }}" style="cursor:pointer; display:flex; align-items:center; gap:12px; padding:14px 16px; border:1px solid rgba(127,168,201,0.4); border-radius:12px; margin-bottom:16px;">
-              <span style="width:22px; height:22px; flex:none; border-radius:50%; background:rgba(127,168,201,0.18); border:1px solid #7fa8c9;"></span>
-              <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#7fa8c9;">{{ pledgeLabel }}</span>
-            </div>
-            <div style="font-family:'Newsreader',serif; font-size:14.5px; line-height:1.5; color:#8d99a8; margin-bottom:18px;">Sixty seconds to camera, recorded now while you mean it. If you forfeit, that is what plays before you can restart.</div>
-
-            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding-top:16px; border-top:1px solid rgba(255,255,255,0.07);">
-              <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.12em; text-transform:uppercase; color:#66717f;">{{ missesRead }}</span>
-              <span onClick="{{ declareMiss }}" style="cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.12em; text-transform:uppercase; color:#c8a05e; white-space:nowrap;">Declare</span>
-            </div>
-            <div style="font-family:'Newsreader',serif; font-size:14.5px; line-height:1.5; color:#66717f; margin-top:12px;">Call a week off in advance and it costs nothing. Go quiet and it costs the stake.</div>
-          </div>
+          <!-- The stake panel (amount chips, destination, "Pledge recorded · 24 Jul", "2 of 2 declared
+               misses left this phase") was removed 2026-09-17: "eliminate the stake feature." It was the
+               PLAN-side half of the same feature as the TODAY bar. Every control wrote to client state
+               only; nothing persisted, and public.coaching_credits / billing_subscriptions are empty. -->
 
           <div style="border:1px solid rgba(255,255,255,0.09); border-radius:18px; background:#161d28; padding:26px 24px;">
             <div onClick="{{ toggleRebuild }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
@@ -3140,7 +3104,6 @@ class Component extends DCLogic {
       const v = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.me || {}).hand;
       return v === 'left' ? 'L' : v === 'right' ? 'R' : undefined;
     })(), pivot: 'cannon', impactOpp: [],
-    stake: { active: true, amount: 25, dest: 'charity', pledged: true, misses: 2 },
     session: { open: false, screen: 'roadmap', open_dom: 'chipping', drill: 'drive20', tally: [0, 0, 0, 0, 0] },
     forge: {
       driving: 14.0, approach: 8.0, chipping: -3.0, putting: 2.0,
@@ -3390,48 +3353,13 @@ class Component extends DCLogic {
     };
   }
 
-  stakeVals() {
-    const s = this.state, k = s.stake;
-    const t = TIERS[s.tier], ph = t.phases[s.phase];
-    const floor = s.rebuild && s.phase === 2 ? ph.hrs + t.play : ph.hrs;
-    const logged = 3.5;
-    const pct = floor ? Math.round(logged / floor * 100) : 0;
-    const met = pct >= 80;
-    return {
-      stakeOn: k.active, stakeOff: !k.active,
-      stakeAmountRead: '$' + k.amount,
-      stakeChips: [10, 25, 50, 100].map(a => ({
-        label: '$' + a,
-        color: k.amount === a ? '#0E141B' : '#8d99a8',
-        bg: k.amount === a ? '#c8a05e' : 'transparent',
-        border: k.amount === a ? '#c8a05e' : 'rgba(255,255,255,0.12)',
-        onClick: () => this.setState({ stake: Object.assign({}, k, { amount: a }) })
-      })),
-      destChips: [
-        { id: 'charity', label: 'To your charity' },
-        { id: 'session', label: 'Buys a coaching session' }
-      ].map(d => ({
-        label: d.label,
-        color: k.dest === d.id ? '#0E141B' : '#8d99a8',
-        bg: k.dest === d.id ? '#7fa8c9' : 'transparent',
-        border: k.dest === d.id ? '#7fa8c9' : 'rgba(255,255,255,0.12)',
-        onClick: () => this.setState({ stake: Object.assign({}, k, { dest: d.id }) })
-      })),
-      pledged: k.pledged,
-      notPledged: !k.pledged,
-      pledgeLabel: k.pledged ? 'Pledge recorded · 24 Jul' : 'Record your pledge',
-      recordPledge: () => this.setState({ stake: Object.assign({}, k, { pledged: true }) }),
-      toggleStake: () => this.setState({ stake: Object.assign({}, k, { active: !k.active }) }),
-      missesRead: k.misses + ' of 2 declared misses left this phase',
-      declareMiss: () => { if (k.misses > 0) this.setState({ stake: Object.assign({}, k, { misses: k.misses - 1 }) }); },
-      weekPct: pct + '%',
-      weekBar: Math.min(100, pct) + '%',
-      weekColor: met ? '#7fa8c9' : pct >= 60 ? '#c8a05e' : '#cf7d5c',
-      weekVerdict: met ? 'Week completed' : (Math.max(0, floor * 0.8 - logged)).toFixed(1) + ' hrs to go',
-      atRisk: '$' + k.amount + ' at risk',
-      thresholdRead: (floor * 0.8).toFixed(1) + ' of ' + floor.toFixed(1) + ' hrs · 80%'
-    };
-  }
+  // stakeVals() removed 2026-09-17 — "eliminate the stake feature" (Makel). It produced the
+  // TODAY money bar and the PLAN pledge panel, both deleted above. Worth recording what it was,
+  // because the numbers looked measured and none were: the weekly floor came from TIERS keyed on
+  // the literal tier 'builder', the hours logged were a bare `const logged = 3.5`, and the 80%
+  // pass mark, the percentage, the "0.5 hrs to go" and the "$25 at risk" were all derived from
+  // those two. If a stake feature returns it needs a pledge record and a practice-hours producer
+  // first; there is no table for either.
 
   forgeVals() {
     const s = this.state;
@@ -6152,7 +6080,6 @@ class Component extends DCLogic {
       ...this.fitnessVals(),
       ...this.teamVals(),
       ...this.forgeVals(),
-      ...this.stakeVals(),
       ...this.sessionVals(),
       isTransfer: view === 'transfer' && !isHidden('transfer'), goTransfer: this.nav('transfer'),
       cTransfer: r.transfer.c, bTransfer: r.transfer.b,
