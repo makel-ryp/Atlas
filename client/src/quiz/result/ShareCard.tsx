@@ -17,13 +17,19 @@ import { MAP_H, MAP_W, type MapData, MapPlot, mapAriaLabel } from './PracticeMap
 import { svgToPng } from './svgToPng';
 
 /**
- * The book-cover palette, hard-coded on purpose. A shared image has no page to inherit from,
- * and a share card that renders differently depending on who opened it isn't a share card.
- * Kept in step with `client/src/index.css` by hand.
+ * Hard-coded on purpose. A shared image has no page to inherit from, and a share card that renders
+ * differently depending on who opened it isn't a share card. Kept in step with
+ * `client/src/index.css` by hand.
+ *
+ * ── RESTYLED TO THE ATLAS PALETTE, 2026-09-17 ─────────────────────────────────────────────────
+ * Was TGT's book-cover palette (#1a1a1a / #f5efe6 / #8a8175). This card is the one artefact a
+ * golfer sends OUT of the product, so it was the piece most worth having on Atlas's own colours:
+ * a card in another product's palette is a card that markets the wrong product. Values below are
+ * the index.css tokens verbatim — --ink is a WARM near-black, unlike TGT's cold one.
  */
-const INK = '#1a1a1a';
-const PAPER = '#f5efe6';
-const MUTED = '#8a8175';
+const INK = '#13110b'; // --ink
+const PAPER = '#ece7db'; // --paper
+const MUTED = '#8d99a8'; // --muted
 
 /** Room above the plot for the title block, and below it for the wordmark. */
 const HEADER = 96;

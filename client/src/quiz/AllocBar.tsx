@@ -60,10 +60,22 @@ const SEGMENT_COPY: Record<SegmentKey, { label: string; anchor: string }> = {
  * answering would bias the answer, and this is an instrument before it is a marketing page.
  */
 const SEGMENT_COLOR: Record<SegmentKey, string> = {
-  construction: '#1a1a1a', // ink
-  calibration: '#ffffff',
-  transfer: '#8fa9b5', // light blue
-  messy: '#c9c2b6', // gold
+  // ── RESTYLED TO THE ATLAS PALETTE, 2026-09-17 ───────────────────────────────────────────────
+  // Was TGT's book-cover palette (#1a1a1a / #ffffff / #8fa9b5 / #c9c2b6), which is a different
+  // product's look and broke Luke's Brand Guide twice: the ground is a COLD near-black where Atlas
+  // uses a warm one, and #ffffff is pure white, which the guide rules out ("warm off-white, never
+  // pure white"). The comments were stale too — `messy` was labelled gold and was not.
+  //
+  // The three real zones now take the dashboard's own ZONE_COLOR values (Dashboard.dc.html:2823),
+  // so a golfer sees one colour per zone across the quiz AND the dashboard rather than learning
+  // the mapping twice.
+  construction: '#c8a05e', // --gold
+  calibration: '#7fa8c9', // --blue
+  transfer: '#ece7db', // --paper
+  // Messy has no zone, so it takes --muted: neutral and clearly the odd one out, without reading
+  // as a warning. Flagging it red while the golfer is still answering would bias the answer — the
+  // original note about that still holds and is the reason this is not the clay accent.
+  messy: '#8d99a8', // --muted
 };
 
 /**
@@ -71,10 +83,12 @@ const SEGMENT_COLOR: Record<SegmentKey, string> = {
  * White only survives on the black segment; ink carries the contrast on the rest.
  */
 const SEGMENT_TEXT: Record<SegmentKey, string> = {
-  construction: '#ffffff',
-  calibration: '#1a1a1a',
-  transfer: '#1a1a1a',
-  messy: '#1a1a1a',
+  // All four segments are now mid-to-light, so ink carries the contrast on every one — the old
+  // white-on-black case is gone with the black.
+  construction: '#13110b', // --ink
+  calibration: '#13110b',
+  transfer: '#13110b',
+  messy: '#13110b',
 };
 
 /**

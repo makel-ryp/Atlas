@@ -604,6 +604,16 @@
 .border-ink\/20 {
   border-color: color-mix(in srgb, var(--paper) 20%, transparent);
 }
+  /* Used by ReviewStep's answer list and by AllocBar/VolumeStage focus rings; neither existed,
+     so the divider between review rows and the keyboard focus outline both rendered as nothing.
+     Same class of miss as border-ink/20 in T-60. */
+  .divide-ink\\/10 > :not([hidden]) ~ :not([hidden]) {
+    border-color: color-mix(in srgb, var(--paper) 10%, transparent);
+  }
+  .focus-visible\\:outline-ink:focus-visible {
+    outline-color: var(--gold);
+  }
+
 .border-ink\/25 {
   border-color: color-mix(in srgb, var(--paper) 25%, transparent);
 }

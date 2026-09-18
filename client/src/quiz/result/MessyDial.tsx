@@ -62,7 +62,8 @@ export function MessyDial({ share }: { share: number }) {
           r={R}
           fill="none"
           // The allocation bar's own Messy colour, so the two screens agree on what this is.
-          stroke="#c9c2b6"
+          // Follows AllocBar to --muted (#8d99a8) in the 2026-09-17 Atlas restyle.
+          stroke="#8d99a8"
           strokeWidth={STROKE}
           strokeLinecap="butt"
           strokeDasharray={`${filled} ${CIRCUMFERENCE - filled}`}
