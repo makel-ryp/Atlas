@@ -36,7 +36,7 @@ export function InterviewStage({
 
   // Widened to cover both controls: `target` renders as an <input>, the other five as <textarea>.
   const set = (k: InterviewKey) =>
-    (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) =>
+    (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement | HTMLSelectElement>) =>
       setDraft((d) => ({ ...d, [k]: e.target.value.slice(0, INTERVIEW_MAX_LEN) }))
 
   const canContinue = !!draft.goal?.trim() && !busy
@@ -64,7 +64,25 @@ export function InterviewStage({
                   and a sentence fails parseHandicapIndex and silently sets no target. inputMode
                   "decimal" so phones open the number pad; type stays "text" because a golfer writes
                   a plus handicap as "+2" and type="number" rejects the leading plus. */}
-              {f.key === 'target' ? (
+              {f.options ? (
+                /* tier and phase are CHOICES, not prose — the prototype indexes
+                   TIERS[tier].phases[phase] directly, so a free-text answer is a crash rather
+                   than a bad display. A select also states the three intensities and their hours
+                   up front, which is the actual question being asked. */
+                <select
+                  value={draft[f.key] ?? ''}
+                  onChange={set(f.key)}
+                  disabled={busy}
+                  className="mt-1 w-full rounded-lg border border-ink/20 bg-transparent px-3 py-2 leading-relaxed disabled:opacity-50"
+                >
+                  <option value="">Not sure yet</option>
+                  {f.options.map((o, i) => (
+                    <option key={o} value={o}>
+                      {f.optionLabels?.[i] ?? o}
+                    </option>
+                  ))}
+                </select>
+              ) : f.key === 'target' ? (
                 <input
                   type="text"
                   inputMode="decimal"

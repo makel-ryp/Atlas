@@ -29,9 +29,13 @@ export interface InterviewField {
   key: InterviewKey
   label: string
   hint: string
+  /** Present => this field is a CHOICE, not free text. Stored value must be one of these. */
+  options?: readonly string[]
+  /** Display text per option, positionally matched to `options`. */
+  optionLabels?: readonly string[]
 }
 
-export type InterviewKey = 'sport' | 'years' | 'limits' | 'time' | 'goal' | 'target'
+export type InterviewKey = 'sport' | 'years' | 'limits' | 'time' | 'goal' | 'target' | 'tier' | 'phase'
 
 export const INTERVIEW_FIELDS: readonly InterviewField[] = [
   {
@@ -80,9 +84,50 @@ export const INTERVIEW_FIELDS: readonly InterviewField[] = [
     label: 'Target handicap',
     hint: 'The number you are actually chasing. Every benchmark on your dashboard reads against it.',
   },
+  /**
+   * PRACTICE INTENSITY and PHASE — added 2026-09-17, Makel: "let both be selectable".
+   *
+   * These give `tier` and `phase` a producer. Until now both were literals in the prototype
+   * (`tier: 'builder'`, `phase: 2`) that every player got regardless, and they are load-bearing:
+   * TIERS[tier].phases[phase] decides the weekly floor, the prescribed week the calendar draws its
+   * ghost bars from, and the per-phase hours on the Plan screen.
+   *
+   * NOT billing. `tier` here is hours-per-week commitment (Foundation 2 / Builder 5 /
+   * Competitive 10); the billing ladder is `public.plans` (free / pro) and is a separate question,
+   * deliberately not wired to this. See TASKS.md.
+   *
+   * Self-declared on purpose. "How many hours will you practise" is a promise the golfer makes to
+   * themselves — nothing measures it, and deriving it from their answers would be inventing a rule
+   * nobody has stated.
+   */
+  {
+    key: 'tier',
+    label: 'Practice intensity',
+    hint: 'Pick the floor you will actually hit, not the one you wish for. Foundation ~2 hrs/week, Builder ~5, Competitive ~10.',
+    options: ['foundation', 'builder', 'competitive'],
+    optionLabels: ['Foundation · ~2 hrs/week', 'Builder · ~5 hrs/week', 'Competitive · ~10 hrs/week'],
+  },
+  {
+    key: 'phase',
+    label: 'Where you are in the build',
+    hint: 'If you are not sure, start at the beginning — the phases are meant to be worked in order.',
+    options: ['1', '2', '3', '4'],
+    optionLabels: [
+      '1 · Assessment & Calibration',
+      '2 · Construction Primary',
+      '3 · Transfer Introduced',
+      '4 · Mechanical Ceiling',
+    ],
+  },
 ]
 
 export const INTERVIEW_KEYS: readonly InterviewKey[] = INTERVIEW_FIELDS.map((f) => f.key)
+
+/** The choice fields, by key — used to validate a stored value and to pick the stage's control. */
+export const INTERVIEW_OPTIONS: Readonly<Partial<Record<InterviewKey, readonly string[]>>> =
+  Object.fromEntries(
+    INTERVIEW_FIELDS.filter((f) => f.options).map((f) => [f.key, f.options as readonly string[]]),
+  )
 
 /**
  * Per-answer cap. Generous because an injury history is genuinely long — the prototype's textarea
@@ -110,6 +155,13 @@ export function validateInterviewPartial(input: Record<string, unknown>): string
     // patch is better than accepting it here and silently dropping it at completion, which would
     // read to the golfer as "I answered that and it did nothing".
     // Empty stays legal: it means "not answered yet", same as every other field.
+    // Choice fields (tier, phase) must hold one of their options — the prototype indexes
+    // TIERS[tier].phases[phase] directly, so an unknown value is a crash, not a bad display.
+    // Empty stays legal: not answered yet.
+    const opts = INTERVIEW_OPTIONS[key as InterviewKey]
+    if (opts && value.trim() !== '' && !opts.includes(value.trim())) {
+      return `invalid_interview_value:${key}`
+    }
     if (key === 'target' && value.trim() !== '') {
       const n = parseHandicapIndex(value)
       if (n === null) return 'invalid_interview_value:target'

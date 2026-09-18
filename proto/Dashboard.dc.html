@@ -3166,7 +3166,26 @@ class Component extends DCLogic {
       };
     })(),
     watched: [], coachMode: false, demo: null,
-    tier: 'builder', phase: 2, rebuild: false, fitnessOn: true,
+    // ── SEEDED FROM THE GOLFER'S OWN ANSWER, 2026-09-17 ──────────────────────────────────────
+    // Was `tier: 'builder', phase: 2` — literals every player got, and load-bearing ones:
+    // TIERS[tier].phases[phase] decides the weekly floor, the prescribed week the calendar draws
+    // its ghost bars from, and the per-phase hours on the Plan screen. Both are now asked in the
+    // interview and arrive on me.tier / me.zone.
+    //
+    // Fallbacks are the GENTLEST rung, not the middle one: an unanswered golfer gets Foundation
+    // phase 1 (2 hrs/week, "Assessment & Calibration"), so the page under-promises rather than
+    // telling someone who never answered that they owe 5 hours a week. TIERS[...] is indexed
+    // directly all over this file, so these must always be valid keys — never undefined.
+    ...(() => {
+      const me = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.me) || {};
+      const t = String(me.tier || '');
+      const p = parseInt(String(me.zone || ''), 10);
+      return {
+        tier: (t === 'foundation' || t === 'builder' || t === 'competitive') ? t : 'foundation',
+        phase: (p >= 1 && p <= 4) ? p : 1,
+      };
+    })(),
+    rebuild: false, fitnessOn: true,
     clock: null, now: Date.now(), lastSession: null,
     lifts: ['lift-a', 'speed-1'],
     vw: typeof window !== 'undefined' ? window.innerWidth : 1400, railOpen: false

@@ -61,9 +61,16 @@ export type RosterRow = {
   dupe: string
 
   // ── NO PRODUCER. Present so his render finds the key, empty because nothing writes it. ────────
-  /** Atlas curriculum tier. Not built. */
+  /**
+   * Practice-intensity commitment: 'foundation' | 'builder' | 'competitive', or '' when the golfer
+   * has not answered. REAL since 2026-09-17 — asked in the interview and read back here.
+   * NOT billing: public.plans (free/pro) is a separate ladder and is not wired to this.
+   */
   tier: string
-  /** Atlas curriculum zone. Not built. */
+  /**
+   * Curriculum phase as a string, '1'..'4', or '' when unanswered. Carried on the `zone` key
+   * because that is what Luke's markup reads; the interview stores it under `phase`.
+   */
   zone: string
   /** Target handicap. REAL since 2026-09-03 — `golf.player_profile.target_handicap` exists and is read below. */
   target: number | null
@@ -836,6 +843,12 @@ export async function buildAtlasData(
       hand: handLabel(myProfile[0]?.handedness),
       carry: myProfile[0]?.driverCarryYds ? `${myProfile[0].driverCarryYds} yd driver carry` : '',
       file: myIntake.rows[0]?.interview ?? {},
+      // REAL since 2026-09-17. The golfer picks both in the interview ("let both be selectable").
+      // `tier` is an hours-per-week COMMITMENT (foundation/builder/competitive), not billing —
+      // the billing ladder is public.plans and is deliberately not wired to this. Empty string
+      // when unanswered, so the prototype falls back to its own guard rather than to a literal.
+      tier: String((myIntake.rows[0]?.interview as Record<string, unknown> | null)?.tier ?? ''),
+      zone: String((myIntake.rows[0]?.interview as Record<string, unknown> | null)?.phase ?? ''),
       drills: myDrills,
       notes: notesBy.get(me.id) ?? [],
       // The same resolver the roster uses. A player reads their own submissions back — "with your
