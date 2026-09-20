@@ -322,6 +322,14 @@ export type AtlasData = {
     /** Driver carry in yards, or null. The baseline the driving index is scored from. */
     carry: number | null
     /**
+     * Practice-intensity commitment ('foundation' | 'builder' | 'competitive') and curriculum
+     * phase ('1'..'4'), both '' when unanswered. On `me` AND on `meRow` deliberately: the page
+     * seeds its plan state from `me`, the dossier renders from `meRow`, and a value on only one
+     * of them is the bug f437aa6 shipped.
+     */
+    tier: string
+    zone: string
+    /**
      * THE CALLER'S OWN coach sign-off state, keyed by drill id.
      *
      * The coach's tick has always written `golf.drill_progress.verified_at` correctly — and the
@@ -813,7 +821,31 @@ export async function buildAtlasData(
       }>
     }
 
-    const meBlock = { ...meBase, notes: notesBy.get(me.id) ?? [] }
+    /**
+     * ⚠️ tier/zone MUST be on `me`, not only on `meRow`.
+     *
+     * f437aa6 put them on `meRow` alone and was therefore INERT: the prototype seeds its plan
+     * state from `window.__ATLAS_DATA__.me.tier` / `.me.zone` (Dashboard.dc.html, the state
+     * initialiser), so every player kept falling through to the Foundation/phase-1 default no
+     * matter what they answered. Caught by the 2026-09-20 review, three agents independently.
+     *
+     * Worth recording WHY it shipped: it was "verified" against a hand-built payload with
+     * `me.tier` set by the test itself, which proved the consumer and never the producer. The
+     * check that finds this is reading the REAL buildAtlasData output — see the test at the
+     * bottom of this change's commit message.
+     */
+    // One expression, two consumers (`me` and `meRow`) — so the page and the dossier cannot
+    // disagree about which tier a golfer is on.
+    const meIntake = myIntake.rows[0]?.interview as Record<string, unknown> | null
+    const meRowTier = String(meIntake?.tier ?? '')
+    const meRowZone = String(meIntake?.phase ?? '')
+
+    const meBlock = {
+      ...meBase,
+      notes: notesBy.get(me.id) ?? [],
+      tier: meRowTier,
+      zone: meRowZone,
+    }
 
     /**
      * The caller, shaped EXACTLY like a RosterRow.
@@ -847,8 +879,8 @@ export async function buildAtlasData(
       // `tier` is an hours-per-week COMMITMENT (foundation/builder/competitive), not billing —
       // the billing ladder is public.plans and is deliberately not wired to this. Empty string
       // when unanswered, so the prototype falls back to its own guard rather than to a literal.
-      tier: String((myIntake.rows[0]?.interview as Record<string, unknown> | null)?.tier ?? ''),
-      zone: String((myIntake.rows[0]?.interview as Record<string, unknown> | null)?.phase ?? ''),
+      tier: meRowTier,
+      zone: meRowZone,
       drills: myDrills,
       notes: notesBy.get(me.id) ?? [],
       // The same resolver the roster uses. A player reads their own submissions back — "with your

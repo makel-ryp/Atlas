@@ -502,6 +502,31 @@ intakeRouter.patch('/intake/:id', ...identityChain, async (req, res, next) => {
           })
           .where(and(eq(atlasIntakeSubmissions.id, submissionId), eq(atlasIntakeSubmissions.userId, me.id)))
           .returning()
+
+        // ── TARGET HANDICAP reconciles HERE, not only at completion ────────────────────────────
+        // It also runs in the completion handler, and that is not enough: `/complete` returns
+        // early on an already-completed row (:572), and useQuizRun.ts:109 refuses to call
+        // `complete` at all once status is 'completed'. So for a golfer who finished intake before
+        // this field existed — three live accounts on 2026-09-20 — the answer landed in the jsonb,
+        // the PATCH returned 200 echoing it back, and `golf.player_profile.target_handicap` stayed
+        // NULL forever. That is verbatim the failure the feature's own comment claimed to prevent:
+        // "an answer that stopped at the interview jsonb would have changed nothing on any screen."
+        //
+        // The PATCH is the right home because it is where the answer actually arrives, and it is
+        // the only path a completed run can still reach. Completion keeps its copy for the case
+        // where the profile upsert happens in the same transaction as the handicap_history append.
+        if (interviewPatch && Object.prototype.hasOwnProperty.call(interviewPatch, 'target')) {
+          const t = parseHandicapIndex((interviewPatch as Record<string, unknown>).target)
+          if (t !== null && t >= TARGET_MIN && t <= TARGET_MAX) {
+            await db
+              .insert(golfPlayerProfile)
+              .values({ userId: me.id, targetHandicap: String(t) })
+              .onConflictDoUpdate({
+                target: golfPlayerProfile.userId,
+                set: { targetHandicap: String(t), updatedAt: new Date() },
+              })
+          }
+        }
         return row
       },
     )
