@@ -34,7 +34,8 @@ export function InterviewStage({
 }) {
   const [draft, setDraft] = useState<Partial<Record<InterviewKey, string>>>(initial ?? {})
 
-  // Widened to cover both controls: `target` renders as an <input>, the other five as <textarea>.
+  // Covers all three controls: `tier`/`phase` render as <select>, `target` as an <input>, and the
+  // other five as <textarea>.
   const set = (k: InterviewKey) =>
     (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement | HTMLSelectElement>) =>
       setDraft((d) => ({ ...d, [k]: e.target.value.slice(0, INTERVIEW_MAX_LEN) }))
@@ -49,9 +50,9 @@ export function InterviewStage({
           Now the part a form cannot score.
         </h2>
         <p className="mb-8 text-muted">
-          Five questions, in your own words. Your coach reads these before they write anything —
-          so answer them the way you would say them out loud, not the way you think they should
-          sound.
+          Eight questions — five in your own words, three you pick from a list. Your coach reads
+          these before they write anything, so answer them the way you would say them out loud,
+          not the way you think they should sound.
         </p>
 
         <div className="flex flex-col gap-7">

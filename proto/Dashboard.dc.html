@@ -3597,9 +3597,10 @@ class Component extends DCLogic {
     const s = this.state;
     // ── MONTHLY ALLOWANCE — REAL, given by Makel 2026-09-17 ──────────────────────────────────
     // "2 Yannick visits a mo, 4 phil visits a mo, 1 luke vist a mo, and 4 brock visits a mo."
-    // Flat, not tier-keyed: the old table selected a row with `s.tier`, and `tier` has no producer
-    // (protoData.ts ships it as ''), so the lookup was reading the literal 'builder'. If the
-    // allowance really does vary by tier, that needs a tier producer first — see TASKS.md.
+    // Flat, not tier-keyed, because the numbers Makel gave are flat. (The original note said a
+    // tier producer was needed first; f437aa6 built one two days later and this comment outlived
+    // it. `tier` is now a real answer on me.tier / meRow.tier.) If the allowance turns out to vary
+    // by tier, the input for that exists — the open question is the product rule, not the data.
     const ALLOW = { luke: 1, brock: 4, yannick: 2, phil: 4 };
     // ── BALANCE — NO PRODUCER, so it is not rendered ─────────────────────────────────────────
     // USED/BANKED/EXPIRY were literals ({luke:1,...}, '18 days', '6 days'). A balance needs a
@@ -3823,9 +3824,16 @@ class Component extends DCLogic {
           border: on ? 'rgba(200,160,94,0.55)' : 'rgba(255,255,255,0.09)',
           bg: on ? '#1e2733' : '#161d28',
           nameColor: on ? '#c8a05e' : '#ece7db',
-          badge: on ? 'Current plan' : 'Switch',
+          // Was 'Switch' with a local setState. `tier` is now a stored answer
+          // (atlas.intake_submissions.interview), so switching here repainted the entire
+          // prescription — weekly floor, phase label, mix, split, the seven-day week, the calendar
+          // ghost bars and the calendar export — and threw it away on reload with no message. Same
+          // class as the workbook tick f6089e0 disarmed. Until there is a PATCH route for it, the
+          // card states which plan you are on and where to change it, rather than offering a
+          // control that does not work.
+          badge: on ? 'Current plan' : 'Change in your intake',
           badgeColor: on ? '#c8a05e' : '#66717f',
-          onClick: () => this.setState({ tier: k })
+          onClick: () => {}
         };
       }),
       phaseTabs: [1, 2, 3, 4].map(n => {
@@ -3835,7 +3843,9 @@ class Component extends DCLogic {
           color: on ? '#0E141B' : '#8d99a8',
           bg: on ? '#c8a05e' : 'rgba(255,255,255,0.03)',
           border: on ? '#c8a05e' : 'rgba(255,255,255,0.1)',
-          onClick: () => this.setState({ phase: n })
+          // Same reason as the tier cards above — `phase` is a stored answer now, and a local
+          // setState only pretends to move it.
+          onClick: () => {}
         };
       }),
       phaseLabel: ph.label,
@@ -3850,7 +3860,12 @@ class Component extends DCLogic {
       ...this.buildSchedule(ph),
 
       practiceBar: bar(logged.practice, floorHrs) + '%',
-      practiceRead: logged.practice + ' of ' + (floorHrs || 0).toFixed(1) + ' hrs',
+      // `(floorHrs || 0)` turned an UNMEASURED floor into a stated 0.0, so on phase 4 (every
+      // tier has `hrs: null` there) the Weekly floor panel read "—" and this line read
+      // "3.5 of 0.0 hrs" for the same quantity, one above the other. Mirrors playRead's guard.
+      practiceRead: floorHrs === null || floorHrs === undefined
+        ? logged.practice + ' of —'
+        : logged.practice + ' of ' + floorHrs.toFixed(1) + ' hrs',
       playBar: bar(logged.play, playHrs) + '%',
       playReadWk: playHrs ? logged.play + ' of ~' + playHrs + ' hrs' : 'Paused this phase',
       speedChips: t.speed ? [0, 1, 2].map(i => ({
@@ -4655,7 +4670,13 @@ class Component extends DCLogic {
       // rather than printed; nothing here is substituted.
       pfMeta: [
         who.tier,
-        who.zone ? 'Zone ' + who.zone : '',
+        // "Phase", NOT "Zone". `who.zone` carries the interview's PHASE (1-4) because `zone` is the
+        // key Luke's markup reads — but "zone" in this file means the four PRACTICE zones on the
+        // rail (01 Construction / 02 Calibration / 03 Transfer / 04 Performance), and the phase
+        // numbers do not map onto them: phase 1 is "Assessment & Calibration" (zone 02), phase 2
+        // is "Construction Primary" (zone 01). Printing "Zone 3" for a phase-3 golfer named the
+        // wrong thing twice over.
+        who.zone ? 'Phase ' + who.zone : '',
         // FIXED 2026-09-14: the self branch was the literal 'Day 41 of 90' — a fabricated position
         // in a fabricated 90-day programme, which would have started printing under every player's
         // own name the moment `self` became reachable. There is no practice-day producer for

@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-20 14:54 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-21 09:04 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **2 file(s)** | pushed |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **4 file(s)** | pushed |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | **2 ahead** |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-20 14:54 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.21.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.21.0.tgz`
-- **Atlas HEAD:** `f814180 Fix two defects the Sunday review found in Friday's own commits`
+- **Atlas HEAD:** `e644983 Sunday code review: 43 findings, full inventory (T-75/T-76)`
 <!-- AUTO:END -->
 
 Regenerate the block above with:

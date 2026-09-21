@@ -54,26 +54,34 @@ export type RosterRow = {
    *
    * Two real people can be called John Smith, and a roster that shows the name alone then gives a
    * coach no way to tell which row is which — the meta line underneath is no help either, since
-   * tier, zone and practice days have no producer and read identically for everyone. Filled in
+   * on the ROSTER path tier, zone and practice days are still shipped empty (:1017-1018) and so
+   * read identically for everyone. (A player's own `meRow` does carry tier/zone since 2026-09-17;
+   * the roster does not.) Filled in
    * below, after the rows exist, because whether a name is ambiguous is a property of the SET and
    * not of the person.
    */
   dupe: string
 
-  // ── NO PRODUCER. Present so his render finds the key, empty because nothing writes it. ────────
   /**
    * Practice-intensity commitment: 'foundation' | 'builder' | 'competitive', or '' when the golfer
-   * has not answered. REAL since 2026-09-17 — asked in the interview and read back here.
+   * has not answered. REAL since 2026-09-17 — asked in the interview, and read back on BOTH `me`
+   * and `meRow` (a value on only one of them was the bug f437aa6 shipped).
    * NOT billing: public.plans (free/pro) is a separate ladder and is not wired to this.
+   * ⚠️ Still '' on the ROSTER path (:1017-1018) — a coach does not yet see a student's tier.
    */
   tier: string
   /**
    * Curriculum phase as a string, '1'..'4', or '' when unanswered. Carried on the `zone` key
-   * because that is what Luke's markup reads; the interview stores it under `phase`.
+   * because that is what Luke's markup reads; the interview stores it under `phase`. The profile
+   * meta line prints it as "Phase N" — "zone" in the prototype means the four PRACTICE zones and
+   * the phase numbers do not map onto them.
+   * ⚠️ Same roster caveat as `tier`.
    */
   zone: string
   /** Target handicap. REAL since 2026-09-03 — `golf.player_profile.target_handicap` exists and is read below. */
   target: number | null
+
+  // ── NO PRODUCER. Present so his render finds the key, empty because nothing writes it. ────────
   /** Practice days. Needs a `practice_days` producer; none exists. */
   days: number | null
   /** Primary leak. Forge. */
