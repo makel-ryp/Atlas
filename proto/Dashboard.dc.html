@@ -534,7 +534,7 @@
 
       <div style="display:flex; flex-direction:column; gap:10px;">
         <sc-for list="{{ pfDrills }}" as="d" hint-placeholder-count="3">
-        <div onClick="{{ d.toggle }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 16px; border:1px solid {{ d.cardBorderTop }}; border-radius:10px; background:#1a222e;">
+        <div onClick="{{ d.toggle }}" style="cursor: {{ d.cursor }}; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 16px; border:1px solid {{ d.cardBorderTop }}; border-radius:10px; background:#1a222e;">
           <div style="min-width:0;">
             <div style="font-family:'Archivo'; font-weight:700; font-size:15px; color:#ece7db;">{{ d.name }}</div>
             <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#8d99a8; margin-top:4px;">{{ d.domain }} &middot; {{ d.shots }}</div>
@@ -594,7 +594,7 @@
 
           <div style="display: {{ st.drillsShow }}; flex-direction:column; gap:8px; padding:2px 14px 14px 14px;">
             <sc-for list="{{ st.drills }}" as="d" hint-placeholder-count="4">
-            <div onClick="{{ d.toggle }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:12px 14px; border:1px solid {{ d.cardBorder }}; border-radius:8px; background:rgba(255,255,255,0.02);">
+            <div onClick="{{ d.toggle }}" style="cursor: {{ d.cursor }}; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:12px 14px; border:1px solid {{ d.cardBorder }}; border-radius:8px; background:rgba(255,255,255,0.02);">
               <div style="min-width:0;">
                 <div style="font-family:'Archivo'; font-weight:700; font-size:14px; color:#ece7db;">{{ d.name }}</div>
                 <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#8d99a8; margin-top:4px;">{{ d.shots }}</div>
@@ -733,7 +733,7 @@
            free text, so a non-drill review item needs no migration and no second mechanism. -->
       <div style="display: {{ pfIntakeReviewShow }}; flex-direction:column; gap:10px; margin-top:14px;">
         <sc-for list="{{ pfIntakeReview }}" as="d" hint-placeholder-count="1">
-        <div onClick="{{ d.toggle }}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 16px; border:1px solid {{ d.cardBorderTop }}; border-radius:10px; background:#1a222e;">
+        <div onClick="{{ d.toggle }}" style="cursor: {{ d.cursor }}; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 16px; border:1px solid {{ d.cardBorderTop }}; border-radius:10px; background:#1a222e;">
           <div style="min-width:0;">
             <div style="font-family:'Archivo'; font-weight:700; font-size:15px; color:#ece7db;">{{ d.name }}</div>
             <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:#8d99a8; margin-top:4px;">{{ d.domain }} &middot; {{ d.shots }}</div>
@@ -2863,7 +2863,9 @@ const STEPS = [
   ]}
 ];
 
-const DONE = ['1-1a', '1-1b', '1-2', '1-3', '2-F1', '2-F2', '2-F3', '2-P1', '2-P2', '2-P3', '3-S1', '3-S2'];
+// `DONE` DELETED 2026-09-21. It was the 12 hardcoded drill refs that made every player read
+// "12 of 23 drills completed"; f6089e0 removed both its uses and left the constant defined, so the
+// fiction stayed one assignment away from returning. The workbook now seeds from drill_progress.
 
 // The roster is the coach's whole book. Each player carries their own intake
 // file, so the profile page is one player's row opened up rather than a
@@ -3919,19 +3921,18 @@ class Component extends DCLogic {
       verified: off ? this.state.verified.filter(k => k !== key) : this.state.verified
     });
   };
-  toggleVerify = key => () => {
-    const v = this.state.verified;
-    this.setState({ verified: v.indexOf(key) > -1 ? v.filter(k => k !== key) : v.concat([key]) });
-  };
+  // `toggleVerify` DELETED 2026-09-21. It wrote `verified` — the COACH's judgement — from the
+  // player's own browser. Its only call site was behind a `false &&` guard, which is the weakest
+  // possible disarm in a file no linter or typechecker ever reads: deleting two characters
+  // re-armed it. Removing the function is the disarm that cannot be undone by accident.
   openDemo = (n, ref) => () => {
     const key = n + '-' + ref, w = this.state.watched;
     this.setState({ demo: { n: n, ref: ref }, watched: w.indexOf(key) > -1 ? w : w.concat([key]) });
   };
   toggleStep = n => () => this.setState({ openStep: this.state.openStep === n ? 0 : n });
-  requestSignOff = n => () => {
-    if (this.state.signed.indexOf(n) > -1) return;
-    this.setState({ signed: this.state.signed.concat([n]) });
-  };
+  // `requestSignOff` DELETED 2026-09-21, same reason: it appended to `signed`, which since
+  // f6089e0 means "the coach signed this step off". A real request path needs a producer that
+  // owns golf.drill_progress.ticked_at — `atlas_app` holds no write grant on it (42501).
 
   stepDrills(st) {
     return st.variants ? st.variants[this.state.pivot].drills : st.drills;
@@ -4020,7 +4021,9 @@ class Component extends DCLogic {
           // editable from the player's own browser. Harmless over the old demo literals; over real
           // drill_progress data it lets a player show themselves verifications they were never
           // given. A coach verifies through the route in profileVals, never here.
-          const showCoach = false && s.coachMode && d.cam && on && !locked;
+          // Was `false && s.coachMode && ...`. Now simply false, with the only consumer
+          // (`coachAction`) collapsed below, and `toggleVerify` deleted outright.
+          const showCoach = false;
           return {
             ref: d.ref, name: d.name,
             std: vd ? 'Verified' : pending ? 'Awaiting review' : on ? 'Completed' : d.std,
@@ -4045,18 +4048,25 @@ class Component extends DCLogic {
             nameColor: locked ? '#5b6573' : on ? '#c3cdd9' : CREAM,
             stdColor: vd ? GREEN : on ? GOLD : locked ? '#66717f' : '#8d99a8',
             coachShow: showCoach ? 'inline-block' : 'none',
-            coachAction: showCoach ? this.toggleVerify(key) : () => {},
+            coachAction: () => {},
             coachActLabel: vd ? 'Revoke' : 'Verify',
             coachActColor: vd ? '#8d99a8' : '#0E141B',
             coachActBg: vd ? 'transparent' : GREEN,
             coachActBorder: vd ? 'rgba(255,255,255,0.14)' : GREEN
           };
         }),
-        signLabel: isSigned ? 'Completed · Dr. Benoit' : locked ? 'Locked until Step ' + (st.n - 1) : all ? 'Request completion' : done < drills.length ? (drills.length - done) + ' drills to go' : camPending + ' awaiting Parallax review',
-        signColor: isSigned ? GREEN : all && !locked ? '#0E141B' : '#66717f',
-        signBg: isSigned ? 'transparent' : all && !locked ? '#f2ede1' : 'transparent',
-        signBorder: isSigned ? 'rgba(127,168,201,0.4)' : all && !locked ? '#f2ede1' : 'rgba(255,255,255,0.12)',
-        signCursor: all && !locked && !isSigned ? 'pointer' : 'default',
+        // 'Dr. Benoit' removed 2026-09-21. `isSigned` mirrors golf.drill_progress.verified_at
+        // since f6089e0, so this printed an INVENTED name over a real, recorded coach action —
+        // and the database records who actually did it (verified_by_user_id), which is not that
+        // person. The profile pane names nobody for the same reason. To name the real coach,
+        // project verified_by_user_id's display name through protoData first.
+        signLabel: isSigned ? 'Completed' : locked ? 'Locked until Step ' + (st.n - 1) : all ? 'Ready \u2014 waiting on your coach' : done < drills.length ? (drills.length - done) + ' drills to go' : camPending + ' awaiting Parallax review',
+        // `signOff` is inert (below), so the affordances must not advertise an action: no primary
+        // fill, no pointer. The imperative 'Request completion' became a statement in signLabel.
+        signColor: isSigned ? GREEN : '#66717f',
+        signBg: 'transparent',
+        signBorder: isSigned ? 'rgba(127,168,201,0.4)' : 'rgba(255,255,255,0.12)',
+        signCursor: 'default',
         // INERT. `signed` now means "the coach signed this step off" (golf.drill_progress on
         // 'plan:step-N'). Letting the player append to it locally would paint a green ✓ and
         // "Completed" over a step no coach has seen — on a screen whose own copy says the coach
@@ -4272,7 +4282,12 @@ class Component extends DCLogic {
       //
       // The vocabulary is Luke's own: the roadmap already computes `pending` and labels it
       // 'Awaiting review' (:3778). Same words, same gold, now on the persisted list.
-      const waiting = !on && !!SUBMITTED[item.id];
+      // `item.review` gate added 2026-09-21. Without it, ANY ticked-and-unverified drill was
+      // painted gold and labelled as owed by the coach — including the drills nobody is meant to
+      // review. `resolveSubmitted` (protoData.ts) populates SUBMITTED for every drill regardless
+      // of `review`, and the workbook gates its own "Awaiting review" on `d.cam`, so the same
+      // screen was using two different rules for the same question.
+      const waiting = !on && !!item.review && !!SUBMITTED[item.id];
       return {
         id: item.id,
         name: item.name,
@@ -4318,6 +4333,12 @@ class Component extends DCLogic {
         // judgement. `drill_progress_coach_update` would refuse the write anyway; this stops the
         // UI from offering an action the database will reject.
         readOnly: isViewingSelf,
+        // `readOnly` was computed here and bound NOWHERE (verified 2026-09-21: zero `d.readOnly`
+        // references in the markup), while all three card sites hardcoded `cursor:pointer`. So on
+        // a player's own profile ~28 cards — 23 plan drills, 5 step completions, the assessments
+        // and the intake row — presented as clickable and did nothing at all. This is the cursor
+        // those sites now bind.
+        cursor: isViewingSelf ? 'default' : 'pointer',
         toggle: isViewingSelf ? (() => {}) : (() => this.tickDrill(who.id, item.id, !on)),
       };
     };
@@ -4404,7 +4425,9 @@ class Component extends DCLogic {
     const planReview = REVIEW_ITEMS.filter(d => (d.group === 'plan' || d.group === 'step') && d.review);
     const planReviewOpen = planReview.filter(d => !(drillSrc[d.id] || {}).verifiedAt).length;
     // Submitted by the player and not yet judged — across the whole plan, steps included.
-    const planWaiting = REVIEW_ITEMS.filter(d => d.group === 'plan' || d.group === 'step')
+    // `d.review` here too: `planReviewOpen` one line up already filters on it, so without this
+    // the two counts in the SAME header were computed by different rules.
+    const planWaiting = REVIEW_ITEMS.filter(d => (d.group === 'plan' || d.group === 'step') && d.review)
       .filter(d => SUBMITTED[d.id] && !(drillSrc[d.id] || {}).verifiedAt).length;
 
     // ── COACHING NOTES ───────────────────────────────────────────────────────────────────────
@@ -5924,16 +5947,22 @@ class Component extends DCLogic {
       name: d.name, std: d.std,
       why: WHY[d.name] || '',
       whyShow: WHY[d.name] ? 'block' : 'none',
-      status: vd ? 'Verified by Dr. Benoit' : pending ? 'Awaiting Parallax review' : on ? 'Logged by you' : 'Not started',
+      // Same as signLabel above — real verification, invented verifier.
+      status: vd ? 'Verified by your coach' : pending ? 'Awaiting Parallax review' : on ? 'Logged by you' : 'Not started',
       statusColor: vd ? GREEN : pending ? GOLD : on ? GOLD : '#8d99a8',
       // Same reason as the workbook row above: no write grant on ticked_at, so the button is
       // inert and must not advertise an action. It states where the tick comes from instead.
       onTick: () => {},
       tickLabel: signedStep ? 'Locked — step completed' : on ? 'You marked this done' : 'Not yet marked done',
-      tickColor: signedStep ? '#66717f' : on ? '#8d99a8' : '#0E141B',
-      tickBg: signedStep || on ? 'transparent' : '#f2ede1',
-      tickBorder: signedStep ? 'rgba(255,255,255,0.1)' : on ? 'rgba(255,255,255,0.16)' : '#f2ede1',
-      tickCursor: signedStep ? 'default' : 'pointer',
+      // The labels were made statements when this was disarmed; the AFFORDANCES were not, so the
+      // row kept the page's primary cream fill and a pointer cursor on every unticked drill —
+      // the comment above it claimed "the button is inert and must not advertise an action" while
+      // it went on advertising one. Now a status line: no fill, no pointer.
+      // ⚠️ The IMPACT_OPP branch above is a genuinely live control and keeps its pointer.
+      tickColor: '#8d99a8',
+      tickBg: 'transparent',
+      tickBorder: signedStep ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.16)',
+      tickCursor: 'default',
       parallaxShow: d.cam && !vd ? 'inline-block' : 'none'
     };
   }
@@ -6107,12 +6136,18 @@ class Component extends DCLogic {
       ...this.rosterVals(),
       isPlan: view === 'plan' && !isHidden('plan'), goPlan: this.nav('plan'),
       cPlan: r.plan.c, bPlan: r.plan.b,
-      // ⚠️ BLANK, not TIERS[s.tier].name. `s.tier` is the literal 'builder' seeded at :3151, so this
-      // printed "BUILDER" on EVERY player's rail as a statement about that player's curriculum tier.
-      // Nothing records a tier: ryp-core has no such column (checked across all 22 tables), and
-      // atlas.intake_submissions.tier_completed is the QUIZ ladder, a different construct. Same class
-      // as T-52's 'Day 41 of 90'. The Plan SCREEN behind this badge is still Luke's unwired prototype
-      // and needs its own pass — this only stops the rail asserting a tier as fact.
+      // ⚠️ BLANK, and the reason has CHANGED — this is now a live decision, not a settled one.
+      //
+      // Blanked 2026-09-16 (T-67) because `s.tier` was then the literal 'builder' and the badge
+      // printed "BUILDER" on every player's rail as a statement about that player. That premise
+      // expired the next day: f437aa6 gave tier a real producer, the golfer picks it in the
+      // interview, and `s.tier` is seeded from `me.tier` in the state initialiser. The original
+      // note also said "ryp-core has no such column", which was true of a COLUMN and is beside the
+      // point now that the answer lives in atlas.intake_submissions.interview.
+      //
+      // So the badge could honestly print the golfer's own answer today. It stays blank only
+      // because nobody has decided the rail SHOULD carry it — see TASKS.md. Do not re-justify this
+      // as "nothing records a tier"; something does.
       tierName: '',
       ...this.planVals(),
       ...this.clockVals(),
@@ -6125,8 +6160,10 @@ class Component extends DCLogic {
       cTransfer: r.transfer.c, bTransfer: r.transfer.b,
       isPerf: view === 'perf' && !isHidden('perf'), goPerf: this.nav('perf'),
       cPerf: r.perf.c, bPerf: r.perf.b,
-      // ⚠️ ALL FOUR BLANK. These were a literal derived from `signed: [1,2]` (:3148, browser-local,
-      // resets on reload — so "Step 3/5" for everyone forever) and three bare strings. They read as
+      // ⚠️ ALL FOUR BLANK. These were a literal derived from `signed: [1, 2]` (a browser-local
+      // state key that reset on reload — so "Step 3/5" for everyone forever) and three bare
+      // strings. `signed` is real now: it mirrors golf.drill_progress.verified_at on
+      // 'plan:step-N' (see the workbook seed in the state initialiser). They read as
       // this player's standing in each zone, and they CONTRADICTED the player's own Practice DNA two
       // panels away: Casey Flint's scored run has Transfer and Performance both 'dim' while the rail
       // said ACTIVE and LOCKED. `dnaZones` already carries the real per-zone status where a run
