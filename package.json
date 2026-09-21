@@ -9,7 +9,8 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "start": "NODE_ENV=production node --import tsx/esm server/index.ts",
-    "seed": "sh -c 'f=.env.local; [ -f \"$f\" ] || f=.env; exec node --env-file=\"$f\" --import tsx/esm scripts/seed.ts'"
+    "seed": "sh -c 'f=.env.local; [ -f \"$f\" ] || f=.env; exec node --env-file=\"$f\" --import tsx/esm scripts/seed.ts'",
+    "smoke": "sh -c 'f=.env.local; [ -f \"$f\" ] || f=.env; exec node --env-file=\"$f\" --import tsx/esm scripts/smoke.ts'"
   },
   "dependencies": {
     "@ryp/eco": "file:vendor/ryp-eco-0.21.0.tgz",

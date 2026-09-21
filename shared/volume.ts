@@ -19,9 +19,10 @@
  * Pure. No I/O. Called client-side for provisional results and server-side for
  * authoritative ones — both must agree, which is why it lives in shared/.
  *
- * Owner: Yannick (backend). The worked example in §4d is the unit test in
- * volume.test.ts — if you change the math, that test must still pass or the
- * handoff's "definition of done for scoring" is broken.
+ * Owner: Yannick (backend). The worked example in §4d was cited here as living in
+ * `volume.test.ts` — ⚠️ that file has never existed in this repo (it came over with the fork).
+ * `npm run smoke` is the real gate; it does not cover this math yet. If you change it, the
+ * handoff's "definition of done for scoring" needs a check that actually runs.
  */
 
 import type { AllocInput, VolumeInput } from './contract';

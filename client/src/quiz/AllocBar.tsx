@@ -93,7 +93,8 @@ const SEGMENT_TEXT: Record<SegmentKey, string> = {
 
 /**
  * The divider maths, kept pure and outside the component so the sum-to-100 invariant can be
- * tested directly rather than by driving a browser. See `AllocBar.test.ts`.
+ * testable directly rather than by driving a browser. ⚠️ `AllocBar.test.ts` was cited here and
+ * has never existed in this repo. `npm run smoke` is the real gate and does not cover this yet.
  *
  * The three boundaries — running totals from the left edge — are the real state of the
  * control. The four segment widths are just differences between them, which is precisely
