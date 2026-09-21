@@ -1,7 +1,25 @@
 # What I need from the Forge repo
 
-**28 Aug 2026.** Luke is actively building Forge and will put it on GitHub. This is the specific list,
-so the repo answers real questions rather than being browsed.
+**28 Aug 2026 · revised 21 Sep 2026.** Luke is actively building Forge and will put it on GitHub.
+This is the specific list, so the repo answers real questions rather than being browsed.
+
+> ### What changed in the 21 Sep revision
+>
+> Three weeks of Atlas work has **answered three of the questions this doc used to ask**, and turned
+> up **one new one that is now the most important thing in here** (§3a, the drill library).
+>
+> | Was asked | Now |
+> | --- | --- |
+> | Curriculum zone + plan phase — “no rule sets them” | **Answered by Atlas, not Forge.** The golfer picks both at intake. No longer an ask. |
+> | Coaching credits — allowance / used / banked | **Half answered.** Makel set the real monthly allowances 17 Sep. Used/banked still has no producer. |
+> | The practice bar — “the planned figure has no source” | **Half answered.** Planned now comes from the golfer’s own tier+phase. Logged still has no source. |
+>
+> Still fully open and unchanged: **§1 (the three formula conflicts)**, **§2 (the benchmark tables)**,
+> the **5-axis skill radar**, and the **tolerance ladder**.
+>
+> One thing that got *easier*: Atlas now stores a **result snapshot** for Practice DNA, so changing
+> that instrument no longer rewrites history. **§2’s warning still stands for strokes gained** — no
+> equivalent snapshot exists for SG, so the benchmark tables remain retroactive.
 
 ## Why it matters more than it looks
 
@@ -55,11 +73,65 @@ use, and is there a third version in the real build?
 Found while working out the formulas — these appear on screen with no computation behind them:
 
 - **the 5-axis skill radar (`dna`)** — stored as a literal in the Dashboard and rendered, but nothing
-  derives it. Does Forge compute it? From what?
-- **current curriculum zone** and **plan phase (1–4)** — displayed per player; no rule sets them
-- **tolerance ladder rung / cleared level**
-- **coaching credits** (allowance / used / banked) — no player dimension in the prototype's config
-- **the "practice bar"** (planned vs logged) — the planned figure has no source
+  derives it. Does Forge compute it? From what? **(Still fully open, 21 Sep.)**
+- **tolerance ladder rung / cleared level** **(Still fully open, 21 Sep.)**
+- ~~**current curriculum zone** and **plan phase (1–4)** — displayed per player; no rule sets them~~
+  **ANSWERED 17 Sep, and not by Forge.** Atlas asks the golfer directly at intake: practice
+  intensity (Foundation ~2 hrs/wk, Builder ~5, Competitive ~10) and which of the four phases they
+  are in. Both are stored and drive the weekly floor, the prescribed week and the calendar. **We are
+  not asking you for a rule here any more** — but tell us if self-declared is the wrong model and
+  something should derive it instead.
+- **coaching credits** (allowance / used / banked) — ~~no player dimension in the prototype's
+  config~~ **Allowance answered 17 Sep**: Luke 1/mo, Brock 4/mo, Yannick 2/mo, Phil 4/mo, flat
+  rather than tier-varying. **Used and banked are still unproduced** — nothing records a session
+  being taken, so the balance renders as a dash. Does Forge or anything else book sessions?
+- **the "practice bar"** (planned vs logged) — ~~the planned figure has no source~~ **Planned is
+  answered**: it now comes from the golfer's own tier + phase, and we verified it lands on the
+  correct real weekdays. **Logged still has no source** — nothing anywhere records that a practice
+  session happened, which is also why streaks, hours and "practiced n of N" all render as dashes.
+
+## 3a. The drill library, and the reasons behind a prescription
+
+**Added 21 Sep. This is the biggest open question in the document.**
+
+Atlas can now record that a coach *judged* a drill — `golf.drill_progress`, 35 stable ids in
+`shared/drills.ts`, RLS per player, live and tested. What Atlas cannot do is **give a player a
+drill**. There is no assignment mechanism anywhere: the only two coach→student writes that exist are
+sign-off and notes.
+
+What stands in for assignment today is a **static template**: `TIERS[tier].phases[n].week`. Every
+Builder-phase-2 golfer on earth gets the identical week. The calendar's "Programmed by Coach Phil"
+is a literal string.
+
+Meanwhile the *content* for doing this properly already exists — in your prototype, and it is good:
+
+- **27 unique plan drills**, each with a name, a `std` (the condition that counts as done), and a
+  `cam` flag for the ones that get filmed.
+- **27 `WHY` entries** — one per drill, **complete, no gaps, no orphans** (we checked). Real
+  prescription reasoning: *"Trail heel down removes the leg you cheat with, so the load has nowhere
+  to go but the ground."*
+- **Per-route blurbs** explaining when the Cannon applies versus the Anchor.
+
+So the hard part — the coaching thinking — is done. What is missing is that it lives as JavaScript
+constants inside a 390KB HTML file, keyed by **display name** rather than by id, which means:
+
+- renaming a drill silently orphans its reason,
+- the server cannot read any of it, so nothing but the browser can explain a prescription,
+- and changing a reason means editing the prototype.
+
+**The questions:**
+
+1. **Does Forge own a drill library?** If it has a canonical list — ids, names, standards, the
+   reasons, video refs — that is the thing to build against, and `golf.drill_library` should be its
+   shape rather than ours. (Atlas has that table *specified and not built*, deliberately, so as not
+   to fork a list you own.)
+2. **Is there an assignment rule, or is the tier/phase template the whole thing?** In other words:
+   should a coach be able to hand a player a specific drill, or is "your plan gives you your week"
+   the intended model? Both are defensible. We just need to know which, because they are different
+   builds.
+3. **If assignment exists, what drives it?** A coach picking by hand, a rule off the assessment, or
+   Forge proposing from the numbers? This is the same question as §3's "no rule sets them", one
+   level down.
 
 ## 4. What I want to read, concretely
 
@@ -77,5 +149,31 @@ Found while working out the formulas — these appear on screen with no computat
 
 ## 5. What we can do without waiting
 
-Atlas's own 25 metrics light up **roster** (done), **profile**, **intake**, **thread** and **plan**.
-That work is unblocked and proceeds in parallel — see `PLAN-get-lukes-build-running.md`.
+**Revised 21 Sep.** That parallel work is now largely done, which has sharpened this ask rather than
+softened it — the Forge-blocked surface is smaller and much more clearly drawn.
+
+**Shipped and live on real data:** roster, player file, sign-off (35 items, both audiences), Practice
+DNA read, coaching notes with three visibility tiers, the interview, the plan screen and its week,
+the calendar (real dates), the Construction workbook.
+
+**Blocked on Forge, precisely:**
+
+| Screen | What is waiting |
+| --- | --- |
+| `03 Transfer`, `04 Performance` | The four domain indices, the composite, the transfer gap, the skill radar, round history — the whole screen |
+| `Today` → "Tomorrow · built for you" | The −2.4 Driving SG and the facet-behind logic that picks tomorrow's session |
+| `Today` → the prescription card | Which drill a golfer is given, and who prescribed it (see §3a) |
+| `Fitness` | Clubhead speed history, and lift/speed compliance |
+
+Everything on that list currently renders **your original demo values** to a real signed-in golfer.
+We have stripped the ones that state a fabricated fact in the golfer's own voice — an invented coach
+message thread, an invented curriculum tier, a frozen calendar date, a money stake — but the four
+rows above are still showing numbers nobody measured, and they are the last of it.
+
+Two consequences worth knowing:
+
+1. **We would rather blank them than guess.** If Forge is far out, say so and we will gate those
+   screens off for alpha rather than ship them reading fiction.
+2. **A copy of the repo unblocks more than the formulas.** §3a means the drill library and the
+   prescription reasons may be in there too — and that is the difference between a static weekly
+   template and an actual coaching system.

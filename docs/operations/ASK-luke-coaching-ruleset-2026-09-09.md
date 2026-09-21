@@ -10,6 +10,18 @@ Its §3 has a single line that this whole document expands:
 
 > **current curriculum zone** and **plan phase (1–4)** — displayed per player; no rule sets them
 
+> ⚠️ **Updated 21 Sep 2026 — that line is now half answered, so read this doc with the correction.**
+>
+> Atlas now **asks the golfer directly** at intake: practice intensity (Foundation ~2 hrs/week,
+> Builder ~5, Competitive ~10) and which of the four phases they are in. Both are stored per player
+> and drive the weekly floor, the prescribed week and the calendar. So "no rule sets them" has
+> become "the golfer sets them, and nothing checks whether they are right."
+>
+> **What that changes for you:** the questions below about what *should* set a zone or a phase are
+> still worth answering — but they are now about whether self-declared is good enough, and what
+> should override it, rather than about filling a blank. If a golfer says Competitive and practises
+> two hours a week, nothing currently notices.
+
 ---
 
 ## 0. How to use this
