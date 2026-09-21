@@ -1115,6 +1115,24 @@ export async function buildAtlasData(
      */
     const nameCount = new Map<string, number>()
     for (const r of roster) nameCount.set(r.n, (nameCount.get(r.n) ?? 0) + 1)
+    /**
+     * ⚠️ THE CALLER COUNTS TOO (added 2026-09-21, T-68).
+     *
+     * This used to count roster rows against each other only. But the caller's own name is built by
+     * the identical formula (`meBase.name`, above) and renders in the persistent rail account chip
+     * on EVERY screen — so a student who shares a name with the signed-in coach sat one column away
+     * from an identical string, and `dupe` stayed silent because the collision was coach-vs-student
+     * rather than row-vs-row.
+     *
+     * This is not hypothetical. On 2026-09-21 it produced a false entry in this repo's own task
+     * board: `makel@rypgolf.com` coaching `makelmackbee@gmail.com` — two different accounts, one
+     * display name — was recorded as a coach holding a `coach_of` edge to themself. That is exactly
+     * the confusion this field exists to prevent, in the one configuration it did not cover.
+     *
+     * Counted, not force-flagged: seeding the map means a roster row only disambiguates when it
+     * genuinely collides, and a coach with a unique name changes nothing.
+     */
+    if (meBlock.name) nameCount.set(meBlock.name, (nameCount.get(meBlock.name) ?? 0) + 1)
     for (const r of roster) {
       if ((nameCount.get(r.n) ?? 0) < 2) continue
       const person = people.find((x) => x.id === r.id)

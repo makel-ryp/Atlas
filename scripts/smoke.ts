@@ -26,7 +26,7 @@
  * it is.
  */
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { buildAtlasData, HIDDEN_FOR_PLAYER, HIDDEN_FOR_COACH } from '../server/protoData'
 import { INTERVIEW_FIELDS } from '../shared/interview'
@@ -203,6 +203,46 @@ async function main() {
   // If the id-keyed lookup ever disappears, the fallback silently becomes the source again.
   check('the prototype resolves reasons by id', PROTO.includes('WHY_BY_ID') && PROTO.includes('whyFor('))
   check('no consumer still keys a reason by display name', !/why:\s*WHY\[d\.name\]/.test(PROTO))
+
+  // ── H. THE pool.query RLS TRAP ───────────────────────────────────────────────────────────────
+  // A raw `pool.query` carries NO RLS identity, so it returns ZERO ROWS with no error. That is
+  // invisible by construction — zero rows looks exactly like "no data" — and it has already caused
+  // three separate silent failures, including one inside this very suite, where a check passed
+  // while proving nothing. `withRls` is the only sanctioned read path.
+  //
+  // `pool.connect()` is allowed WHEN the code sets the identity itself: ensureAtlasAccess does
+  // exactly that, because it runs before a user has an Atlas role and so cannot use withRls.
+  section('H. no unguarded pool access on the server')
+  const serverFiles = readdirSync(join(import.meta.dirname, '..', 'server'), { recursive: true, encoding: 'utf8' })
+    .filter((f) => typeof f === 'string' && f.endsWith('.ts'))
+  const offenders: string[] = []
+  for (const rel of serverFiles) {
+    const body = readFileSync(join(import.meta.dirname, '..', 'server', rel), 'utf8')
+    const code = body
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*'))
+      .join('\n')
+    if (/\bpool\.query\s*\(/.test(code)) offenders.push(`${rel}: bare pool.query — use withRls`)
+    if (/\bpool\.connect\s*\(/.test(code) && !code.includes("set_config('app.current_user_id'")) {
+      offenders.push(`${rel}: pool.connect without setting app.current_user_id`)
+    }
+  }
+  check('every server DB read carries an RLS identity', offenders.length === 0, offenders.join('; '))
+
+  // ── I. NAME DISAMBIGUATION INCLUDES THE CALLER ───────────────────────────────────────────────
+  // `dupe` used to compare roster rows only, so a student sharing a name with the SIGNED-IN COACH
+  // sat one column from an identical string in the rail chip with nothing to tell them apart. That
+  // produced a false entry in this repo's own task board on 2026-09-21.
+  section('I. a student sharing the coach\'s name is disambiguated')
+  const clash = coach.roster.filter((r: any) => r.n === coach.me.name)
+  if (clash.length) {
+    check('a roster row matching the caller carries an email', clash.every((r: any) => r.dupe), clash.map((r: any) => r.n).join(', '))
+  } else {
+    check('fixture has no coach/student name clash (this check is inert here)', true)
+  }
+  // And the other half: a unique name must NOT be flagged.
+  const unique = coach.roster.filter((r: any) => coach.roster.filter((x: any) => x.n === r.n).length === 1 && r.n !== coach.me.name)
+  check('uniquely-named students are not flagged', unique.every((r: any) => !r.dupe), unique.filter((r: any) => r.dupe).map((r: any) => r.n).join(', '))
 
   // ── report ───────────────────────────────────────────────────────────────────────────────────
   console.log(`\n${'='.repeat(74)}`)
