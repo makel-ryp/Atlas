@@ -168,7 +168,7 @@ function injectBanner(html: string, liveCount: number): string {
   // param, calls the same logout() as the button, and strips it from the URL.
   const signout = `<a href="/?signout=1" style="color:#13110b;font-weight:700;text-decoration:none;border-bottom:1px solid rgba(19,17,11,0.4);float:right;margin-left:14px;">Sign out</a>`
   const banner = `<div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#c8a05e;color:#13110b;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;padding:7px 14px;text-align:center;">
-${home}${signout}Live from ryp-core: ${liveCount} student${liveCount === 1 ? '' : 's'} &mdash; name · handicap index · driver carry · handedness · target · coaching relationship · sign-off · practice dna · coach notes · the interview &nbsp;·&nbsp; Empty, no producer app: strokes gained, strike grid, shot reads, tier, zone, practice log. Blank means not measured, not zero.
+${home}${signout}Live from ryp-core: ${liveCount} student${liveCount === 1 ? '' : 's'} &mdash; name · handicap index · driver carry · handedness · target · practice intensity · phase · coaching relationship · sign-off · practice dna · coach notes · the interview &nbsp;·&nbsp; Empty, no producer app: strokes gained, strike grid, shot reads, practice log. Blank means not measured, not zero.
 </div><div style="height:29px"></div>`
   return html.replace(/<body([^>]*)>/i, `<body$1>${banner}`)
 }
