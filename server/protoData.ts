@@ -117,7 +117,10 @@ export type RosterRow = {
   /** Dispersion grid. Forge. */
   grid: number[]
   /**
-   * Intake file prose — the five free-text interview answers. REAL since the intake's `interview`
+   * The WHOLE `interview` object — EIGHT keys since 2026-09-17, not five: the five prose answers
+   * plus `target` (a number), `tier` and `phase` (closed choices). His markup renders five of
+   * them; the rest ride along because this spreads the column rather than picking keys. REAL
+   * since the intake's `interview`
    * block landed: `atlas.intake_submissions.interview`, read at :820 for the player and :1006 for
    * a coach. Empty only for a run that never reached the interview screen.
    */
@@ -401,14 +404,6 @@ export type AtlasData = {
  */
 
 /**
- * ⚠️ Explicit map, no `else` branch to 'Right-handed'.
- *
- * The previous injection did `handedness === 'left' ? 'Left-handed' : 'Right-handed'`, which makes
- * "we do not know" and "a player with no golf.player_profile row at all" both render as
- * "Right-handed" — a fabricated fact under a real name, and one no reader would think to doubt.
- * Roughly 1 in 10 golfers is left-handed, so this would be wrong often, and silently.
- */
-/**
  * THE TRIGGER RESOLVER — one function, every source.
  *
  * Answers "when did this student raise each reviewable thing?" for all of REVIEW_ITEMS at once.
@@ -465,6 +460,14 @@ function resolveSubmitted(args: {
   return out
 }
 
+/**
+ * ⚠️ Explicit map, no `else` branch to 'Right-handed'.
+ *
+ * The previous injection did `handedness === 'left' ? 'Left-handed' : 'Right-handed'`, which makes
+ * "we do not know" and "a player with no golf.player_profile row at all" both render as
+ * "Right-handed" — a fabricated fact under a real name, and one no reader would think to doubt.
+ * Roughly 1 in 10 golfers is left-handed, so this would be wrong often, and silently.
+ */
 function handLabel(handedness: string | null | undefined): string {
   if (handedness === 'left') return 'Left-handed'
   if (handedness === 'right') return 'Right-handed'
@@ -937,22 +940,22 @@ export async function buildAtlasData(
     // file has no loading state to render into. `drill_progress_select` already scopes this to
     // students this coach actually coaches, so an unapproved student's rows simply do not come
     // back — the same reason the roster itself needs no ownership filter here.
-    const progressRows = ids.length
-      ? await db
-          .select({
-            userId: golfDrillProgress.userId,
-            drillId: golfDrillProgress.drillId,
-            verifiedAt: golfDrillProgress.verifiedAt,
-            videoRef: golfDrillProgress.videoRef,
-            verifyNote: golfDrillProgress.verifyNote,
-            // Read-only. See the note on RosterRow.drills — these are the player's columns, and
-            // the difference between "waiting on the coach" and "never started" is in them.
-            tickedAt: golfDrillProgress.tickedAt,
-            watchedAt: golfDrillProgress.watchedAt,
-          })
-          .from(golfDrillProgress)
-          .where(inArray(golfDrillProgress.userId, ids))
-      : []
+    // (Was `ids.length ? … : []`. The early return at the top of this block already exits when
+    //  ids is empty, so the `: []` arm was unreachable.)
+    const progressRows = await db
+        .select({
+          userId: golfDrillProgress.userId,
+          drillId: golfDrillProgress.drillId,
+          verifiedAt: golfDrillProgress.verifiedAt,
+          videoRef: golfDrillProgress.videoRef,
+          verifyNote: golfDrillProgress.verifyNote,
+          // Read-only. See the note on RosterRow.drills — these are the player's columns, and
+          // the difference between "waiting on the coach" and "never started" is in them.
+          tickedAt: golfDrillProgress.tickedAt,
+          watchedAt: golfDrillProgress.watchedAt,
+        })
+        .from(golfDrillProgress)
+        .where(inArray(golfDrillProgress.userId, ids))
 
     /**
      * THE STUDENT'S INTAKE — `atlas.student_intake`, the coach-safe view.
@@ -968,26 +971,26 @@ export async function buildAtlasData(
      * The gate lives in the VIEW, so this query carries no ownership filter of its own — the same
      * reasoning as the roster and the drill progress above.
      */
-    const intakeRows = ids.length
-      ? ((await db.execute(
-          sql`select user_id, interview, profile, volume, alloc, answers, tier_completed, status,
-                     completed_at
-                from atlas.student_intake`,
-        )) as unknown as {
-          rows: Array<{
-            user_id: string
-            interview: Record<string, string> | null
-            profile: Record<string, unknown> | null
-            volume: unknown
-            alloc: unknown
-            answers: unknown
-            tier_completed: number | null
-            status: string | null
-            /** The student action that raises the intake for review. See resolveSubmitted. */
-            completed_at: Date | string | null
-          }>
-        }).rows
-      : []
+    // (Was `ids.length ? … : []`. The early return at the top of this block already exits when
+    //  ids is empty, so the `: []` arm was unreachable.)
+    const intakeRows = ((await db.execute(
+        sql`select user_id, interview, profile, volume, alloc, answers, tier_completed, status,
+                   completed_at
+              from atlas.student_intake`,
+      )) as unknown as {
+        rows: Array<{
+          user_id: string
+          interview: Record<string, string> | null
+          profile: Record<string, unknown> | null
+          volume: unknown
+          alloc: unknown
+          answers: unknown
+          tier_completed: number | null
+          status: string | null
+          /** The student action that raises the intake for review. See resolveSubmitted. */
+          completed_at: Date | string | null
+        }>
+      }).rows
 
     const intakeBy = new Map<string, Record<string, string>>()
     /**
@@ -1003,7 +1006,7 @@ export async function buildAtlasData(
     const intakeDoneBy = new Map<string, Date | string>()
     for (const r of intakeRows) {
       if (r.completed_at) intakeDoneBy.set(r.user_id, r.completed_at)
-      // Only the five interview answers travel into his `file` block — that is exactly what his
+      // The WHOLE `interview` object travels into his `file` block — eight keys since 2026-09-17 (five prose, plus target/tier/phase), of which his markup renders five — that is exactly what his
       // FIELDS renders (sport, years, limits, time, goal).
       if (r.interview) intakeBy.set(r.user_id, r.interview)
       const dna = summarizeRun(r)
@@ -1052,10 +1055,18 @@ export async function buildAtlasData(
         // when there is no scoreable run, which the page renders as "no read on file".
         dna: dnaBy.get(person.id) ?? null,
 
+        // REAL since 2026-09-21. The student's own self-declared commitment and phase, from the
+        // same `interview` jsonb `file` is read from three lines down — so a coach sees the tier
+        // their student actually picked, not a blank. Empty when unanswered, never a default.
+        //
+        // Wired late: f437aa6 gave tier/phase a producer and connected only the self path, so for
+        // four days the RosterRow doc said REAL while the roster shipped ''. The data was already
+        // in `intakeBy` the whole time.
+        tier: String(intakeBy.get(person.id)?.tier ?? ''),
+        zone: String(intakeBy.get(person.id)?.phase ?? ''),
+
         // ── no producer. 44 of the 81 metrics on these screens are Forge outputs and Forge has not
         //    shipped, so most of his UI going quiet is the CORRECT outcome, not a regression. ──
-        tier: '',
-        zone: '',
         // REAL as of 2026-09-03. `golf.player_profile.target_handicap` — the handicap this student
         // is working toward, and the denominator of every benchmark on this dashboard. Null when
         // nobody has set one, which renders as '—' rather than as a default: a benchmark computed
@@ -1071,7 +1082,8 @@ export async function buildAtlasData(
         answer: {},
         est: {},
         grid: [], // Forge
-        // REAL since 2026-09-11 — the five interview answers, via atlas.student_intake.
+        // REAL since 2026-09-11 — the whole interview object (eight keys since 2026-09-17), via
+        // atlas.student_intake.
         // `{}` when that student has not answered the interview stage; his render shows the
         // honest empty state rather than another student's words.
         file: intakeBy.get(person.id) ?? {},

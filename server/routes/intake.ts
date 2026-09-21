@@ -3,14 +3,11 @@ import { eq, and, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { verifyToken, attachUser, requireApp } from '@ryp/eco/auth'
 import { withRls } from '@ryp/eco/db'
-// ⚠️ SCHEMA DEPENDENCY NOT YET PUBLISHED — see the block comment below. `atlasIntakeSubmissions`
-// does not exist in @ryp/eco@0.15.0 (the version this repo is pinned to, verified by grepping the
-// installed dist for "intake": zero hits, and by `git log` in ~/dev/ATR/eco showing no commit for
-// it). This import is written against the table the db lane is building from the same spec this
-// route was scoped from. It will not resolve — and `npm run typecheck` will fail on this line
-// specifically — until: (1) db lane adds `atlas.intake_submissions` to eco/src/schema, (2) eco cuts
-// a new tag, (3) this repo's package.json is bumped to it and reinstalled. Steps 2-3 are outside
-// this route's fence (server/routes/intake.ts + a mount line in server/index.ts only).
+// `atlasIntakeSubmissions` landed in @ryp/eco 0.21.0, which this repo is pinned to. (This import
+// carried an 8-line warning saying it would not resolve and that typecheck would fail on this line
+// until eco cut a tag — false in all three of its claims by 2026-09-21, and the first thing anyone
+// reads in this file. In a repo whose only automated gates are tsc and vite build, a comment that
+// lies about one of them is worse than no comment.)
 import { users, golfPlayerProfile, golfHandicapHistory, atlasIntakeSubmissions } from '@ryp/eco/schema'
 import { pool } from '../db'
 import { ensureAtlasAccess } from '../ensureAtlasAccess'
@@ -109,7 +106,8 @@ function toEnvelope(row: SubmissionRow) {
     // into `answers`. Omitting them made every PATCH look like a silent no-op from the client's
     // side — the write landed, the read-back never showed it — so a resumed run rendered its
     // volume and allocation screens blank. Safe to return: this is the subject's own input, unlike
-    // quality_flag, which stays server-side. (Caught by the smoke suite 2026-09-01.)
+    // quality_flag, which stays server-side. (Found by driving the quiz in a browser, 2026-09-01 — there is no smoke suite, no test runner
+    // and no test file in this repo; the original wording credited a gate that does not exist.)
     volume: row.volume ?? null,
     alloc: row.alloc ?? null,
     // Same reasoning as volume/alloc above: its own column, so it must be returned explicitly
@@ -397,7 +395,8 @@ const patchBodySchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('volume'), volume: z.record(z.string(), z.unknown()), tierCompleted: z.number().int().min(0).max(4).optional() }).strict(),
   z.object({ kind: z.literal('alloc'), alloc: z.record(z.string(), z.unknown()), tierCompleted: z.number().int().min(0).max(4).optional() }).strict(),
   z.object({ kind: z.literal('answers'), answers: z.record(z.string(), z.unknown()), tierCompleted: z.number().int().min(0).max(4).optional() }).strict(),
-  // The interview — five free-text answers. Its own kind rather than a member of `profile`
+  // The interview — EIGHT answers since 2026-09-17 (five prose, one number, two choices), not
+  // five. Its own kind rather than a member of `profile`
   // because `validateProfilePartial` enforces the pinned instrument's closed vocabulary and
   // would reject every one of these keys as `unknown_profile_field`.
   z.object({ kind: z.literal('interview'), interview: z.record(z.string(), z.unknown()), tierCompleted: z.number().int().min(0).max(4).optional() }).strict(),

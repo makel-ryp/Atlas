@@ -1,6 +1,9 @@
 /**
- * The interview — five free-text questions Luke's profile page has always rendered and nothing
- * ever asked.
+ * The interview — the questions Luke's profile page has always rendered and nothing ever asked.
+ *
+ * EIGHT fields as of 2026-09-17, not the five this file was born with: the five prose answers,
+ * plus `target` (a parsed handicap) and `tier`/`phase` (closed choices). The count is stated
+ * here and nowhere else on purpose — it was wrong in four places within a week of growing.
  *
  * ── Why this lives HERE and not in shared/practice-dna/ ────────────────────────────────────────
  * `shared/practice-dna/items.ts` is BYTE-IDENTICAL to tgt's copy (verified 2026-09-10 by diff).
@@ -51,7 +54,7 @@ export const INTERVIEW_FIELDS: readonly InterviewField[] = [
   {
     key: 'limits',
     label: 'Physical limitations',
-    hint: 'Injuries, surgeries, ranges you cannot reach. Be complete — this decides which route you are given.',
+    hint: 'Injuries, surgeries, ranges you cannot reach. Be complete — this decides which pivot you are given.',
   },
   {
     key: 'time',
