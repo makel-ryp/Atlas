@@ -95,7 +95,26 @@ type SubmissionRow = typeof atlasIntakeSubmissions.$inferSelect
  * Nothing about the scoring changed — see the imports at the top of this file.
  */
 
-function toEnvelope(row: SubmissionRow) {
+/**
+ * Read the stored result snapshot. Raw SQL for the reason given on `toEnvelope` — the column is not
+ * in the vendored drizzle schema. Returns null when the run predates the column, which is honest:
+ * those runs genuinely have no snapshot.
+ */
+async function readStoredResult(db: any, submissionId: string, userId: string): Promise<unknown> {
+  const r = (await db.execute(
+    sql`select result from atlas.intake_submissions
+         where id = ${submissionId}::uuid and user_id = ${userId}::uuid and deleted_at is null`,
+  )) as unknown as { rows: Array<{ result: unknown }> }
+  return r.rows[0]?.result ?? null
+}
+
+/**
+ * `storedResult` is threaded in rather than read off `row` because the `result` column (added
+ * 2026-09-21) is NOT in the vendored `@ryp/eco` drizzle schema, so a drizzle select never returns
+ * it. Casting `row as any` would have compiled and silently always been undefined — the snapshot
+ * would have been written and never read. It comes from `readStoredResult` below instead.
+ */
+function toEnvelope(row: SubmissionRow, storedResult: unknown = null) {
   return {
     id: row.id,
     tierCompleted: row.tierCompleted,
@@ -106,8 +125,9 @@ function toEnvelope(row: SubmissionRow) {
     // into `answers`. Omitting them made every PATCH look like a silent no-op from the client's
     // side — the write landed, the read-back never showed it — so a resumed run rendered its
     // volume and allocation screens blank. Safe to return: this is the subject's own input, unlike
-    // quality_flag, which stays server-side. (Found by driving the quiz in a browser, 2026-09-01 — there is no smoke suite, no test runner
-    // and no test file in this repo; the original wording credited a gate that does not exist.)
+    // quality_flag, which stays server-side. (Found by driving the quiz in a browser, 2026-09-01.
+    // This originally credited "the smoke suite", which did not exist until 2026-09-21 — see
+    // `npm run smoke`, which still does not cover this projection.)
     volume: row.volume ?? null,
     alloc: row.alloc ?? null,
     // Same reasoning as volume/alloc above: its own column, so it must be returned explicitly
@@ -116,7 +136,22 @@ function toEnvelope(row: SubmissionRow) {
     completedAt: row.completedAt,
     startedAt: row.startedAt,
     updatedAt: row.updatedAt,
-    result: tryComputeResult(row.profile, row.answers, row.volume, row.alloc),
+    /**
+     * THE STORED SNAPSHOT FIRST, a recompute only as a fallback.
+     *
+     * Until 2026-09-21 this was always recomputed. That is what made editing the instrument
+     * dangerous: nothing was persisted, so a change to scoring.ts silently rescored all 118
+     * historical runs while each row's stored `scoring_version` still named the old rules. The
+     * comment in dnaSummary.ts claimed recompute meant "a run scored today survives the instrument
+     * changing later" — it means the opposite.
+     *
+     * `result` is written once at completion, so a golfer keeps the read they were actually given.
+     * The fallback covers every run completed before the column existed; those genuinely have no
+     * snapshot and recomputing is the best available answer for them.
+     */
+    result: storedResult ?? tryComputeResult(row.profile, row.answers, row.volume, row.alloc),
+    /** True when `result` is the snapshot the golfer was shown, false when it was recomputed now. */
+    resultIsSnapshot: storedResult != null,
   }
 }
 
@@ -594,7 +629,12 @@ intakeRouter.post('/intake/:id/complete', ...identityChain, async (req, res, nex
         if (!current) return { kind: 'not_found' as const }
 
         if (current.status === 'completed') {
-          return { kind: 'ok' as const, row: current }
+          // Already done — hand back the snapshot it was given rather than recomputing.
+          return {
+            kind: 'ok' as const,
+            row: current,
+            storedResult: await readStoredResult(db, submissionId, me.id),
+          }
         }
 
         const profile = (current.profile as Record<string, unknown>) ?? {}
@@ -608,6 +648,28 @@ intakeRouter.post('/intake/:id/complete', ...identityChain, async (req, res, nex
           .where(and(eq(atlasIntakeSubmissions.id, submissionId), eq(atlasIntakeSubmissions.userId, me.id)))
           .returning()
         if (!row) return { kind: 'not_found' as const }
+
+        // ── THE RESULT SNAPSHOT ────────────────────────────────────────────────────────────────
+        // Scored ONCE, here, and stored — so the golfer keeps the read they were actually given.
+        // Everything else in this table is raw input and the result was recomputed on every read,
+        // which is what made editing the instrument dangerous: a change to scoring.ts silently
+        // rescored all 118 historical runs while each row's stored `scoring_version` kept naming
+        // the old rules. Makel approved this 2026-09-19 ("lets store result snapshot somewhere
+        // accesible by the student"); it is the prerequisite for T-72.
+        //
+        // Raw SQL because `result` is not in the vendored @ryp/eco drizzle schema. Same transaction
+        // as the status flip, so a run is never 'completed' without its snapshot.
+        // If scoring throws, the completion still succeeds and `result` stays null — a missing
+        // snapshot reads as "not captured" and falls back to a recompute, which is the honest
+        // degradation. Failing the whole completion over it would be worse.
+        const snapshot = tryComputeResult(row.profile, row.answers, row.volume, row.alloc)
+        if (snapshot) {
+          await db.execute(
+            sql`update atlas.intake_submissions
+                   set result = ${JSON.stringify(snapshot)}::jsonb
+                 where id = ${submissionId}::uuid and user_id = ${me.id}::uuid`,
+          )
+        }
 
         // ── reconciliation into the shared golf truth layer ──
         const profileValues: Partial<typeof golfPlayerProfile.$inferInsert> = {}
@@ -679,7 +741,7 @@ intakeRouter.post('/intake/:id/complete', ...identityChain, async (req, res, nex
           }
         }
 
-        return { kind: 'ok' as const, row }
+        return { kind: 'ok' as const, row, storedResult: snapshot as unknown }
       },
     )
 
@@ -691,7 +753,7 @@ intakeRouter.post('/intake/:id/complete', ...identityChain, async (req, res, nex
       res.status(400).json({ error: 'profile_incomplete' })
       return
     }
-    res.json(toEnvelope(outcome.row))
+    res.json(toEnvelope(outcome.row, outcome.storedResult ?? null))
   } catch (err) {
     if ((err as { code?: string }).code === RLS_VIOLATION) {
       res.status(403).json({ error: 'forbidden' })
@@ -711,18 +773,28 @@ intakeRouter.get('/intake/me', ...identityChain, async (req, res, next) => {
   try {
     const me = (req as any).user as typeof users.$inferSelect
 
-    const row = await withRls(
+    // Both reads in ONE transaction, so the snapshot cannot belong to a different row than the
+    // envelope describes. This is the path the golfer's own result screen uses, and the reason the
+    // snapshot exists at all: they see the read they were given, not a re-score under whatever
+    // scoring.ts is deployed today.
+    const found = await withRls(
       pool,
       { userId: me.id, firebaseUid: me.firebaseUid, app: 'atlas' },
       schema,
-      (db) => db.query.atlasIntakeSubmissions.findFirst({ where: eq(atlasIntakeSubmissions.userId, me.id) }),
+      async (db) => {
+        const row = await db.query.atlasIntakeSubmissions.findFirst({
+          where: eq(atlasIntakeSubmissions.userId, me.id),
+        })
+        if (!row) return null
+        return { row, storedResult: await readStoredResult(db, row.id, me.id) }
+      },
     )
 
-    if (!row) {
+    if (!found) {
       res.status(404).json({ error: 'submission_not_found' })
       return
     }
-    res.json(toEnvelope(row))
+    res.json(toEnvelope(found.row, found.storedResult))
   } catch (err) {
     next(err)
   }
