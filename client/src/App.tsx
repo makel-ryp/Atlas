@@ -8,6 +8,11 @@ import { Shell as IntakeShell } from './quiz/Shell'
 import { intakeApi } from './quiz/api'
 import { defaultStage } from './quiz/stages'
 import { QuizApiError } from './quiz/contract'
+import {
+  useConsentGate,
+  DateOfBirthScreen,
+  GuardianPendingScreen,
+} from './components/ConsentGate'
 
 /**
  * Does this signed-in golfer still need to take Practice DNA before they see the rest of Atlas?
@@ -173,6 +178,7 @@ function Routes() {
   const { status, error, me, logout } = useAuth()
   const [tab, setTab] = useState<'profile' | 'admin'>('profile')
   const [intakeGate, satisfyIntakeGate] = useIntakeGate(status === 'signed_in')
+  const [consentGate, setConsentGate] = useConsentGate(status === 'signed_in')
   const signingOut = useSignoutParam(logout, status === 'signed_in')
   // `?home=1` — the prototype banner's "← Atlas" link, asking to stay in the SPA rather than be
   // bounced straight back to the dashboard.
@@ -213,6 +219,31 @@ function Routes() {
       return <Login />
 
     case 'signed_in': {
+      // ── CONSENT, BEFORE EVERYTHING ELSE ───────────────────────────────────────────────────
+      //
+      // Before roles, before intake, before the prototype redirect — and that order is the whole
+      // point rather than a preference. Consent has to precede COLLECTION, not follow it. Age was
+      // previously asked as `PRO_AGE`, a golf datum partway through Practice DNA, by which point
+      // the app had already taken a child's injury history, their free-text "why you are here" and
+      // twenty psychological items. Asking for a guardian's approval after that is asking
+      // permission for something already done.
+      //
+      // It sits above the ROLE branch too, because "is this person a minor" is a question about a
+      // human being and not about their entitlements — a coach is gated the same way, and answers
+      // it once.
+      //
+      // `signingOut` wins over all of it: someone leaving must always be able to leave, and a
+      // blocked account with no way out is the one state this screen must never create.
+      if (!signingOut && consentGate === 'checking') {
+        return <main className="shell"><p className="muted">Loading…</p></main>
+      }
+      if (!signingOut && consentGate === 'dob_required') {
+        return <DateOfBirthScreen onDone={setConsentGate} />
+      }
+      if (!signingOut && consentGate === 'consent_required') {
+        return <GuardianPendingScreen onSignOut={() => void logout()} />
+      }
+
       // Roles first, THEN the intake gate — the order is the point.
       //
       // Practice DNA is a golfer's onboarding: it asks your age, your handicap, your shot shape,

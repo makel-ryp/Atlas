@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-21 17:09 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-21 17:32 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **1 file(s)** | pushed |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **14 file(s)** | pushed |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | **2 ahead** |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-21 17:09 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.21.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.21.0.tgz`
-- **Atlas HEAD:** `ff16dc0 Guard the pool.query RLS trap (T-81) and disambiguate the coach's own name (T-68)`
+- **Atlas HEAD:** `88b9918 T-16: there is no age gate at all, and the consent columns are dead`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -80,6 +80,8 @@ Each line here was observed working. Do not rebuild any of it.
 | **Whole intake, live, in a browser** | ✅ verified | signup → quiz → result → dashboard on `atlas.ryptest.com`, 2026-09-01 |
 | `handicap_history` is a trend, not a log | ✅ verified | appends only when the index actually moved |
 | `npm run seed` resets the intake | ✅ verified | row back to `in_progress` / tier 0, confirmed in the DB |
+| **Parental consent gate — access is refused server-side** | ✅ verified | 2026-09-21. `requireConsent` in every chain that gates on Atlas entitlement, incl. `/proto/dashboard` in page mode. Real middleware vs. all 12 live rows + 4 synthetic: 14yo-no-consent → 403 `consent_required`, 14yo-with-consent → allowed, no-DOB → 403 `dob_required`, adult → allowed. 24 smoke checks, **falsified first** — 3 deliberate regressions each produced the expected FAIL. ⚠️ **0/12 accounts carry a DOB, so everyone sees the one-field screen once on next sign-in.** What counts as consent is still counsel's (T-16) |
+| Consent cannot be self-granted | 🟡 one layer, not two | The route surface refuses it and a smoke check enforces that. **The DB still permits it** — `grant update (… parental_consent_at …)` + `users_update`'s own-row rule, and RLS scopes rows not columns. `docs/operations/CONSENT-GRANT-REVOKE.sql` closes it: **written, NOT applied** |
 
 ## 3. What is BROKEN — top blocker
 

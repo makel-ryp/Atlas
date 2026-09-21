@@ -31,6 +31,7 @@ import { join } from 'node:path'
 import { buildAtlasData, HIDDEN_FOR_PLAYER, HIDDEN_FOR_COACH } from '../server/protoData'
 import { INTERVIEW_FIELDS } from '../shared/interview'
 import { REVIEW_ITEMS } from '../shared/drills'
+import { consentStateFor, storedDateOfBirth, ageInYears, MINOR_AGE_THRESHOLD } from '../shared/consent'
 
 // ── tiny harness ───────────────────────────────────────────────────────────────────────────────
 let passed = 0
@@ -243,6 +244,157 @@ async function main() {
   // And the other half: a unique name must NOT be flagged.
   const unique = coach.roster.filter((r: any) => coach.roster.filter((x: any) => x.n === r.n).length === 1 && r.n !== coach.me.name)
   check('uniquely-named students are not flagged', unique.every((r: any) => !r.dupe), unique.filter((r: any) => r.dupe).map((r: any) => r.n).join(', '))
+
+  // ── J. THE CONSENT GATE IS REAL, NOT DECORATIVE ──────────────────────────────────────────────
+  // Two failure modes, and the checks below are split along them.
+  //
+  //   1. THE GATE IS NOT WIRED IN. This is how f437aa6 shipped inert: the code was correct and
+  //      nothing called it. So the wiring checks READ THE ROUTERS rather than trusting a comment,
+  //      and they are written to catch the NEXT router someone adds, not just today's five.
+  //   2. THE GATE IS WIRED BUT WRONG. Those are the pure-logic checks: a day either side of a
+  //      birthday decides whether a 17-year-old is admitted unconsented, and no amount of grepping
+  //      finds an off-by-one in the arithmetic.
+  section('J. parental consent — wiring')
+
+  const routeFiles = readdirSync(join(import.meta.dirname, '..', 'server', 'routes'), {
+    encoding: 'utf8',
+  }).filter((f) => f.endsWith('.ts'))
+
+  // The predicate is deliberately "does this router gate on Atlas entitlement", NOT a hardcoded
+  // list of filenames. Any new router that authenticates a golfer is therefore covered the day it
+  // is written. admin.ts drops out on its own because it uses requireAdmin, not requireApp —
+  // which is also exactly why it is the one place consent may be RECORDED.
+  const ungated: string[] = []
+  for (const f of routeFiles) {
+    const src = readFileSync(join(import.meta.dirname, '..', 'server', 'routes', f), 'utf8')
+    if (!src.includes("requireApp('atlas')")) continue
+    if (!src.includes('requireConsent')) ungated.push(f)
+  }
+  check(
+    'every router that gates on Atlas entitlement also gates on consent',
+    ungated.length === 0,
+    ungated.join(', '),
+  )
+
+  // Called out separately because it is the single easiest link to miss in the codebase: a
+  // different router, a navigated document rather than an API call, and it injects the golfer's
+  // whole profile into the page before the browser sees it. Gate /api/* and skip this and the
+  // gate protects nothing a player is redirected to automatically.
+  const protoSrc = readFileSync(join(import.meta.dirname, '..', 'server', 'routes', 'proto.ts'), 'utf8')
+  const dashChain = protoSrc.slice(
+    protoSrc.indexOf("protoRouter.get(\n  '/proto/dashboard'"),
+    protoSrc.indexOf('async (req, res, next) => {', protoSrc.indexOf("'/proto/dashboard'")),
+  )
+  check(
+    'the served dashboard page carries requireConsent in PAGE mode',
+    dashChain.includes("requireConsent('page')"),
+    'a JSON 403 renders as raw text in a navigated tab',
+  )
+
+  // The deadlock check. requireConsent refuses an account with no date of birth, and the ONLY way
+  // to record one is POST /users/me/date-of-birth. If that route is ever gated, the sole exit from
+  // the gate sits inside it and every account — including every admin — is locked out for good.
+  const meSrc = readFileSync(join(import.meta.dirname, '..', 'server', 'routes', 'me.ts'), 'utf8')
+  check(
+    'the date-of-birth route is NOT behind the consent gate (deadlock)',
+    /meRouter\.post\('\/users\/me\/date-of-birth', \.\.\.identityChain/.test(meSrc),
+    'gating this route makes the only exit from the gate unreachable',
+  )
+  check(
+    'GET /users/me is NOT behind the consent gate (deadlock)',
+    /meRouter\.get\('\/users\/me', \.\.\.identityChain/.test(meSrc),
+    'the client must be able to ask what it still owes',
+  )
+  // …but everything that COLLECTS must be.
+  check(
+    'PATCH /users/me IS behind the consent gate',
+    /meRouter\.patch\('\/users\/me', \.\.\.gatedChain/.test(meSrc),
+    'it writes a golf profile, which is collection',
+  )
+
+  // ── the self-consent hole ────────────────────────────────────────────────────────────────────
+  // public.users grants atlas_app column-level UPDATE on parental_consent_at AND users_update
+  // permits writing your own row, so the DATABASE would let a 14-year-old consent for themselves.
+  // RLS scopes rows, not columns — there is no policy that closes it. The only barrier is that no
+  // route the account holder can reach writes that column.
+  const selfConsentWriters: string[] = []
+  for (const f of routeFiles) {
+    if (f === 'admin.ts') continue // the one sanctioned writer, via billing_svc + withRlsBypass
+    const src = readFileSync(join(import.meta.dirname, '..', 'server', 'routes', f), 'utf8')
+    // A `.set({ … parentalConsentAt … })` anywhere outside admin.ts is the hole reopening.
+    if (/\.set\(\s*\{[^}]*parentalConsentAt/s.test(src)) selfConsentWriters.push(f)
+  }
+  check(
+    'no user-facing route writes parental_consent_at',
+    selfConsentWriters.length === 0,
+    selfConsentWriters.join(', '),
+  )
+  // patchSchema is .strict(), so the KEY being absent is an active 400 rather than a silent
+  // ignore. This asserts the absence, because "add it for completeness" is a one-line regression.
+  const patchSchemaBlock = meSrc.slice(meSrc.indexOf('const patchSchema'), meSrc.indexOf('.strict()'))
+  check(
+    'parentalConsentAt is absent from PATCH /users/me’s schema',
+    !patchSchemaBlock.includes('parentalConsentAt'),
+    'a .strict() schema refuses the key only while the key is absent',
+  )
+  check(
+    'the consent write goes through billing_svc, not the app pool',
+    /adminRouter\.post\('\/admin\/users\/:userId\/parental-consent'/.test(
+      readFileSync(join(import.meta.dirname, '..', 'server', 'routes', 'admin.ts'), 'utf8'),
+    ),
+    'the recording endpoint is missing',
+  )
+
+  section('J2. parental consent — the arithmetic')
+
+  // A day either side of a birthday is the whole gate. `(now - dob) / 365.25` gets these wrong.
+  const NOW = new Date(Date.UTC(2026, 8, 21, 12)) // 2026-09-21
+  const dobAged = (years: number, offsetDays = 0) => {
+    const d = new Date(Date.UTC(2026 - years, 8, 21, 12))
+    d.setUTCDate(d.getUTCDate() + offsetDays)
+    return d
+  }
+
+  check('null date of birth fails CLOSED', consentStateFor({ dateOfBirth: null, parentalConsentAt: null }, NOW) === 'dob_required')
+  check(
+    'an unparseable stored date of birth fails CLOSED',
+    consentStateFor({ dateOfBirth: 'not-a-date', parentalConsentAt: null }, NOW) === 'dob_required',
+  )
+  check(
+    'a consent timestamp does NOT substitute for a date of birth',
+    consentStateFor({ dateOfBirth: null, parentalConsentAt: NOW }, NOW) === 'dob_required',
+    'unknown age must never resolve to adult',
+  )
+  check(
+    `a ${MINOR_AGE_THRESHOLD}-year-old ON their birthday is through`,
+    consentStateFor({ dateOfBirth: dobAged(MINOR_AGE_THRESHOLD), parentalConsentAt: null }, NOW) === 'ok',
+  )
+  check(
+    'one day BEFORE that birthday still needs a guardian',
+    consentStateFor({ dateOfBirth: dobAged(MINOR_AGE_THRESHOLD, 1), parentalConsentAt: null }, NOW) === 'consent_required',
+  )
+  check(
+    'a 14-year-old without consent is refused',
+    consentStateFor({ dateOfBirth: dobAged(14), parentalConsentAt: null }, NOW) === 'consent_required',
+  )
+  check(
+    'a 14-year-old WITH consent is allowed everything',
+    consentStateFor({ dateOfBirth: dobAged(14), parentalConsentAt: new Date() }, NOW) === 'ok',
+    'the policy is a gate on access, not on features',
+  )
+  // Leap day: born 29 Feb 2008, on 28 Feb 2026 they are 17; on 1 March they are 18.
+  const leap = new Date(Date.UTC(2008, 1, 29, 12))
+  check('leap-day birthday: 28 Feb is still 17', ageInYears(leap, new Date(Date.UTC(2026, 1, 28, 12))) === 17)
+  check('leap-day birthday: 1 Mar is 18', ageInYears(leap, new Date(Date.UTC(2026, 2, 1, 12))) === 18)
+
+  // Storage shape. A midnight-UTC timestamp renders as the previous day in every US time zone —
+  // the defect found in the seed data on 2026-09-20 — and here a one-day slip moves someone
+  // across the threshold.
+  const stored = storedDateOfBirth(2010, 3, 14)
+  check('a stored date of birth keeps its calendar date', !!stored && stored.getUTCFullYear() === 2010 && stored.getUTCMonth() === 2 && stored.getUTCDate() === 14)
+  check('a stored date of birth is noon UTC, not midnight', !!stored && stored.getUTCHours() === 12, 'midnight shifts a day in negative-offset zones')
+  check('30 February is refused, not rolled into March', storedDateOfBirth(2010, 2, 30) === null)
+  check('month 13 is refused', storedDateOfBirth(2010, 13, 1) === null)
 
   // ── report ───────────────────────────────────────────────────────────────────────────────────
   console.log(`\n${'='.repeat(74)}`)

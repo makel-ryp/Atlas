@@ -6,6 +6,7 @@ import { withRls } from '@ryp/eco/db'
 import { users, atlasCoachingNotes, NOTE_VISIBILITIES } from '@ryp/eco/schema'
 import { pool } from '../db'
 import { cookieOrBearer } from '../cookieOrBearer'
+import { requireConsent } from '../requireConsent'
 import { ensureAtlasAccess } from '../ensureAtlasAccess'
 
 // Only the tables this router touches — see coach.ts for why a narrower schema object is a
@@ -26,6 +27,9 @@ const identityChain: RequestHandler[] = [
   attachUser(pool),
   ensureAtlasAccess(pool),
   requireApp('atlas'),
+  // Coaching notes are prose an adult writes ABOUT a named golfer. If that golfer is an
+  // unconsented minor, this is the route that must not work. See ../requireConsent.
+  requireConsent(),
 ]
 
 export const notesRouter = Router()

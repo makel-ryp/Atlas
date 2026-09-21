@@ -1,5 +1,5 @@
 import { Router, type RequestHandler } from 'express'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { attachUser, requireApp } from '@ryp/eco/auth'
 import { withRls } from '@ryp/eco/db'
@@ -7,6 +7,8 @@ import { users, golfPlayerProfile } from '@ryp/eco/schema'
 import { pool } from '../db'
 import { cookieOrBearer } from '../cookieOrBearer'
 import { ensureAtlasAccess } from '../ensureAtlasAccess'
+import { requireConsent } from '../requireConsent'
+import { consentStateFor, storedDateOfBirth, dateOfBirthProblem } from '../../shared/consent'
 
 // Only the tables this router touches. withRls wants the caller's OWN schema object so drizzle
 // types db.query.* against exactly what the route is allowed to read — a narrower object is a
@@ -40,6 +42,22 @@ const identityChain: RequestHandler[] = [
   requireApp('atlas'),
 ]
 
+/**
+ * The same chain plus the consent gate — used by everything in this file EXCEPT the two routes
+ * that answer the gate.
+ *
+ * ⚠️ THE SPLIT IS THE DESIGN, not an oversight. `requireConsent` refuses an account whose date of
+ * birth is unrecorded, and the only way to record one is `POST /users/me/date-of-birth`. Put that
+ * route behind the gate and the sole exit from the gate sits inside it — every one of the 12
+ * existing accounts, including every admin, would be permanently locked out with no code path back
+ * in. `GET /users/me` is ungated for the same reason one step earlier: the client has to be able
+ * to ASK what it still owes.
+ *
+ * Nothing else may join them. `PATCH /users/me` is gated because it writes a golf profile, which
+ * is data collection — the thing consent is for.
+ */
+const gatedChain: RequestHandler[] = [...identityChain, requireConsent()]
+
 export const meRouter = Router()
 
 // Everything the profile screen needs, in one round trip. Deliberately NOT `select *`: the user row
@@ -67,7 +85,18 @@ meRouter.get('/users/me', ...identityChain, async (req, res, next) => {
         displayName: user.displayName,
         plan: user.plan,
         createdAt: user.createdAt,
+        // Identity, and deliberately part of the ungated response: this is how the client knows
+        // which screen to show instead of walking the user into a wall of 403s. `dateOfBirth` is
+        // echoed so the DOB screen can render read-only once set rather than inviting a re-entry
+        // it would refuse; `parentalConsentAt` so a guardian-pending screen can say whether the
+        // approval has landed yet.
+        dateOfBirth: user.dateOfBirth,
+        parentalConsentAt: user.parentalConsentAt,
       },
+      // The single source of truth for "what does this account still owe", computed server-side
+      // from shared/consent.ts so the client cannot drift from the middleware's answer — the same
+      // rule as never re-deriving an RLS predicate in TypeScript.
+      consent: consentStateFor(user),
       // The client shows which apps this person can reach — the visible half of the nucleus idea.
       roles: roleRows,
       // null is a real answer: a signed-in user with no golf profile yet. The screen says
@@ -110,7 +139,7 @@ const patchSchema = z
   .partial()
   .strict() // an unknown key is a 400, not a silently ignored field
 
-meRouter.patch('/users/me', ...identityChain, async (req, res, next) => {
+meRouter.patch('/users/me', ...gatedChain, async (req, res, next) => {
   try {
     const parsed = patchSchema.safeParse(req.body)
     if (!parsed.success) {
@@ -172,6 +201,116 @@ meRouter.patch('/users/me', ...identityChain, async (req, res, next) => {
     )
 
     res.json({ profile: updated ?? null })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * Record this account's date of birth. WRITE ONCE.
+ *
+ * ── Why this is its own route and not a field on PATCH /users/me ────────────────────────────
+ * Three reasons, and all three are load-bearing:
+ *
+ * 1. **It has to be reachable from inside the gate.** PATCH is consent-gated; this cannot be, or
+ *    the only way to answer 'dob_required' would sit behind 'dob_required'. See `gatedChain`.
+ * 2. **It is write-once and PATCH is not.** Mixing a field that refuses its own second write into
+ *    a general-purpose partial update makes "empty_update" and "already set" the same request
+ *    shape, and the caller cannot tell which happened.
+ * 3. **Age is the input to a legal gate.** A route whose entire job is one guarded write is a
+ *    route someone reviewing the gate can read in full. Buried as the eleventh key of a partial
+ *    update, it would not be.
+ *
+ * ── Why write-once ──────────────────────────────────────────────────────────────────────────
+ * Self-asserted age is always defeatable — a 15-year-old can type 1990 on the way in, and no
+ * software fixes that; what stops it is the same thing that stops it everywhere, namely that
+ * lying is the user's act and not the system's. What software CAN stop is the second lie: an
+ * account that established itself as a consented minor editing its way out of the gate the moment
+ * it finds the gate inconvenient. So the first answer binds, and changing it afterwards is an
+ * administrative act with an audit row, exactly like consent itself.
+ *
+ * ⚠️ `parental_consent_at` is NOT writable here, and NOT in `patchSchema` either. That is
+ * deliberate and it is the single most important line in this file. `public.users` grants
+ * atlas_app column-level UPDATE on `parental_consent_at`, and `users_update` permits updating
+ * your OWN row — so the database, today, would happily let a 14-year-old consent for themselves.
+ * RLS scopes rows and not columns, so there is no policy that fixes it; the only barrier is that
+ * no route the account holder can reach ever writes that column. `patchSchema` is `.strict()`, so
+ * keeping the key absent is an active refusal (400), not an oversight. Consent is written in
+ * routes/admin.ts, through billing_svc, audited. Do not add it here "for completeness".
+ * (docs/operations/CONSENT-GRANT-REVOKE.sql removes the grant so this is two layers, not one.)
+ */
+const dobSchema = z
+  .object({
+    // Y/M/D integers, NOT an ISO string. A string is parsed by whatever zone the server happens to
+    // run in, and a one-day slip here moves a person across the 18 threshold — it either admits an
+    // unconsented minor or holds an adult out. Integers cannot be time-zone-shifted.
+    year: z.number().int().min(1900).max(2200),
+    month: z.number().int().min(1).max(12),
+    day: z.number().int().min(1).max(31),
+  })
+  .strict()
+
+meRouter.post('/users/me/date-of-birth', ...identityChain, async (req, res, next) => {
+  try {
+    const parsed = dobSchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_body', issues: parsed.error.issues })
+      return
+    }
+    const user = (req as any).user as typeof users.$inferSelect
+
+    // Write-once, checked here AND enforced by the WHERE clause below — the check is for a clean
+    // error message, the WHERE is for the race between two tabs.
+    if (user.dateOfBirth) {
+      res.status(409).json({ error: 'date_of_birth_already_set' })
+      return
+    }
+
+    const { year, month, day } = parsed.data
+    // Rejects 30 February rather than letting Date roll it into March. Stored at noon UTC so the
+    // calendar date survives every time zone — see shared/consent.ts.
+    const dob = storedDateOfBirth(year, month, day)
+    if (!dob) {
+      res.status(400).json({ error: 'date_of_birth_invalid' })
+      return
+    }
+    const problem = dateOfBirthProblem(dob)
+    if (problem) {
+      res.status(400).json({ error: problem })
+      return
+    }
+
+    const written = await withRls(
+      pool,
+      { userId: user.id, firebaseUid: user.firebaseUid, app: 'atlas' },
+      schema,
+      (db) =>
+        db
+          .update(users)
+          .set({ dateOfBirth: dob, updatedAt: new Date() })
+          // `isNull(dateOfBirth)` is the write-once guard that actually holds: two tabs posting at
+          // once both pass the check above, and without this the second would overwrite the first.
+          .where(and(eq(users.id, user.id), isNull(users.dateOfBirth)))
+          .returning({ dateOfBirth: users.dateOfBirth, parentalConsentAt: users.parentalConsentAt }),
+    )
+
+    // ⚠️ ZERO ROWS IS NOT SUCCESS. An RLS-filtered UPDATE matches nothing and reports no error —
+    // the exact silent failure CLAUDE.md names. Returning 200 here would tell the client the gate
+    // was answered when the column is still null, and the client would loop on a screen that
+    // appears to save and never does.
+    const row = written[0]
+    if (!row) {
+      res.status(409).json({ error: 'date_of_birth_already_set' })
+      return
+    }
+
+    res.json({
+      dateOfBirth: row.dateOfBirth,
+      parentalConsentAt: row.parentalConsentAt,
+      // Recomputed from what was actually stored, so the client learns in the same round trip
+      // whether it is through ('ok') or now waiting on a guardian ('consent_required').
+      consent: consentStateFor(row),
+    })
   } catch (err) {
     next(err)
   }

@@ -11,6 +11,7 @@ import { withRls } from '@ryp/eco/db'
 import { users, golfPlayerProfile, golfHandicapHistory, atlasIntakeSubmissions } from '@ryp/eco/schema'
 import { pool } from '../db'
 import { ensureAtlasAccess } from '../ensureAtlasAccess'
+import { requireConsent } from '../requireConsent'
 import { PROFILE_FIELDS, ITEM_BY_CODE, type Profile, type Answers, type AnswerValue } from '../../shared/practice-dna/items'
 import { type PracticeDnaResult } from '../../shared/practice-dna/scoring'
 import { isProfileComplete, tryComputeResult } from '../dnaSummary'
@@ -70,6 +71,11 @@ const identityChain: RequestHandler[] = [
   attachUser(pool),
   ensureAtlasAccess(pool),
   requireApp('atlas'),
+  // ⚠️ THE MOST IMPORTANT PLACE THIS APPEARS. Intake is where a golfer's age, injury history and
+  // free-text "why you are here" are collected, and where the psychological instrument is scored.
+  // If a minor without guardian consent can reach any route in this file, the consent gate has
+  // failed at the one thing it exists to prevent — collection before consent, not after.
+  requireConsent(),
 ]
 
 export const intakeRouter = Router()

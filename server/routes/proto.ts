@@ -10,6 +10,7 @@ import {
   requireApp,
 } from '@ryp/eco/auth'
 import { pool } from '../db'
+import { requireConsent } from '../requireConsent'
 import { ensureAtlasAccess } from '../ensureAtlasAccess'
 import { buildAtlasData, HIDDEN_FOR_COACH, HIDDEN_FOR_PLAYER, NoAtlasRecordError } from '../protoData'
 
@@ -64,6 +65,10 @@ const bearerChain: RequestHandler[] = [
   attachUser(pool),
   ensureAtlasAccess(pool),
   requireApp('atlas'),
+  // Do not mint an 8-hour credential for an account that may not be used. Refusing here is also
+  // why the page below can never be reached by a blocked account with a *fresh* login — though it
+  // carries its own check anyway, because a cookie issued before this shipped is still valid.
+  requireConsent(),
 ]
 
 protoRouter.post('/api/session', ...bearerChain, async (req, res, next) => {
@@ -186,12 +191,22 @@ ${home}${signout}Live from ryp-core: ${liveCount} student${liveCount === 1 ? '' 
 // atlas row created here, and without `requireApp('atlas')` a revoked account keeps the served
 // dashboard until its session cookie expires — up to eight hours of access after the revocation.
 // attachUser only resolves who you are; it does not ask whether you are still allowed in.
+// ⚠️ FIVE LINKS NOW. `requireConsent('page')` is the link that makes the consent gate real rather
+// than decorative, and it is the easiest one in the codebase to forget: this router is not the API,
+// it serves a NAVIGATED DOCUMENT, and it injects `window.__ATLAS_DATA__` — the golfer's whole
+// profile, their plan, their coach's roster — into the page before the browser sees it. Gating
+// /api/* and skipping this route would leave every byte the gate exists to protect reachable at a
+// URL a player is redirected to automatically after intake.
+//
+// 'page', not the default 'json': a browser navigation refused with a JSON body renders as raw
+// text in a tab. See ../requireConsent for why it is a dead-end page and not a redirect.
 protoRouter.get(
   '/proto/dashboard',
   verifySessionCookieMiddleware,
   attachUser(pool),
   ensureAtlasAccess(pool),
   requireApp('atlas'),
+  requireConsent('page'),
   async (req, res, next) => {
   try {
     const firebaseUid = (req as any).firebaseUid as string

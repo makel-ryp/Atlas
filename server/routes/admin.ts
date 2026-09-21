@@ -30,7 +30,13 @@ const readSchema = { users, userAppRoles, orgMemberships, organizations, adminAu
 // bypassWriteSchema: the tables atlas_app holds no privilege on at all. Passed to withRlsBypass on
 // billingPool. Handing these to the normal pool cannot work no matter what — the grant is absent,
 // which is exactly the guard that makes academy access safe.
-const bypassWriteSchema = { orgMemberships, organizations, adminAudit }
+// `users` is here for ONE column: parental_consent_at. atlas_app (the ordinary pool) holds a
+// column-level UPDATE grant on it AND `users_update` permits writing your own row — so on the
+// ordinary pool a minor could consent for themselves, and no RLS policy can prevent that because
+// RLS scopes rows, not columns. Routing the write through billing_svc + withRlsBypass is what
+// makes the account holder structurally unable to make it, the same argument that keeps
+// user_app_roles off the ordinary pool. See POST /admin/users/:userId/parental-consent.
+const bypassWriteSchema = { orgMemberships, organizations, adminAudit, users }
 
 // scopedWriteSchema: user_app_roles, which atlas_app CAN write, gated per app by policy. Narrow on
 // purpose — a smaller object is a smaller blast radius, not just a smaller type.
@@ -583,6 +589,144 @@ adminRouter.get('/admin/audit', ...adminChain, async (req, res, next) => {
     )
 
     res.json(rows)
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ─── POST /admin/users/:userId/parental-consent ────────────────────────────────────────────────
+/**
+ * Record that a parent or guardian has consented to this account being used.
+ *
+ * ── Why an admin records it rather than the guardian clicking a link ────────────────────────
+ * Because WHAT COUNTS AS CONSENT IS NOT SETTLED, and building the wrong mechanism is worse than
+ * building none. COPPA requires *verifiable* parental consent for under-13s — a credit-card
+ * check, a signed form, a phone call, an ID — and says explicitly that an email confirmation is
+ * not sufficient for data disclosed to third parties, which a coach reading a student's file is.
+ * For 13–17 a guardian email attestation is usually proportionate. Which applies, and where the
+ * line sits, is a question for counsel (docs/TASKS.md T-16).
+ *
+ * This endpoint is deliberately AGNOSTIC to that answer. It records the fact that consent was
+ * obtained and by what means, whoever obtained it and however. A phone call, a signed form handed
+ * over at the academy, a verified email link built later — all of them end here. That makes it
+ * correct under every candidate policy instead of correct under a guessed one, and it is also how
+ * a small academy actually operates at alpha scale: the coach talks to the parent.
+ *
+ * `method` is stored in the audit trail rather than on `users`, because the column that exists is
+ * a single timestamp and inventing a second one is an eco migration this does not need. The audit
+ * row is the record of HOW; `parental_consent_at` is the record of WHETHER.
+ *
+ * ⚠️ This is a bypass write on `billingPool` and it must stay one. See bypassWriteSchema.
+ */
+const parentalConsentBodySchema = z
+  .object({
+    // Free text on purpose — the list of legitimate methods is exactly what is not yet decided,
+    // and an enum written today would be a guess that later reads as a policy. Bounded so the
+    // audit trail stays readable.
+    method: z.string().trim().min(1).max(200),
+    reason: z.string().trim().min(1),
+  })
+  .strict()
+
+adminRouter.post('/admin/users/:userId/parental-consent', ...adminChain, async (req, res, next) => {
+  try {
+    const parsed = parentalConsentBodySchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_body', issues: parsed.error.issues })
+      return
+    }
+    const { method, reason } = parsed.data
+    const actor = (req as any).user as typeof users.$inferSelect
+    const userId = normaliseUuid(req.params.userId)
+    if (!userId) {
+      res.status(400).json({ error: 'invalid_user_id' })
+      return
+    }
+
+    const now = new Date()
+    const result = await auditedWrite(
+      actor.id,
+      // The method rides in the reason too, so `GET /admin/audit` answers "how was this consent
+      // obtained" without a join — the question anyone auditing this will actually ask.
+      `parental consent recorded (${method}): ${reason}`,
+      { entity: 'users', field: 'parental_consent_at' },
+      async (db) => {
+        // Read inside the transaction — see auditedWrite's note on old_value.
+        const existing = await db.query.users.findFirst({ where: eq(users.id, userId) })
+        if (!existing) return { entityId: userId, oldValue: null, newValue: null, result: null }
+
+        await db.update(users).set({ parentalConsentAt: now, updatedAt: now }).where(eq(users.id, userId))
+
+        return {
+          entityId: userId,
+          oldValue: existing.parentalConsentAt?.toISOString() ?? null,
+          newValue: now.toISOString(),
+          result: { userId, parentalConsentAt: now },
+        }
+      },
+    )
+
+    if (!result) {
+      res.status(404).json({ error: 'user_not_found' })
+      return
+    }
+    res.json(result)
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ─── DELETE /admin/users/:userId/parental-consent ──────────────────────────────────────────────
+/**
+ * Withdraw consent. The account is blocked again from the next request.
+ *
+ * Not symmetry for its own sake: withdrawing consent is a right a guardian has, and a gate that
+ * can only be opened is not a consent mechanism, it is a one-time waiver. Same bypass path, same
+ * audit trail, so the withdrawal is as recorded as the grant.
+ */
+const withdrawConsentBodySchema = z.object({ reason: z.string().trim().min(1) }).strict()
+
+adminRouter.delete('/admin/users/:userId/parental-consent', ...adminChain, async (req, res, next) => {
+  try {
+    const parsed = withdrawConsentBodySchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_body', issues: parsed.error.issues })
+      return
+    }
+    const actor = (req as any).user as typeof users.$inferSelect
+    const userId = normaliseUuid(req.params.userId)
+    if (!userId) {
+      res.status(400).json({ error: 'invalid_user_id' })
+      return
+    }
+
+    const result = await auditedWrite(
+      actor.id,
+      `parental consent withdrawn: ${parsed.data.reason}`,
+      { entity: 'users', field: 'parental_consent_at' },
+      async (db) => {
+        const existing = await db.query.users.findFirst({ where: eq(users.id, userId) })
+        if (!existing) return { entityId: userId, oldValue: null, newValue: null, result: null }
+
+        await db
+          .update(users)
+          .set({ parentalConsentAt: null, updatedAt: new Date() })
+          .where(eq(users.id, userId))
+
+        return {
+          entityId: userId,
+          oldValue: existing.parentalConsentAt?.toISOString() ?? null,
+          newValue: null,
+          result: { userId, parentalConsentAt: null },
+        }
+      },
+    )
+
+    if (!result) {
+      res.status(404).json({ error: 'user_not_found' })
+      return
+    }
+    res.json(result)
   } catch (err) {
     next(err)
   }

@@ -14,6 +14,7 @@ import {
 } from '@ryp/eco/schema'
 import { pool } from '../db'
 import { cookieOrBearer } from '../cookieOrBearer'
+import { requireConsent } from '../requireConsent'
 import { isReviewItemId } from '../../shared/drills'
 import { ensureAtlasAccess } from '../ensureAtlasAccess'
 
@@ -32,6 +33,9 @@ const identityChain: RequestHandler[] = [
   attachUser(pool),
   ensureAtlasAccess(pool),
   requireApp('atlas'),
+  // Last link: an account that has not established it may be used gets nothing. See
+  // ../requireConsent — the gate is here, not in the client.
+  requireConsent(),
 ]
 
 const pageOrApiChain: RequestHandler[] = [
@@ -39,6 +43,9 @@ const pageOrApiChain: RequestHandler[] = [
   attachUser(pool),
   ensureAtlasAccess(pool),
   requireApp('atlas'),
+  // Last link: an account that has not established it may be used gets nothing. See
+  // ../requireConsent — the gate is here, not in the client.
+  requireConsent(),
 ]
 
 export const coachRouter = Router()
