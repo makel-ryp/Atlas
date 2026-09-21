@@ -2792,15 +2792,44 @@ const DOWS_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 // ── THE CALENDAR'S SENSE OF TIME — REAL, 2026-09-17 ────────────────────────────────────────
 // Was `OFFSET = 3, DAYS = 31, TODAY = 26`: the app believed the date was permanently 26 July
 // 2026. That is not only the "Sunday · July 26" header — TODAY decides which cells render as
-// past vs future (:6015), the practice streak (:6036), the last-seven-days strip (:6040), and
-// which day "Log today" writes to (:6168). Practice logged in September was filed under July 26.
-const _NOW = new Date();
-const OFFSET = new Date(_NOW.getFullYear(), _NOW.getMonth(), 1).getDay();
-const DAYS = new Date(_NOW.getFullYear(), _NOW.getMonth() + 1, 0).getDate();
-const TODAY = _NOW.getDate();
+// past vs future (the `future` branch in the cells loop), the practice `streak` loop, the
+// last-seven-days strip (`trailing`), and which day `logFromToday` writes to. Practice logged in
+// September was filed under July 26.
+// ⚠️ Named, not numbered, deliberately: the four line numbers this comment used to carry were all
+// wrong within five days — two commits shifted everything below them. Identifiers survive edits.
+// ⚠️ CAPTURED ONCE, AT SCRIPT PARSE. A tab left open across midnight keeps the previous day's
+// value: the header still names yesterday, the grid highlights yesterday's cell, and — the part
+// that loses data — `logFromToday` writes practice into yesterday. `refreshDate()` below fixes the
+// day rollover; these consts stay as the parse-time baseline it compares against.
+let _NOW = new Date();
+let OFFSET = new Date(_NOW.getFullYear(), _NOW.getMonth(), 1).getDay();
+let DAYS = new Date(_NOW.getFullYear(), _NOW.getMonth() + 1, 0).getDate();
+let TODAY = _NOW.getDate();
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const MONTH_LABEL = MONTHS[_NOW.getMonth()] + ' ' + _NOW.getFullYear();
-const TODAY_LINE = DOWS_FULL[_NOW.getDay()] + ' \u00b7 ' + MONTHS[_NOW.getMonth()] + ' ' + TODAY;
+let MONTH_LABEL = MONTHS[_NOW.getMonth()] + ' ' + _NOW.getFullYear();
+let TODAY_LINE = DOWS_FULL[_NOW.getDay()] + ' \u00b7 ' + MONTHS[_NOW.getMonth()] + ' ' + TODAY;
+
+/**
+ * Recompute the date constants. Returns true when the DAY actually changed, so the caller only
+ * re-renders on a rollover rather than every tick.
+ *
+ * Needed because everything above is evaluated once when this script parses. This app is a
+ * single page a golfer leaves open — on a phone, overnight — and before this, a tab opened on
+ * Sunday still called itself Sunday on Monday and logged Monday's practice into Sunday.
+ */
+function refreshDate() {
+  const n = new Date();
+  if (n.getDate() === TODAY && n.getMonth() === _NOW.getMonth() && n.getFullYear() === _NOW.getFullYear()) {
+    return false;
+  }
+  _NOW = n;
+  OFFSET = new Date(n.getFullYear(), n.getMonth(), 1).getDay();
+  DAYS = new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate();
+  TODAY = n.getDate();
+  MONTH_LABEL = MONTHS[n.getMonth()] + ' ' + n.getFullYear();
+  TODAY_LINE = DOWS_FULL[n.getDay()] + ' \u00b7 ' + MONTHS[n.getMonth()] + ' ' + TODAY;
+  return true;
+}
 
 // ── EMPTY, AND IT HAS TO BE ─────────────────────────────────────────────────────────────────
 // This was 22 fully-specified practice sessions — minutes, zone and workout per day — rendered
@@ -3749,7 +3778,18 @@ class Component extends DCLogic {
   }
 
   componentDidMount() {
-    this._t = setInterval(() => { if (this.state.clock) this.setState({ now: Date.now() }); }, 1000);
+    this._t = setInterval(() => {
+      // Day rollover. The date constants are captured once at parse, and this page is one a golfer
+      // leaves open overnight — without this the header names yesterday and `logFromToday` writes
+      // practice into yesterday. `refreshDate()` is cheap and returns true only on an actual
+      // change, so this re-renders once a day rather than once a second.
+      if (refreshDate()) this.setState({ dateTick: (this.state.dateTick || 0) + 1 });
+      if (this.state.clock) this.setState({ now: Date.now() });
+    }, 1000);
+    // Phones suspend timers while backgrounded, so the interval alone can miss the rollover
+    // entirely — catch it on the way back too.
+    this._vis = () => { if (refreshDate()) this.setState({ dateTick: (this.state.dateTick || 0) + 1 }); };
+    document.addEventListener('visibilitychange', this._vis);
     this._rz = () => {
       const w = window.innerWidth;
       if (Math.abs(w - this.state.vw) > 8) this.setState({ vw: w });
@@ -3757,7 +3797,11 @@ class Component extends DCLogic {
     window.addEventListener('resize', this._rz);
     this._rz();
   }
-  componentWillUnmount() { clearInterval(this._t); window.removeEventListener('resize', this._rz); }
+  componentWillUnmount() {
+    clearInterval(this._t);
+    window.removeEventListener('resize', this._rz);
+    document.removeEventListener('visibilitychange', this._vis);
+  }
 
   clockVals() {
     const s = this.state, c = s.clock;
@@ -5984,6 +6028,10 @@ class Component extends DCLogic {
 
   renderVals() {
     const s = this.state, log = s.log, sel = s.sel, view = s.view;
+    // Is there ANY practice logged at all? Nothing writes `log` — SEED is {} and no producer
+    // exists — so without this every total below renders a measured-looking zero. See the
+    // dash-vs-zero rule the team card already follows.
+    const hasLog = Object.keys(log || {}).some(k => (log[k] || {}).m);
     const dv = this.demoVals();
     const sMax = Math.max.apply(null, s.speeds);
     const biases = CLUBS.map(c => {
@@ -6054,7 +6102,14 @@ class Component extends DCLogic {
 
     const e = log[sel] || {};
     const selDow = DOWS[(OFFSET + sel - 1) % 7];
-    const trailing = [6, 5, 4, 3, 2, 1, 0].map(i => TODAY - i);
+    // `.filter(d => d >= 1)` added 2026-09-21. This was `TODAY - i` for i in 6..0 with no floor,
+    // which was safe only while TODAY was the literal 26. Since the date became real (04a350e),
+    // on the 1st-6th of any month it emitted day numbers of 0 and below: `DOWS[(OFFSET + d - 1) % 7]`
+    // then indexed NEGATIVELY (JS `%` keeps the sign) so those cells rendered a blank weekday, and
+    // `this.pick(d)` made them clickable — letting a player log practice into a day that does not
+    // exist. The strip now renders fewer than seven cells at the start of a month, which is the
+    // truth: there are fewer than seven days behind you.
+    const trailing = [6, 5, 4, 3, 2, 1, 0].map(i => TODAY - i).filter(d => d >= 1);
     const weekDone = trailing.filter(d => log[d] && log[d].m).length;
     const strip = trailing.map(d => {
       const en = log[d] || {};
@@ -6175,7 +6230,11 @@ class Component extends DCLogic {
       zonePerf: '',
       isFitness: view === 'fitness' && !isHidden('fitness'), goFitness: this.nav('fitness'),
       cFitness: r.fitness.c, bFitness: r.fitness.b,
-      weekRead: weekDone + '/6',
+      // '—', not '0/6'. The practice log has no producer (SEED is {} and nothing writes it), and
+      // this is the same claim class the team card already gets right: "'0 available' would be its
+      // own fabrication — 'nobody counted' is not 'you have none left'." A zero here says the
+      // player did nothing; the truth is that nobody measured.
+      weekRead: hasLog ? weekDone + '/6' : '\u2014',
 
       // today
       setSlots: s.sets.map((on, i) => ({
@@ -6200,12 +6259,19 @@ class Component extends DCLogic {
         color: t === s.tempo ? GOLD : '#66717f',
         onClick: () => this.setState({ tempo: t })
       })),
-      weekHeadline: weekDone >= 6 ? 'Standard met — ' + weekDone + ' of 7 days.' : weekDone + ' of 6 days in.',
+      weekHeadline: !hasLog
+        ? 'No practice logged yet.'
+        : weekDone >= 6 ? 'Standard met — ' + weekDone + ' of 7 days.' : weekDone + ' of 6 days in.',
       weekStrip: strip,
 
       // calendar
       dows: DOWS, cells: cells,
-      streak: streak, pDays: pDays, wDays: wDays, totalHrs: (mins / 60).toFixed(1),
+      // Same rule as weekRead above — four totals computed off an empty log are four zeros
+      // presented as measurements. Dashes until the log has a producer and a write path.
+      streak: hasLog ? streak : '\u2014',
+      pDays: hasLog ? pDays : '\u2014',
+      wDays: hasLog ? wDays : '\u2014',
+      totalHrs: hasLog ? (mins / 60).toFixed(1) : '\u2014',
       selDay: sel, selWeekday: selDow + (sel === TODAY ? ' · today' : ''),
       selSummary: e.m ? (e.m + ' minutes' + (e.b ? ' · ' + e.b : '') + (e.w ? ' · ' + e.w : '')) : sel > TODAY ? 'Not yet — this day is ahead of you.' : 'Nothing logged. Log it honestly, even a zero.',
       minChips: [15, 30, 45, 60].map(m => Object.assign({ label: m }, this.chip(e.m === m, this.setMin(sel, m)))),
