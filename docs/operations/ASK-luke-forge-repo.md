@@ -17,6 +17,10 @@ This is the specific list, so the repo answers real questions rather than being 
 > Still fully open and unchanged: **§1 (the three formula conflicts)**, **§2 (the benchmark tables)**,
 > the **5-axis skill radar**, and the **tolerance ladder**.
 >
+> Also on 21 Sep we lifted your 27 drill reasons out of the prototype into a shared module keyed by
+> id, so the server can read them (§3a). Your file still opens standalone. The questions in §3a are
+> narrower as a result — they are now only about whether Forge already owns a canonical version.
+>
 > One thing that got *easier*: Atlas now stores a **result snapshot** for Practice DNA, so changing
 > that instrument no longer rewrites history. **§2’s warning still stands for strokes gained** — no
 > equivalent snapshot exists for SG, so the benchmark tables remain retroactive.
@@ -112,12 +116,26 @@ Meanwhile the *content* for doing this properly already exists — in your proto
   to go but the ground."*
 - **Per-route blurbs** explaining when the Cannon applies versus the Anchor.
 
-So the hard part — the coaching thinking — is done. What is missing is that it lives as JavaScript
-constants inside a 390KB HTML file, keyed by **display name** rather than by id, which means:
+So the hard part — the coaching thinking — is done.
 
-- renaming a drill silently orphans its reason,
-- the server cannot read any of it, so nothing but the browser can explain a prescription,
-- and changing a reason means editing the prototype.
+**We have since moved it somewhere a machine can use it (21 Sep).** Those 27 reasons and standards
+now live in `shared/drills.ts` keyed by a stable id, rather than as JavaScript constants keyed by
+display name inside the prototype. Three things were wrong with the old arrangement and are now
+fixed: renaming a drill silently orphaned its reason, only the browser could read them, and changing
+one meant editing a 390KB HTML file.
+
+Two notes on that, because they affect what we need from you:
+
+- **Your file still works standalone.** The literal map is kept as a fallback, so opening
+  `Dashboard.dc.html` straight from disk with no server behaves exactly as before. We did not take
+  anything away from how you work.
+- **Step 1 needed a judgement call.** Its four drills each have a Cannon and an Anchor version with
+  different reasons, and Atlas treats them as one reviewable item — so we carry both in one string
+  (`"Cannon — … · Anchor — …"`). **Tell us if that is wrong**: if the two routes should be separately
+  trackable, that is a change to the id space and better made now than later.
+
+That move is why the questions below are now narrow. We are not asking you to write anything down —
+we are asking whether a canonical version already exists on your side that ours should defer to.
 
 **The questions:**
 
