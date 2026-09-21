@@ -57,6 +57,21 @@ interface SeedPerson {
    * is demoing should never have to remember which account is in which condition.
    */
   intake?: 'fresh' | 'completed'
+  /**
+   * [year, month, day] — seeded because the consent gate (T-16) refuses an account whose age is
+   * unknown, and "unknown" is not a demo state, it is a wall.
+   *
+   * Without this every demo entry point lands on the date-of-birth screen instead of the thing it
+   * exists to show, and STATUS.md's "three demo entry points, ready after one npm run seed" stops
+   * being true the moment the gate ships. Adults on purpose: a minor would additionally need
+   * `parental_consent_at`, and a demo that silently consents on a child's behalf teaches exactly
+   * the wrong thing about how that column gets written.
+   *
+   * These are synthetic people, so a birthday is seed data like their handicap — not a claim about
+   * anyone real. REAL accounts are deliberately NOT backfilled: nobody has ever been asked, and
+   * inventing a date of birth for a person is a No Fiction violation aimed at a human being.
+   */
+  dateOfBirth?: [number, number, number]
   profile?: {
     handicapIndex: string
     targetHandicap?: string
@@ -71,6 +86,7 @@ interface SeedPerson {
 const PEOPLE: SeedPerson[] = [
   {
     email: 'demo.player1@rypgolf.com',
+    dateOfBirth: [1994, 6, 12],
     displayName: 'Avery Lane',
     role: 'user',
     // `targetHandicap` is what every benchmark on the coach dashboard reads against. Seeded so
@@ -81,6 +97,7 @@ const PEOPLE: SeedPerson[] = [
   },
   {
     email: 'demo.player2@rypgolf.com',
+    dateOfBirth: [1988, 11, 3],
     displayName: 'Jordan Reyes',
     role: 'user',
     profile: { handicapIndex: '17.8', targetHandicap: '12.0', driverCarryYds: 212, handedness: 'left', ghinNumber: '8809876' },
@@ -89,6 +106,7 @@ const PEOPLE: SeedPerson[] = [
   },
   {
     email: 'demo.coach@rypgolf.com',
+    dateOfBirth: [1979, 2, 22],
     displayName: 'Coach Sam Ellis',
     role: 'coach',
     // A coach plays golf too, and the served prototype's rail is THEIR own reference block — it
@@ -101,6 +119,7 @@ const PEOPLE: SeedPerson[] = [
   // profile: this is a role, not a golfer, and giving it one would put a fake player in the roster.
   {
     email: 'demo.admin@rypgolf.com',
+    dateOfBirth: [1985, 9, 30],
     displayName: 'Admin (Ops)',
     role: 'admin',
   },
@@ -175,6 +194,28 @@ async function main() {
         throw e
       } finally {
         client.release()
+      }
+
+      // The date of birth, which the consent gate reads. Done as its own UPDATE rather than in the
+      // insert above, because that insert is onConflictDoNothing and every demo account already
+      // exists — so an insert-only value would never reach the rows that actually need it.
+      // billing_svc, not the app pool: `parental_consent_at` is going to be revoked from the app
+      // roles' column grant (docs/operations/CONSENT-GRANT-REVOKE.sql), and the seed should already
+      // be writing through the path that survives that.
+      if (person.dateOfBirth) {
+        const [y, m, d] = person.dateOfBirth
+        await withRlsBypass(
+          billingPool,
+          `seed: set date of birth for ${person.email}`,
+          schema,
+          (db) =>
+            db
+              .update(users)
+              // Noon UTC — see shared/consent.ts. Midnight renders as the previous day in every US
+              // time zone, and here a one-day slip can move a seeded account across the threshold.
+              .set({ dateOfBirth: new Date(Date.UTC(y, m - 1, d, 12)), updatedAt: new Date() })
+              .where(eq(users.id, userId)),
+        )
       }
 
       // The entitlement. Without this row requireApp('atlas') 403s — which is the correct default,

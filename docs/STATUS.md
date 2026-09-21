@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-21 17:32 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-21 17:36 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **14 file(s)** | pushed |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **3 file(s)** | **1 ahead** |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | **2 ahead** |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-21 17:32 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.21.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.21.0.tgz`
-- **Atlas HEAD:** `88b9918 T-16: there is no age gate at all, and the consent columns are dead`
+- **Atlas HEAD:** `a86c347 T-16: parental consent is a gate now, not two dead columns`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -70,7 +70,7 @@ Each line here was observed working. Do not rebuild any of it.
 | Google sign-in on the login screen | ✅ live | domain authorised; popup path accepted |
 | **Coach view, bifurcated by role** | ✅ verified | coach lands on the roster with a 2-item rail (Profile, Roster); player keeps their own 12-view app. One list per role — `HIDDEN_FOR_COACH` / `HIDDEN_FOR_PLAYER` |
 | **`golf.drill_progress` + coach sign-off** | ✅ verified | 17 assertions + a leak test. Per-COLUMN grants proven: `atlas_app` gets `42501` writing `ticked_at` |
-| **Three demo entry points** | ✅ verified | `/?as=<email>` — intake / player dashboard / coach dashboard, all three ready after one `npm run seed` |
+| **Three demo entry points** | ✅ verified | `/?as=<email>` — intake / player dashboard / coach dashboard, all three ready after one `npm run seed`. ⚠️ **Re-verified 2026-09-21 after the consent gate:** the seed now writes a date of birth for all four demo accounts, or every entry point would land on the DOB screen instead of the thing it exists to show. Confirmed in the DB: four demo accounts `ok`, real accounts still `dob_required` — real people's birthdays are deliberately NOT invented |
 | **Sign-out ends the server session** | ✅ verified | `/proto/dashboard` answers `missing_session` afterwards; it used to serve the previous coach's roster |
 | **Ticking a Parallax video in the browser** | ✅ verified | NOT SIGNED OFF → ✓ SIGNED OFF, persisted, `verified_by` = the coach, `ticked_at` still null |
 | **Luke's design IS the app now** | ✅ live | sign-in lands on `Dashboard.dc.html`, fed from ryp-core. Not a React rebuild |
@@ -80,8 +80,8 @@ Each line here was observed working. Do not rebuild any of it.
 | **Whole intake, live, in a browser** | ✅ verified | signup → quiz → result → dashboard on `atlas.ryptest.com`, 2026-09-01 |
 | `handicap_history` is a trend, not a log | ✅ verified | appends only when the index actually moved |
 | `npm run seed` resets the intake | ✅ verified | row back to `in_progress` / tier 0, confirmed in the DB |
-| **Parental consent gate — access is refused server-side** | ✅ verified | 2026-09-21. `requireConsent` in every chain that gates on Atlas entitlement, incl. `/proto/dashboard` in page mode. Real middleware vs. all 12 live rows + 4 synthetic: 14yo-no-consent → 403 `consent_required`, 14yo-with-consent → allowed, no-DOB → 403 `dob_required`, adult → allowed. 24 smoke checks, **falsified first** — 3 deliberate regressions each produced the expected FAIL. ⚠️ **0/12 accounts carry a DOB, so everyone sees the one-field screen once on next sign-in.** What counts as consent is still counsel's (T-16) |
-| Consent cannot be self-granted | 🟡 one layer, not two | The route surface refuses it and a smoke check enforces that. **The DB still permits it** — `grant update (… parental_consent_at …)` + `users_update`'s own-row rule, and RLS scopes rows not columns. `docs/operations/CONSENT-GRANT-REVOKE.sql` closes it: **written, NOT applied** |
+| **Parental consent gate — access is refused server-side** | ✅ verified | 2026-09-21. `requireConsent` in every chain that gates on Atlas entitlement, incl. `/proto/dashboard` in page mode. Real middleware vs. all 12 live rows + 4 synthetic: 14yo-no-consent → 403 `consent_required`, 14yo-with-consent → allowed, no-DOB → 403 `dob_required`, adult → allowed. 24 smoke checks, **falsified first** — 3 deliberate regressions each produced the expected FAIL. The DOB write itself was round-tripped against live ryp-core: `returning()` yields a row (so no silent-zero-row lockout), 14 March reads back as the 14th, and a second write matches 0 rows so write-once is the database's rule and not just an `if`. ⚠️ **0/12 accounts carry a DOB, so everyone sees the one-field screen once on next sign-in.** What counts as consent is still counsel's (T-16) |
+| Consent cannot be self-granted | 🟡 one layer, not two | The route surface refuses it and a smoke check enforces that. **The DB still permits it — MEASURED, not inferred:** on 2026-09-21 the probe account wrote its own `parental_consent_at` through `withRls` under its own identity, 1 row, no error (reset immediately). `grant update (… parental_consent_at …)` + `users_update`'s own-row rule, and RLS scopes rows not columns. `docs/operations/CONSENT-GRANT-REVOKE.sql` closes it: **written, NOT applied** |
 
 ## 3. What is BROKEN — top blocker
 

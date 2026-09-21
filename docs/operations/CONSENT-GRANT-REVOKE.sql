@@ -18,6 +18,18 @@
 --     with check (rls_bypass() OR id = current_user_id());
 --
 -- Privilege ✔ + policy ✔ = a 14-year-old's own session may write their own `parental_consent_at`.
+--
+-- ⚠️ THIS IS MEASURED, NOT INFERRED FROM THIS FILE. Run against LIVE ryp-core on 2026-09-21 as
+--    `gate.probe.delete.me@example.com`, through `withRls` with that account's own identity and
+--    `app.rls_bypass` pinned false — exactly what a request from that golfer's browser produces:
+--
+--      update public.users set parental_consent_at = now() where id = <their own id>;
+--      -- → 1 row. No error. The account consented for itself.
+--
+--    (The probe's columns were reset to null immediately afterwards.) `rls_core.sql` is the
+--    checked-in intention and the live database has disagreed with it before — see the standing
+--    note that ryp-red's roles are all BYPASSRLS, which makes its policies decorative. Here they
+--    agree, and the hole is real in both.
 -- RLS scopes ROWS, not COLUMNS, so no policy can express "…except this column". There is no
 -- policy fix. The grant is the only layer that can refuse it.
 --
