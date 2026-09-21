@@ -175,6 +175,32 @@ async function main() {
   const choiceFields = INTERVIEW_FIELDS.filter((f) => f.options)
   check('interview choice fields declare option labels', choiceFields.every((f) => f.optionLabels?.length === f.options?.length))
 
+  // ── G. THE DRILL REASONS ─────────────────────────────────────────────────────────────────────
+  // T-83 lifted the `WHY` map out of the prototype into shared/drills.ts, keyed by id instead of by
+  // display name. The point was that the SERVER can now read a prescription's reason — so the
+  // checks are: every plan drill still has one, they reach the injected payload, and the prototype
+  // has not quietly regrown a second copy as the source of truth.
+  section('G. drill reasons are in the shared module and reach the page')
+  const planItems = REVIEW_ITEMS.filter((i) => i.group === 'plan')
+  const noWhy = planItems.filter((i) => !i.why)
+  check('every plan drill has a reason', noWhy.length === 0, noWhy.map((i) => i.id).join(', '))
+  check(
+    'reasons reach the injected payload',
+    (casey.reviewItems ?? []).filter((i: any) => i.why).length === planItems.length,
+    `${(casey.reviewItems ?? []).filter((i: any) => i.why).length} of ${planItems.length}`,
+  )
+  // Step 1's ids cover both routes, so their reason must name both — same convention as `detail`.
+  const step1 = planItems.filter((i) => i.step === 1)
+  check(
+    'step 1 reasons name both the Cannon and the Anchor route',
+    step1.every((i) => (i.why ?? '').includes('Cannon') && (i.why ?? '').includes('Anchor')),
+    step1.filter((i) => !(i.why ?? '').includes('Anchor')).map((i) => i.id).join(', '),
+  )
+  // The literal map survives ONLY as a standalone fallback (Luke opens the file straight from disk).
+  // If the id-keyed lookup ever disappears, the fallback silently becomes the source again.
+  check('the prototype resolves reasons by id', PROTO.includes('WHY_BY_ID') && PROTO.includes('whyFor('))
+  check('no consumer still keys a reason by display name', !/why:\s*WHY\[d\.name\]/.test(PROTO))
+
   // ── report ───────────────────────────────────────────────────────────────────────────────────
   console.log(`\n${'='.repeat(74)}`)
   if (failures.length) {

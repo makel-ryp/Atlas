@@ -2963,6 +2963,29 @@ const EMPTY_PLAYER = {
 
 // One sentence of mechanism per drill. Players who know why a drill exists do
 // it properly; players who don't, don't. Keyed by drill name.
+/**
+ * WHY, BY DRILL ID — from `shared/drills.ts` via `__ATLAS_DATA__.reviewItems` (T-83, 2026-09-21).
+ *
+ * The literal `WHY` map below is now a FALLBACK ONLY, kept so this file still renders standalone
+ * (Luke opens it straight from disk, with no server and no injected data). When Atlas serves the
+ * page the injected list wins, and that is the copy the server can also read — which is the whole
+ * point of the move: before this, only the browser could explain a prescription.
+ *
+ * ⚠️ Keyed by ID, not by display name. The old map was keyed by name, so renaming a drill silently
+ * orphaned its reason. If you are adding a drill, add it to shared/drills.ts — not here.
+ */
+const WHY_BY_ID = (() => {
+  const items = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.reviewItems) || [];
+  const m = {};
+  items.forEach(i => { if (i && i.id && i.why) m[i.id] = i.why; });
+  return m;
+})();
+
+/** Resolve a step drill's reason: injected first, then the standalone fallback below. */
+function whyFor(stepN, ref, name) {
+  return WHY_BY_ID['plan:' + stepN + '-' + ref] || WHY[name] || '';
+}
+
 const WHY = {
   'Kickstand Explode': 'Trail heel down removes the leg you cheat with, so the load has nowhere to go but the ground.',
   'Regular Stance Explode': 'Same force, both feet available — this is where early extension shows up if it is going to.',
@@ -4074,7 +4097,7 @@ class Component extends DCLogic {
             ref: d.ref, name: d.name,
             std: vd ? 'Verified' : pending ? 'Awaiting review' : on ? 'Completed' : d.std,
             camTag: d.cam ? '· Parallax' : '',
-            why: WHY[d.name] || '',
+            why: whyFor(st.n, d.ref, d.name),
             // READ-ONLY. `ticked` now mirrors golf.drill_progress.ticked_at, and `atlas_app` has
             // no write grant on that column (42501) — so a toggle here could only ever change the
             // pixel and lose it on reload, while the row says "Mark done — send for review". A
@@ -5991,8 +6014,8 @@ class Component extends DCLogic {
     const pending = d.cam && on && !vd;
     return {
       name: d.name, std: d.std,
-      why: WHY[d.name] || '',
-      whyShow: WHY[d.name] ? 'block' : 'none',
+      why: whyFor(st.n, d.ref, d.name),
+      whyShow: whyFor(st.n, d.ref, d.name) ? 'block' : 'none',
       // Same as signLabel above — real verification, invented verifier.
       status: vd ? 'Verified by your coach' : pending ? 'Awaiting Parallax review' : on ? 'Logged by you' : 'Not started',
       statusColor: vd ? GREEN : pending ? GOLD : on ? GOLD : '#8d99a8',

@@ -57,6 +57,25 @@ export type ReviewItem = {
    */
   review: boolean
   /**
+   * WHY this drill is prescribed — the coaching reason, not the instruction.
+   *
+   * Lifted out of `proto/Dashboard.dc.html`'s `WHY` map on 2026-09-21 (T-83). It lived there as a
+   * JS constant keyed by DISPLAY NAME, which meant renaming a drill silently orphaned its reason
+   * with nothing to catch it, and — the reason this move matters — the SERVER could not read any of
+   * it. Only the browser could explain a prescription, which blocks anything smarter than the fixed
+   * weekly template.
+   *
+   * Keyed by the stable `id` here instead. Coverage was exact at the time of the lift: 27 unique
+   * plan drills, 27 WHY entries, zero missing and zero orphaned, extracted programmatically rather
+   * than retyped.
+   *
+   * ⚠️ Step 1's four ids carry BOTH routes in one string ("Cannon — … · Anchor — …"), because one
+   * review item covers both and each route has its own reason. Same convention `detail` already
+   * uses. Assessment drills, step completions and the intake have no `why` — the concept is
+   * plan-drill-specific, so this is optional rather than empty-string-filled.
+   */
+  why?: string
+  /**
    * Which of the plan's five steps this belongs to, 1-5. Absent on assessment drills, which are
    * not part of the step ladder.
    *
@@ -124,37 +143,37 @@ const ASSESSMENTS: ReviewItem[] = [
  */
 const PLAN: ReviewItem[] = [
   // Step 1 · Pivot — route-dependent, see above.
-  { id: 'plan:1-1a', name: 'Kickstand', context: 'Step 1 · Pivot', detail: 'Cannon: trail heel down · Anchor: trail heel loaded', step: 1, group: 'plan', review: false },
-  { id: 'plan:1-1b', name: 'Regular stance', context: 'Step 1 · Pivot', detail: 'Cannon: no early extension · Anchor: no sway past trail hip', step: 1, group: 'plan', review: false },
-  { id: 'plan:1-2', name: 'Shift', context: 'Step 1 · Pivot', detail: 'Lead hip clears (Cannon) · lead hip posts (Anchor)', step: 1, group: 'plan', review: false },
-  { id: 'plan:1-3', name: 'Load, shift, finish', context: 'Step 1 · Pivot', detail: 'Sequence intact', step: 1, group: 'plan', review: true },
+  { id: 'plan:1-1a', name: 'Kickstand', context: 'Step 1 · Pivot', detail: 'Cannon: trail heel down · Anchor: trail heel loaded', step: 1, group: 'plan', review: false , why: 'Cannon — Trail heel down removes the leg you cheat with, so the load has nowhere to go but the ground.  ·  Anchor — Loads the trail side without letting you launch out of it — rotation against the ground, not off it.' },
+  { id: 'plan:1-1b', name: 'Regular stance', context: 'Step 1 · Pivot', detail: 'Cannon: no early extension · Anchor: no sway past trail hip', step: 1, group: 'plan', review: false , why: 'Cannon — Same force, both feet available — this is where early extension shows up if it is going to.  ·  Anchor — Catches the sway. If you pass the trail hip, you have traded rotation for width.' },
+  { id: 'plan:1-2', name: 'Shift', context: 'Step 1 · Pivot', detail: 'Lead hip clears (Cannon) · lead hip posts (Anchor)', step: 1, group: 'plan', review: false , why: 'Cannon — Adds the lateral move. Force is worthless if it fires before the weight has arrived.  ·  Anchor — Teaches the lead hip to accept the weight and stop it, which is what posting actually is.' },
+  { id: 'plan:1-3', name: 'Load, shift, finish', context: 'Step 1 · Pivot', detail: 'Sequence intact', step: 1, group: 'plan', review: true , why: 'Cannon — The full sequence at speed. Out of order here means out of order with a club.  ·  Anchor — The full rotational sequence. The finish should look braced, never airborne.' },
 
   // Step 2 · Freezers
-  { id: 'plan:2-F1', name: 'Choked sand wedge freezer', context: 'Step 2 · Freezers', detail: 'Held 3 seconds', step: 2, group: 'plan', review: false },
-  { id: 'plan:2-F2', name: 'Full sand wedge freezer', context: 'Step 2 · Freezers', detail: 'Held 3 seconds', step: 2, group: 'plan', review: false },
-  { id: 'plan:2-F3', name: '7-iron freezer', context: 'Step 2 · Freezers', detail: 'Held 3 seconds', step: 2, group: 'plan', review: false },
-  { id: 'plan:2-P1', name: 'Proof Swing — path at zero', context: 'Step 2 · Freezers', detail: 'Path at zero', step: 2, group: 'plan', review: true },
-  { id: 'plan:2-P2', name: 'Proof Swing — shaft lean', context: 'Step 2 · Freezers', detail: 'Shaft lean right', step: 2, group: 'plan', review: true },
-  { id: 'plan:2-P3', name: 'Proof Swing — ground force', context: 'Step 2 · Freezers', detail: 'Force excellent', step: 2, group: 'plan', review: true },
-  { id: 'plan:2-P4', name: 'Proof Swing — trunk angle', context: 'Step 2 · Freezers', detail: 'Decreases 5°+ (low dynamic lie angle)', step: 2, group: 'plan', review: true },
+  { id: 'plan:2-F1', name: 'Choked sand wedge freezer', context: 'Step 2 · Freezers', detail: 'Held 3 seconds', step: 2, group: 'plan', review: false , why: 'Shortest lever, least speed — the only place you can hold a position long enough to feel it.' },
+  { id: 'plan:2-F2', name: 'Full sand wedge freezer', context: 'Step 2 · Freezers', detail: 'Held 3 seconds', step: 2, group: 'plan', review: false , why: 'Same shape at full length. Length is what usually breaks the pattern.' },
+  { id: 'plan:2-F3', name: '7-iron freezer', context: 'Step 2 · Freezers', detail: 'Held 3 seconds', step: 2, group: 'plan', review: false , why: 'The first club long enough to punish a shallow pattern. Hold it or go back a club.' },
+  { id: 'plan:2-P1', name: 'Proof Swing — path at zero', context: 'Step 2 · Freezers', detail: 'Path at zero', step: 2, group: 'plan', review: true , why: 'Path is the one impact number you can measure without a ball, so it is the first one we fix.' },
+  { id: 'plan:2-P2', name: 'Proof Swing — shaft lean', context: 'Step 2 · Freezers', detail: 'Shaft lean right', step: 2, group: 'plan', review: true , why: 'Shaft lean at impact is the proof that the low point moved forward with you.' },
+  { id: 'plan:2-P3', name: 'Proof Swing — ground force', context: 'Step 2 · Freezers', detail: 'Force excellent', step: 2, group: 'plan', review: true , why: 'The force trace is the honest witness — it shows whether the pivot actually did anything.' },
+  { id: 'plan:2-P4', name: 'Proof Swing — trunk angle', context: 'Step 2 · Freezers', detail: 'Decreases 5°+ (low dynamic lie angle)', step: 2, group: 'plan', review: true , why: 'A decreasing trunk angle means you are covering the ball rather than backing off it.' },
 
   // Step 3 · Smoothie
-  { id: 'plan:3-S1', name: 'Time your smoothie', context: 'Step 3 · Smoothie', detail: 'Baseline logged', step: 3, group: 'plan', review: false },
-  { id: 'plan:3-S2', name: 'First smoothie reviewed', context: 'Step 3 · Smoothie', detail: 'Tempo logged', step: 3, group: 'plan', review: true },
-  { id: 'plan:3-S3', name: '5-second smoothie', context: 'Step 3 · Smoothie', detail: 'Pattern holds', step: 3, group: 'plan', review: true },
-  { id: 'plan:3-S4', name: 'Tempo ladder — 8s to 5s', context: 'Step 3 · Smoothie', detail: 'Pattern holds', step: 3, group: 'plan', review: false },
+  { id: 'plan:3-S1', name: 'Time your smoothie', context: 'Step 3 · Smoothie', detail: 'Baseline logged', step: 3, group: 'plan', review: false , why: 'Your baseline tempo. Every rung after this is measured against this number, not a textbook.' },
+  { id: 'plan:3-S2', name: 'First smoothie reviewed', context: 'Step 3 · Smoothie', detail: 'Tempo logged', step: 3, group: 'plan', review: true , why: 'A second pair of eyes before you drill the tempo in — you cannot see your own transition.' },
+  { id: 'plan:3-S3', name: '5-second smoothie', context: 'Step 3 · Smoothie', detail: 'Pattern holds', step: 3, group: 'plan', review: true , why: 'Five seconds is slow enough to hold the pattern and fast enough to feel like a swing.' },
+  { id: 'plan:3-S4', name: 'Tempo ladder — 8s to 5s', context: 'Step 3 · Smoothie', detail: 'Pattern holds', step: 3, group: 'plan', review: false , why: 'Speed is added a rung at a time so the pattern never has to survive a jump.' },
 
   // Step 4 · Foam ball
-  { id: 'plan:4-B1', name: 'Foam ball freezer', context: 'Step 4 · Foam ball', detail: 'Contact centred', step: 4, group: 'plan', review: false },
-  { id: 'plan:4-B2', name: 'Foam ball — 10s to 5s', context: 'Step 4 · Foam ball', detail: 'Solid strikes', step: 4, group: 'plan', review: false },
-  { id: 'plan:4-B3', name: 'Foam ball — 5s to 2s', context: 'Step 4 · Foam ball', detail: 'Solid strikes', step: 4, group: 'plan', review: true },
+  { id: 'plan:4-B1', name: 'Foam ball freezer', context: 'Step 4 · Foam ball', detail: 'Contact centred', step: 4, group: 'plan', review: false , why: 'An object to hit changes everything. Foam gives you the intent without the consequence.' },
+  { id: 'plan:4-B2', name: 'Foam ball — 10s to 5s', context: 'Step 4 · Foam ball', detail: 'Solid strikes', step: 4, group: 'plan', review: false , why: 'Re-earns the tempo ladder now that there is a target. Strike quality is the pass mark.' },
+  { id: 'plan:4-B3', name: 'Foam ball — 5s to 2s', context: 'Step 4 · Foam ball', detail: 'Solid strikes', step: 4, group: 'plan', review: true , why: 'Two seconds is close to real speed. Solid here means the pattern is nearly yours.' },
 
   // Step 5 · Real ball
-  { id: 'plan:5-R1', name: 'Re-entry protocol, session one', context: 'Step 5 · Real ball', detail: 'Foam to real', step: 5, group: 'plan', review: false },
-  { id: 'plan:5-R2', name: 'Calibration loop live', context: 'Step 5 · Real ball', detail: 'Dots plotted', step: 5, group: 'plan', review: false },
-  { id: 'plan:5-R3', name: 'Wedge dispersion held', context: 'Step 5 · Real ball', detail: 'No large miss', step: 5, group: 'plan', review: false },
-  { id: 'plan:5-R4', name: '7-iron dispersion held', context: 'Step 5 · Real ball', detail: 'No large miss', step: 5, group: 'plan', review: false },
-  { id: 'plan:5-R5', name: 'Driver dispersion held', context: 'Step 5 · Real ball', detail: 'No large miss', step: 5, group: 'plan', review: true },
+  { id: 'plan:5-R1', name: 'Re-entry protocol, session one', context: 'Step 5 · Real ball', detail: 'Foam to real', step: 5, group: 'plan', review: false , why: 'Real ball, deliberately under-dosed. Most players lose the build in the first ten real swings.' },
+  { id: 'plan:5-R2', name: 'Calibration loop live', context: 'Step 5 · Real ball', detail: 'Dots plotted', step: 5, group: 'plan', review: false , why: 'Plotting starts now so the pattern is measured from the first real session, not remembered later.' },
+  { id: 'plan:5-R3', name: 'Wedge dispersion held', context: 'Step 5 · Real ball', detail: 'No large miss', step: 5, group: 'plan', review: false , why: 'The wedge is the control. If the pattern holds anywhere, it holds here.' },
+  { id: 'plan:5-R4', name: '7-iron dispersion held', context: 'Step 5 · Real ball', detail: 'No large miss', step: 5, group: 'plan', review: false , why: 'Mid-iron dispersion is the truest read on whether strike and path survived the transfer.' },
+  { id: 'plan:5-R5', name: 'Driver dispersion held', context: 'Step 5 · Real ball', detail: 'No large miss', step: 5, group: 'plan', review: true , why: 'Longest club, biggest error multiplier — the last exam the build has to pass.' },
 ]
 
 /**
