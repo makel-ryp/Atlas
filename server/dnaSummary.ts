@@ -209,8 +209,14 @@ export function isProfileComplete(
  * total, which only the volume adapter can produce — so ALLOC is derived HERE, into a copy, and
  * never persisted. Mirrors `tgt/server/service.ts:180-191` deliberately.
  *
- * Recompute, never store — the point being that a run scored today survives the instrument
- * changing later. Only attempted once the profile is fully filled in: the live data shows the
+ * Recompute, never store. ⚠️ THE ORIGINAL SENTENCE HERE SAID THIS MEANT "a run scored today
+ * survives the instrument changing later". It means the OPPOSITE. Nothing is persisted — there is
+ * no `result` column on atlas.intake_submissions — so every read re-scores from `answers` under
+ * whatever code is deployed at that moment. Change scoring.ts and all 118 historical runs change
+ * with it, while each row's stored `scoring_version` still names the old one. Storing is what
+ * would make a run survive; recomputing is what stops it. The upside recompute DOES buy is that a
+ * scoring FIX reaches everyone retroactively. See T-72 — a result snapshot is the prerequisite
+ * for editing the instrument safely. Only attempted once the profile is fully filled in: the live data shows the
  * profile block is observed ALL-OR-NOTHING (7/7 fields on every scored profile in 110/118 runs),
  * and `computeResult` takes a `Profile`, not a `Partial<Profile>`, so calling it against a partial
  * object would silently score against `undefined` fields rather than refuse.
@@ -378,7 +384,9 @@ export function summarizeRun(row: {
 /**
  * The four-zone ALLOC shape, checked the same way `isAlloc` does inside scoring.ts — which is
  * module-private there, so this is a deliberate local copy rather than a widening of the
- * instrument's public surface. `shared/practice-dna/` is byte-identical to TGT and is not edited.
+ * instrument's public surface. The instrument's LOGIC is unedited; `config.ts` differs from TGT's
+ * by a fork-notice header, so "byte-identical" was never quite true and is not the rule anyway —
+ * Makel 2026-09-17: Atlas's copy is meant to diverge. See T-72 for what a divergence costs.
  */
 function isAllocShape(v: unknown): boolean {
   if (typeof v !== 'object' || v === null) return false

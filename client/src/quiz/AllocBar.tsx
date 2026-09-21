@@ -66,7 +66,7 @@ const SEGMENT_COLOR: Record<SegmentKey, string> = {
   // uses a warm one, and #ffffff is pure white, which the guide rules out ("warm off-white, never
   // pure white"). The comments were stale too — `messy` was labelled gold and was not.
   //
-  // The three real zones now take the dashboard's own ZONE_COLOR values (Dashboard.dc.html:2823),
+  // The three real zones now take the dashboard's own `ZONE_COLOR` values (Dashboard.dc.html),
   // so a golfer sees one colour per zone across the quiz AND the dashboard rather than learning
   // the mapping twice.
   construction: '#c8a05e', // --gold

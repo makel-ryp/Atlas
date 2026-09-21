@@ -20,8 +20,11 @@ import { REVIEW_ITEMS, type ReviewItem } from '../shared/drills'
  *
  * ── The one rule this file exists to enforce ────────────────────────────────────────────────────
  * A field with no producer is EMPTY, never a sample value. His row carries ~20 keys; ryp-core has
- * producers for six of them (id, n, hcp, carry, hand, intake). The other fourteen are Forge and
- * Atlas-curriculum outputs that do not exist yet, and they come back '' / {} / [] / null.
+ * producers for ten of them (id, n, hcp, carry, hand, intake, target, tier, zone, dupe) plus the
+ * relational blocks (drills, notes, submitted, dna, file). The rest are Forge outputs that do not
+ * exist yet, and they come back '' / {} / [] / null.
+ * ⚠️ Counted 2026-09-21. The previous "six of them … other fourteen" was wrong in both numbers
+ * and in the direction — it had been overtaken four times without being recounted.
  *
  * This is not fastidiousness. The earlier version of this page regex-substituted keys inside his
  * literal and a real student rendered carrying another player's handicap — a screen that looks live
@@ -102,9 +105,10 @@ export type RosterRow = {
    * personality and attention-check items to a coach.
    *
    * It is the player's four SELF-ESTIMATE bands (0-4) keyed by `path`/`face`/`contact`/`lowpoint`
-   * — `who.answer[k]` in the CATS block at Dashboard.dc.html:4136-4139, sitting beside `read`,
+   * — `who.answer[k]` in the `CATS` block in Dashboard.dc.html, sitting beside `read`,
    * `tone` and `note` for the same four axes. It belongs to the ten-shot video test, REMOVED
-   * 2026-09-03 (see the note at Dashboard.dc.html:464-480; Makel: "we cant complete it properly").
+   * 2026-09-03 (see the `REMOVED 2026-09-03: the ten-shot video test` note in Dashboard.dc.html;
+   * Makel: "we cant complete it properly").
    *
    * So this is permanently empty, not withheld and not awaiting a producer: the feature was
    * cancelled, its consumer was deleted, and the sections that rendered it (`intake`, `evidence`)
@@ -147,7 +151,15 @@ export type RosterRow = {
        * a Parallax ref from 2026-09-08 and no one could see it was outstanding.
        */
       tickedAt: string | null
-      /** The player watched the demo. Same ownership and the same read-only rule as `tickedAt`. */
+      /**
+       * The player watched the demo. Same ownership and the same read-only rule as `tickedAt`.
+       *
+       * ⚠️ SHIPPED AND READ BY NOTHING (checked 2026-09-21). The prototype's `watched` state is
+       * per-session — it marks demos opened in THIS tab, and is deliberately seeded empty so the
+       * "not watched yet" dot is honest on load. Nothing consumes this column. Kept because it is
+       * one field on a query that already selects its siblings, and because wiring `watched` to it
+       * is the obvious next step if the dot should persist; delete it if that is decided against.
+       */
       watchedAt: string | null
     }
   >
@@ -253,7 +265,7 @@ const VIDEO_TEST_SECTIONS = ['intake', 'evidence'] as const
 /**
  * The physical movement screen inside the Fitness tab — pelvic rotation, torso separation, ankle
  * dorsiflexion, single-leg balance, overhead squat, each graded Pass/Limited by a named coach
- * (`FITNESS`, Dashboard.dc.html:2670).
+ * (the `FITNESS` block in Dashboard.dc.html).
  *
  * Cut for v1 (Makel, 2026-09-10: "the whole physical screen thing is not doable"). It needs an
  * in-person screening by a movement coach on a four-week cadence, which is not a pipeline we have.
@@ -395,8 +407,11 @@ export type AtlasData = {
  * trap that will one day get "helpfully" wired up.
  *
  * WHAT WOULD CHANGE THIS, both parts needed:
- *   1. a producer writing rows with genuine historical `recorded_at` (a GHIN backfill is the
- *      obvious one — the schema comment already anticipates it), and
+ *   1. ⚠️ PARTLY MET as of 2026-09-16. `golf.handicap_history` now holds seven rows for one account
+ *      (Casey Flint) with genuine historical `recorded_at` spanning 2016→2026, and a coach can read
+ *      them — proved by running as `atlas_app` with RLS forced on. So "nothing has written a
+ *      historical row", above, is no longer true in general; it is true of every account but that
+ *      one, which is a seed. A real producer (a GHIN backfill) is still the thing to build.
  *   2. a stated as-of rule: is a bucket the last reading at or before the cutoff, and how stale may
  *      that reading be before the bucket goes null? Nobody has specified that tolerance, and
  *      picking one here would be inventing product policy in a data-access file.
@@ -663,7 +678,7 @@ export async function buildAtlasData(
        * HANDEDNESS — 'left' | 'right' | null. Not cosmetic on this page.
        *
        * `state.hand` flips real geometry in Luke's file: the dispersion field mirrors on it
-       * (`Dashboard.dc.html:4212`, `:4827`) and a bias value changes SIGN (`:4933`). It was the
+       * (the two `=== 'L'` mirror sites in Dashboard.dc.html) and a bias value changes SIGN. It was the
        * literal 'R' with a manual toggle (`:5236`), so a left-handed player was shown a
        * right-handed read of their own miss pattern until they noticed the toggle. About one
        * golfer in ten. `demo.player2` is left-handed in ryp-core today.
@@ -676,7 +691,7 @@ export async function buildAtlasData(
        * DRIVER CARRY, yards. The baseline the driving index is measured from.
        *
        * `PLAYER_CARRY = 265` was a literal feeding `drivingBaseline(PLAYER_CARRY)`
-       * (`Dashboard.dc.html:2185`, used at `:2481`), so every golfer's driving index was scored
+       * (`PLAYER_CARRY` in Dashboard.dc.html), so every golfer's driving index was scored
        * against a 265-yard carry. The bands are coarse enough that this is not a rounding
        * difference: 265 reads as a 5 handicap and 212 reads as a 20.
        *

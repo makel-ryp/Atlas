@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-21 09:04 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-21 09:34 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **4 file(s)** | pushed |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **8 file(s)** | pushed |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | **2 ahead** |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-21 09:04 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.21.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.21.0.tgz`
-- **Atlas HEAD:** `e644983 Sunday code review: 43 findings, full inventory (T-75/T-76)`
+- **Atlas HEAD:** `00ef805 Sunday review: clear the protodata and intake-server surfaces`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -59,7 +59,7 @@ Each line here was observed working. Do not rebuild any of it.
 | Two visibility tiers (identity vs metrics) | ✅ live | `coaches_or_pending()` = identity, `coaches()` = metrics |
 | Admin API + admin screen | ✅ live | commit `29e2c5c`, `b471183` |
 | Coaching notes — first cross-user write | ✅ live | commit `3750cff`; exposed and closed 2 RLS holes |
-| Luke's prototype served from real DB | ✅ live | commit `d15d7a4`; **zero sample names remain** |
+| Luke's prototype served from real DB | ✅ live | commit `d15d7a4`; zero sample names **on the coach roster and dossier**, which is what was verified. ⚠️ NOT true of the player-only surfaces — see T-70 — where named fictional coaches still appear |
 | `atlas.intake_submissions` table + RLS applied to ryp-core | ✅ applied | one Neon transaction, journal hash `26ba3786…` |
 | `POST /api/intake/start` unauthenticated → 401 | ✅ verified | smoke test 2026-08-31 |
 | **Practice DNA intake, API** | ✅ verified | 18/18 smoke assertions, 2026-09-01 |

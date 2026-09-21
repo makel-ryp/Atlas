@@ -13,14 +13,15 @@
  * own column rather than a seat in the item bank.
  *
  * ── Where the text comes from ──────────────────────────────────────────────────────────────────
- * Verbatim from `proto/Dashboard.dc.html:3957` (`intakeVals`'s `FIELDS`), which carries the longer
+ * Verbatim from `intakeVals`'s `FIELDS` in `proto/Dashboard.dc.html`, which carries the longer
  * hints; the profile view at `:3783` has the same five keys with shortened ones. Taking the longer
  * pair means the question a golfer answers reads the same as the question the coach sees answered.
  * Do not reword: the profile page renders these keys directly, and `limits`' hint is load-bearing.
  *
  * ── The one field that is not just prose ───────────────────────────────────────────────────────
  * `limits` is the stated input to the pivot routing. `STEPS[1].variants.anchor`
- * (`Dashboard.dc.html:2518`) is "the route when dorsiflexion or lead-hip depth is limited", and the
+ * (the `variants.anchor` block in Dashboard.dc.html) is "the route when dorsiflexion or lead-hip
+ * depth is limited", and the
  * Fitness screen that reported exactly that was cut for v1. So this answer is currently the ONLY
  * source that rule could ever read. See docs/reports/PROTOTYPE-WHAT-LUKE-ALREADY-BUILT-2026-09-10.md §3.
  */

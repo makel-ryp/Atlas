@@ -4834,7 +4834,7 @@ class Component extends DCLogic {
           // READ-ONLY FOR EVERYONE — fixed 2026-09-14.
           // This was `!self`, which was inert while `self` was hardcoded false. Making `self`
           // reachable turned these five textareas into editable fields for every player, and
-          // NOTHING SAVES THEM: the only two fetches in this entire file are the drill verify
+          // NOTHING SAVES THEM: the only three fetches in this entire file are the drill verify
           // (:4389) and the note POST (:4425). A player could rewrite "Physical limitations" to
           // record a shoulder surgery, navigate away, and lose it silently — worse than never
           // offering the edit, because they would believe their coach had been told.

@@ -91,7 +91,7 @@ export type ReviewItem = {
 }
 
 /**
- * The six assessment drills, mirroring `DRILL_DEFS` in Dashboard.dc.html:2438-2600. Name / domain /
+ * The six assessment drills, mirroring `DRILL_DEFS` in Dashboard.dc.html. Name / domain /
  * shots are copied verbatim from there; all six were verified to carry the same three keys the
  * sign-off card renders, so none of them renders a blank line.
  */
@@ -105,7 +105,7 @@ const ASSESSMENTS: ReviewItem[] = [
 ]
 
 /**
- * The plan, mirroring `STEPS` in Dashboard.dc.html:2632-2681.
+ * The plan, mirroring `STEPS` in Dashboard.dc.html.
  *
  * ⚠️ STEP 1 IS ROUTE-DEPENDENT. Its four drills exist in two variants — The Cannon (…Explode) and
  * The Anchor (…Post) — that share refs (`1a`,`1b`,`2`,`3`) but differ in name and standard. Which

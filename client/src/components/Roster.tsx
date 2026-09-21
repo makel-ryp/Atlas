@@ -20,7 +20,8 @@ const initials = (name: string | null, email: string) =>
     .join('')
 
 /**
- * The coach roster, in Luke's own row structure (`Dashboard.dc.html:479-530`): avatar, name in
+ * The coach roster, in Luke's own row structure (the roster row markup in `Dashboard.dc.html`):
+ * avatar, name in
  * Newsreader, then fixed-width stat columns of a mono micro-label over an Archivo-800 value.
  *
  * ⚠️ His row has columns we have no producer for — Total SG, the five-read sparkline, tier, zone,
