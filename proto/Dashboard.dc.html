@@ -232,16 +232,14 @@
 
       <div style="border:1px solid rgba(200,160,94,0.4); border-radius:18px; background:linear-gradient(165deg,#1e2733,#161d28); padding:34px; margin-bottom:22px;">
         <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:18px;">
-          <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.16em; text-transform:uppercase; color:#c8a05e;">Step 3 · Smoothies &amp; the Tempo Ladder</div>
-          <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f;">Prescribed by Dr. Benoit</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.16em; text-transform:uppercase; color:#c8a05e;">{{ todayStepLabel }}</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f;">{{ todayStepFrom }}</div>
         </div>
-        <h2 style="font-family:'Newsreader',serif; font-size:clamp(26px,5.4vw,36px); color:#ece7db; margin:0 0 16px; max-width:620px;">Work the smoothie down to five seconds.</h2>
-        <p style="font-family:'Newsreader',serif; font-size:17.5px; line-height:1.6; color:#c3cdd9; margin:0 0 28px; max-width:660px;">Foam ball, feet together, choked sand wedge. Hold the ground-force pattern you earned in Step 2 — if it leaks, go back up a rung instead of pushing through.</p>
+        <h2 style="font-family:'Newsreader',serif; font-size:clamp(26px,5.4vw,36px); color:#ece7db; margin:0 0 16px; max-width:620px;">{{ todayStepTitle }}</h2>
+        <p style="font-family:'Newsreader',serif; font-size:17.5px; line-height:1.6; color:#c3cdd9; margin:0 0 28px; max-width:660px;">{{ todayStepBody }}</p>
 
         <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); border-top:1px solid rgba(255,255,255,0.08); border-bottom:1px solid rgba(255,255,255,0.08); margin-bottom:28px;">
-          <div style="padding:18px 0;"><div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:6px;">Constraint</div><div style="font-family:'Newsreader',serif; font-size:19px; color:#ece7db;">Feet together</div></div>
-          <div style="padding:18px 0;"><div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:6px;">Volume</div><div style="font-family:'Newsreader',serif; font-size:19px; color:#ece7db;">4 sets × 15</div></div>
-          <div style="padding:18px 0;"><div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:6px;">Checkpoint</div><div style="font-family:'Newsreader',serif; font-size:19px; color:#ece7db;">Film 3 reps, DTL</div></div>
+          <div style="padding:18px 0;"><div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; margin-bottom:6px;">What counts as done</div><div style="font-family:'Newsreader',serif; font-size:19px; color:#ece7db;">{{ todayStepCond }}</div></div>
         </div>
 
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:26px;">
@@ -6095,6 +6093,42 @@ class Component extends DCLogic {
     };
   }
 
+  /**
+   * TODAY'S STEP CARD — bound to the golfer's REAL position, 2026-09-21.
+   *
+   * The card's header, headline and body were hardcoded markup: "Step 3 · Smoothies & the Tempo
+   * Ladder", "Prescribed by Dr. Benoit", and a step-3 drill description. Every golfer was told they
+   * were on step 3 and that a named person had prescribed it — including a golfer on step 1, whose
+   * own workbook two screens away said otherwise.
+   *
+   * Their step IS known: `signed` mirrors golf.drill_progress on 'plan:step-N', so the current step
+   * is the first one not yet signed off — the same derivation `openStep` uses. The content is
+   * Luke's own STEPS copy for that step, so this is his writing shown to the right person rather
+   * than one step's writing shown to everyone.
+   *
+   * "From your plan", not a name: nothing records who prescribed anything. That is the assignment
+   * question in §3a of the Forge ask, and until it is answered the honest attribution is the plan.
+   *
+   * ⚠️ Dropped with the rebind: "Volume 4 sets × 15" and "Checkpoint Film 3 reps, DTL", which were
+   * specific to the step-3 drill and have no per-step source. "What counts as done" replaces them,
+   * from the step's own advancement condition — which is the real answer to the same question.
+   */
+  todayStepVals() {
+    const signed = this.state.signed || [];
+    let n = 1;
+    while (n <= 5 && signed.indexOf(n) > -1) n++;
+    const st = STEPS.filter(x => x.n === Math.min(n, 5))[0];
+    if (!st) return { todayStepLabel: '', todayStepFrom: '', todayStepTitle: '', todayStepBody: '', todayStepCond: '' };
+    const allDone = signed.length >= 5;
+    return {
+      todayStepLabel: allDone ? 'The build is complete' : 'Step ' + st.n + ' · ' + st.title,
+      todayStepFrom: 'From your plan',
+      todayStepTitle: st.title,
+      todayStepBody: st.body,
+      todayStepCond: st.cond || '\u2014'
+    };
+  }
+
   // The real month and the real day, replacing two hardcoded strings in the markup.
   // `daysSoFar` was the literal ' / 26' in the markup — the old hardcoded TODAY. It is the
   // denominator of "Practiced n / N", so it has to be days elapsed this month, not a constant.
@@ -6292,6 +6326,7 @@ class Component extends DCLogic {
       ...this.planVals(),
       ...this.clockVals(),
       ...this.dateVals(),
+      ...this.todayStepVals(),
       ...this.fitnessVals(),
       ...this.teamVals(),
       ...this.forgeVals(),
