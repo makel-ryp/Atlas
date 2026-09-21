@@ -130,7 +130,11 @@
         <span style="font-family:'Archivo'; font-weight:800; font-size:19px; color:#c8a05e;">{{ targetHcp }}</span>
       </div>
       <input type="range" min="-6" max="30" step="1" value="{{ targetRaw }}" onChange="{{ targetSet }}" style="width:100%; accent-color:#c8a05e; margin:0 0 8px;">
-      <div style="font-family:'Newsreader',serif; font-size:13.5px; line-height:1.35; color:#4d5765; margin-bottom:16px;">{{ targetNote }}</div>
+      <div style="font-family:'Newsreader',serif; font-size:13.5px; line-height:1.35; color:#4d5765;">{{ targetNote }}</div>
+      <!-- Save state for the slider. Silent on load; says "Saving…"/"Saved", or the error, once the
+           golfer moves it. Without this a save that FAILS looks identical to one that worked, which
+           is the exact failure mode this change exists to remove. -->
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.12em; text-transform:uppercase; color: {{ targetSaveColor }}; margin-top:4px; margin-bottom:16px; min-height:11px;">{{ targetSaveRead }}</div>
 
       <div style="display:flex; align-items:baseline; justify-content:space-between; padding-top:14px; border-top:1px solid rgba(255,255,255,0.06);">
         <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f;">Practice</span>
@@ -5224,6 +5228,39 @@ class Component extends DCLogic {
     });
   }
 
+  /**
+   * Persist the target handicap to golf.player_profile via PATCH /api/users/me.
+   *
+   * The rail's caption promises every benchmark reads against this, so it has to survive a reload.
+   * Bounds match the column's own CHECK (-6..30) and `shared/interview.ts`, which is the other
+   * writer — the intake asks the same question, and both land in the same column rather than in
+   * two places that can disagree.
+   *
+   * Failure is shown, not swallowed: a silent failure here is the exact shape of the bug this
+   * replaces, where the value moved on screen and never reached the database.
+   */
+  saveTarget(v) {
+    if (!isFinite(v) || v < -6 || v > 30) return;
+    this.setState({ targetBusy: true, targetErr: '', targetSaved: false });
+    fetch('/api/users/me', {
+      method: 'PATCH',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetHandicap: v })
+    }).then(r => {
+      if (r.ok) return;
+      throw new Error('Could not save that target.');
+    }).then(() => {
+      // Keep the injected copy in step so the profile pane and the rail cannot disagree without
+      // a reload — same reason saveName writes back to ATLAS_ME.
+      ATLAS_ME.target = String(v);
+      if (ATLAS_ME_ROW) ATLAS_ME_ROW.target = v;
+      this.setState({ targetBusy: false, targetSaved: true, targetErr: '' });
+    }).catch(err => {
+      this.setState({ targetBusy: false, targetErr: err.message || 'Could not save that target.' });
+    });
+  }
+
   pick = d => () => this.setState({ view: 'cal', sel: d });
 
   entry(d) { return this.state.log[d] || {}; }
@@ -5538,7 +5575,20 @@ class Component extends DCLogic {
       // '—' when nobody has set one. The slider still works; it just does not pretend a value.
       targetHcp: !isFinite(t) ? '—' : (t <= 0 ? (t === 0 ? 'Scratch' : '+' + Math.abs(t)) : String(t)),
       targetRaw: t,
-      targetSet: e => this.setState({ targetHcp: Number(e.target.value) }),
+      // Moves immediately, saves shortly after. A slider fires on every pixel of a drag, so the
+      // write is debounced — otherwise one drag is fifty PATCHes. Added 2026-09-21 (T-35): before
+      // this it moved the value for the session only and lost it on reload, under a caption that
+      // says "Set one and every benchmark on this page reads against it".
+      targetSet: e => {
+        const v = Number(e.target.value);
+        this.setState({ targetHcp: v, targetErr: '' });
+        clearTimeout(this._tgtT);
+        this._tgtT = setTimeout(() => this.saveTarget(v), 600);
+      },
+      targetSaveRead: this.state.targetErr ? this.state.targetErr
+        : this.state.targetBusy ? 'Saving\u2026'
+        : this.state.targetSaved ? 'Saved' : '',
+      targetSaveColor: this.state.targetErr ? '#cf7d5c' : '#66717f',
       targetNote: !isFinite(t)
         ? 'No target set. Set one and every benchmark on this page reads against it.'
         : (t <= 0 ? 'Every benchmark reads against scratch or better.'

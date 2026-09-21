@@ -93,6 +93,19 @@ const patchSchema = z
     // dashboard mirrors its dispersion geometry and flips a bias sign on that value.
     handedness: z.enum(['left', 'right']).nullable(),
     ghinNumber: z.string().trim().max(32).nullable(),
+    /**
+     * The handicap the golfer is working TOWARD. Added 2026-09-21 (T-35).
+     *
+     * The rail has always had a slider for this and it has never saved — it moved the value for the
+     * session and lost it on reload, under a caption reading "Set one and every benchmark on this
+     * page reads against it". A control that states what it will do and then does not is worse than
+     * no control.
+     *
+     * Bounds mirror the live CHECK `player_profile_target_handicap_range` (-6..30), the same source
+     * `shared/interview.ts` mirrors — a value outside it would abort the write at the database.
+     * Nullable: clearing a target is a real action, and null reads as "no target set", not zero.
+     */
+    targetHandicap: z.number().min(-6).max(30).nullable(),
   })
   .partial()
   .strict() // an unknown key is a 400, not a silently ignored field
@@ -136,6 +149,13 @@ meRouter.patch('/users/me', ...identityChain, async (req, res, next) => {
                 : profileFields.handicapIndex === null
                   ? null
                   : String(profileFields.handicapIndex),
+            // Same numeric→string treatment as handicapIndex, and for the same drizzle reason.
+            targetHandicap:
+              profileFields.targetHandicap === undefined
+                ? undefined
+                : profileFields.targetHandicap === null
+                  ? null
+                  : String(profileFields.targetHandicap),
           }
           await db
             .insert(golfPlayerProfile)
