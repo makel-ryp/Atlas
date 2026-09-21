@@ -70,11 +70,14 @@ async function main() {
 
   // Derived from the prototype itself rather than hardcoded, so adding a `me.x` read to the page
   // automatically extends this check instead of silently escaping it.
+  // One Set over BOTH patterns, not two Sets concatenated — the latter deduped within each pattern
+  // and not across them, so keys matched by both (carry, target, hand) were checked and reported
+  // twice. Harmless, but a duplicated line reads as two distinct checks and inflated the count.
   const seededKeys = [
-    ...new Set(
-      [...PROTO.matchAll(/__ATLAS_DATA__\s*&&\s*window\.__ATLAS_DATA__\.me\s*\|\|\s*\{\}\)\.(\w+)/g)].map((m) => m[1]),
-    ),
-    ...new Set([...PROTO.matchAll(/\bme\.(\w+)/g)].map((m) => m[1])),
+    ...new Set([
+      ...[...PROTO.matchAll(/__ATLAS_DATA__\s*&&\s*window\.__ATLAS_DATA__\.me\s*\|\|\s*\{\}\)\.(\w+)/g)].map((m) => m[1]),
+      ...[...PROTO.matchAll(/\bme\.(\w+)/g)].map((m) => m[1]),
+    ]),
   ]
   for (const k of seededKeys) {
     if (['id', 'email', 'displayName'].includes(k)) continue
