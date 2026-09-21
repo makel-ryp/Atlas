@@ -153,6 +153,9 @@ async function main() {
     ["tier: 'builder'", 'the curriculum-tier literal (f437aa6)'],
     ['Verified by Dr. Benoit', 'an invented coach over real drill_progress'],
     ['Completed · Dr. Benoit', 'ditto, on the step pill'],
+    ["lifts: ['lift-a'", 'the fitness compliance seed — made every player read "2 of 5 logged"'],
+    ['speeds: [94', 'eight invented clubhead-speed readings, with CURRENT/BEST computed off them'],
+    ["who: 'Dr. Luke Benoit'", 'the fabricated coach message thread'],
   ]
   // ⚠️ Comments are stripped first. Every one of these strings is quoted in a comment explaining
   // why it was removed — scanning the raw file matched those and reported seven false regressions

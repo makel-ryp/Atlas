@@ -3184,7 +3184,10 @@ class Component extends DCLogic {
         { label: 'Jul', driving: 14.0, approach: 8.0, chipping: -3.0, putting: 2.0 }
       ]
     },
-    speeds: [94, 95, 93, 96, 97, 96, 98, 99],
+    // EMPTIED 2026-09-21. Was [94,95,93,96,97,96,98,99] — eight clubhead-speed readings presented
+    // as this player's own history, with "CURRENT 99 mph / BEST 99 mph / +5" computed off them.
+    // Nothing measures clubhead speed; that is a launch-monitor input and belongs to Forge.
+    speeds: [],
     // ── THE WORKBOOK, SEEDED FROM REAL DATA (2026-09-17) ─────────────────────────────────────
     // Was: ticked: DONE (12 hardcoded refs), signed: [1,2], verified: [5 refs], watched: DONE.
     // Those literals told EVERY player "12 of 23 drills completed" with steps 1 and 2 ✓, beside
@@ -3247,7 +3250,10 @@ class Component extends DCLogic {
     })(),
     rebuild: false, fitnessOn: true,
     clock: null, now: Date.now(), lastSession: null,
-    lifts: ['lift-a', 'speed-1'],
+    // EMPTIED 2026-09-21. Was ['lift-a','speed-1'], which made the Fitness screen and the rail
+    // badge both read "2 OF 5 LOGGED" for every player — a compliance figure about a person, from
+    // a literal. Nothing records that a lift or a speed session happened.
+    lifts: [],
     vw: typeof window !== 'undefined' ? window.innerWidth : 1400, railOpen: false
   };
 
@@ -3802,7 +3808,10 @@ class Component extends DCLogic {
           onClick: () => this.setState({ lifts: on ? done.filter(k => k !== r.k) : done.concat([r.k]) })
         };
       }),
-      liftCompliance: done.length + ' of ' + ROWS.length + ' logged'
+      // '—' when nothing is logged, not '0 of 5'. Same rule the calendar totals and the coaching
+      // credits already follow: "nobody counted" is not "you did none". The ticks below are
+      // session-only — nothing persists them — so this can only ever describe the current tab.
+      liftCompliance: done.length ? done.length + ' of ' + ROWS.length + ' logged' : '\u2014'
     };
   }
 
@@ -6108,7 +6117,8 @@ class Component extends DCLogic {
     // dash-vs-zero rule the team card already follows.
     const hasLog = Object.keys(log || {}).some(k => (log[k] || {}).m);
     const dv = this.demoVals();
-    const sMax = Math.max.apply(null, s.speeds);
+    // Guarded: Math.max of an empty array is -Infinity, which would render as a number.
+    const sMax = s.speeds.length ? Math.max.apply(null, s.speeds) : null;
     const biases = CLUBS.map(c => {
       const g = (s.disp && s.disp[c.club]) || c.base;
       const b = g.cx + (g.rr - g.rl) / 2 - 50;
@@ -6481,9 +6491,11 @@ class Component extends DCLogic {
           this.setState({ speeds: s.speeds.slice(1).concat([Math.min(108, last + 1)]) });
         }
       })),
-      speedNow: s.speeds[s.speeds.length - 1],
-      speedBest: sMax,
-      speedGain: '+' + (s.speeds[s.speeds.length - 1] - s.speeds[0]),
+      speedNow: s.speeds.length ? s.speeds[s.speeds.length - 1] : '\u2014',
+      speedBest: sMax === null ? '\u2014' : sMax,
+      speedGain: s.speeds.length > 1 ? '+' + (s.speeds[s.speeds.length - 1] - s.speeds[0]) : '\u2014',
+      speedEmptyShow: s.speeds.length ? 'none' : 'block',
+      speedEmptyText: 'No speed readings yet. These come from a launch monitor.',
 
       // ── thread ────────────────────────────────────────────────────────────────────────────────
       // EMPTIED 2026-09-21. This was three fabricated messages, and the worst fabrication on the
