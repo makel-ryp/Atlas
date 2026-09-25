@@ -963,7 +963,9 @@
 
           <div style="display:flex; align-items:center; gap:12px;">
             <div onClick="{{ clearDay }}" style="cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#66717f; border:1px solid rgba(255,255,255,0.12); padding:9px 15px; border-radius:999px;">Reset day</div>
-            <div style="margin-left:auto; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#7fa8c9;">{{ savedRead }}</div>
+            <!-- Colour is bound, not fixed: a failed save must not be rendered in the same
+                 calm blue as a successful one. See savedRead/savedColor. -->
+            <div style="margin-left:auto; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color: {{ savedColor }};">{{ savedRead }}</div>
           </div>
         </div>
       </div>
@@ -2833,6 +2835,46 @@ function refreshDate() {
   return true;
 }
 
+/**
+ * The ISO key for day `d` of the CURRENTLY DISPLAYED month — 'YYYY-MM-DD'.
+ *
+ * ⚠️ THIS FUNCTION IS THE FIX FOR A REAL CORRUPTION BUG. The practice log used to be keyed by bare
+ * day-of-month (`log[1..31]`), so 3 October and 3 September were the same entry. That was harmless
+ * only for as long as nothing persisted; the moment `golf.practice_sessions` existed it would have
+ * been October silently overwriting September, with no error and no way to notice.
+ *
+ * ⚠️ BUILT FROM `_NOW` AT CALL TIME, never captured into a const. `_NOW` is reassigned by
+ * `refreshDate()` when the day rolls over, and a key captured at script parse would keep writing
+ * into last month after midnight on the 1st — reintroducing the same class of bug one layer up.
+ *
+ * ── `sel` IS STILL A DAY NUMBER, deliberately ───────────────────────────────────────────────
+ * The calendar is a grid of one month: `sel`, `pick(d)`, the cells loop and `rollDay()`'s
+ * `sel === prev` comparison are all day-of-month, and converting `sel` too would break every one
+ * of them. `sel` is a CURSOR into the displayed month; the ISO string is the STORAGE KEY. Anything
+ * that reads the log converts at the boundary with this function, and nothing else.
+ */
+function dayKey(d) {
+  const mm = String(_NOW.getMonth() + 1).padStart(2, '0');
+  return _NOW.getFullYear() + '-' + mm + '-' + String(d).padStart(2, '0');
+}
+
+/** The ISO keys of the displayed month, so month totals stay month totals. */
+function monthPrefix() {
+  return _NOW.getFullYear() + '-' + String(_NOW.getMonth() + 1).padStart(2, '0') + '-';
+}
+
+/**
+ * Whole days between two ISO 'YYYY-MM-DD' keys. Used by the streak, which now walks REAL DATES
+ * backwards instead of counting down to the 1st of the month — before this a streak that began in
+ * September and ran into October read as 1 day on the 2nd.
+ */
+function isoMinusDays(iso, n) {
+  const p = iso.split('-').map(Number);
+  const dt = new Date(Date.UTC(p[0], p[1] - 1, p[2] - n));
+  return dt.getUTCFullYear() + '-' + String(dt.getUTCMonth() + 1).padStart(2, '0') + '-' +
+         String(dt.getUTCDate()).padStart(2, '0');
+}
+
 // ── EMPTY, AND IT HAS TO BE ─────────────────────────────────────────────────────────────────
 // This was 22 fully-specified practice sessions — minutes, zone and workout per day — rendered
 // under a real person's name beneath copy reading "the record is what your coach reads before he
@@ -2841,7 +2883,14 @@ function refreshDate() {
 // It had to go WITH the date fix above, not after it: real dates over invented sessions would
 // simply have relabelled somebody else's July onto the current month.
 // A player now opens the calendar on the real month with nothing logged, which is the truth.
-const SEED = {};
+/**
+ * THE PRACTICE LOG, FROM THE DATABASE — 2026-09-25.
+ *
+ * Was `{}` with the comment "Nothing records practice: there is no practice-session table anywhere
+ * in ryp-core". There is now: `golf.practice_sessions`, written by the player through
+ * PUT /api/practice/:day. Keyed by ISO date, which is why `dayKey()` exists.
+ */
+const SEED = (window.__ATLAS_DATA__ && window.__ATLAS_DATA__.me && window.__ATLAS_DATA__.me.practice) || {};
 
 const STEPS = [
   { n: 1, title: 'Pivot', body: 'Ground force earned without a ball in the way. Each drill builds on the last — do not move on because you are bored of the one you are on.', cond: 'All four drills verified on camera.', opener: true,
@@ -5406,11 +5455,49 @@ class Component extends DCLogic {
 
   pick = d => () => this.setState({ view: 'cal', sel: d });
 
-  entry(d) { return this.state.log[d] || {}; }
+  // `d` is a DAY NUMBER at every call site; the ISO conversion happens here and nowhere else.
+  entry(d) { return this.state.log[dayKey(d)] || {}; }
+
+  /**
+   * Write a day — to the screen immediately, and to the database.
+   *
+   * Optimistic with rollback, the same shape as `tickDrill` and `requestReview`. Makel's finding
+   * was *"after a revisit to the page my progress is erased"*, and the fix is not merely to send
+   * the request: it is that a request which FAILS must visibly fail, or the golfer walks away
+   * believing a week was recorded that was not.
+   *
+   * `next === null` clears the day. That is a PUT with all three fields null, not a DELETE —
+   * the row survives, which is why no DELETE grant exists anywhere in this feature.
+   */
   patch(d, next) {
+    const key = dayKey(d);
+    const before = this.state.log[key];
     const log = Object.assign({}, this.state.log);
-    if (next === null) delete log[d]; else log[d] = next;
-    this.setState({ log: log });
+    if (next === null) delete log[key]; else log[key] = next;
+    this.setState({ log: log, logErr: '' });
+
+    const e = next || {};
+    fetch('/api/practice/' + key, {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        minutes: typeof e.m === 'number' ? e.m : null,
+        zone: e.b || null,
+        workout: e.w || null
+      })
+    }).then(r => {
+      if (r.ok) return;
+      return r.json().catch(() => null).then(j => {
+        throw new Error(j && j.error === 'date_in_future'
+          ? 'That day has not happened yet.'
+          : 'Could not save that. Your practice was not recorded.');
+      });
+    }).catch(err => {
+      const back = Object.assign({}, this.state.log);
+      if (before === undefined) delete back[key]; else back[key] = before;
+      this.setState({ log: back, logErr: err.message || 'Could not save that.' });
+    });
   }
   setMin = (d, m) => () => {
     const e = this.entry(d);
@@ -6362,7 +6449,7 @@ class Component extends DCLogic {
     const cells = [];
     for (let i = 0; i < OFFSET; i++) cells.push({ num: '', cursor: 'default', border: 'transparent', bg: 'transparent', numColor: 'transparent', segs: [], tags: [], mins: '', ghostW: '0%', ghostShow: 'none', emptyBar: 'transparent', pBar: 'transparent', wBar: 'transparent', pW: '0%', wW: '0%', onClick: () => {} });
     for (let d = 1; d <= DAYS; d++) {
-      const e = log[d] || {};
+      const e = log[dayKey(d)] || {};
       const isSel = d === sel, future = d > TODAY;
       cells.push({
         num: String(d), cursor: 'pointer',
@@ -6379,14 +6466,31 @@ class Component extends DCLogic {
       });
     }
 
-    const days = Object.keys(log).map(Number);
-    const pDays = days.filter(d => log[d].m).length;
-    const wDays = days.filter(d => log[d].w && log[d].w !== 'Rest').length;
-    const mins = days.reduce((a, d) => a + (log[d].m || 0), 0);
+    /**
+     * Month totals, SCOPED TO THE DISPLAYED MONTH.
+     *
+     * Was `Object.keys(log).map(Number)` over every key, which was month-scoped only by accident:
+     * the log held nothing but the current month because it held nothing at all. Now that it is
+     * real and spans months, an unscoped total would silently mix September into a September-
+     * labelled panel that the golfer reads as "this month".
+     */
+    const mkeys = Object.keys(log).filter(k => k.indexOf(monthPrefix()) === 0);
+    const pDays = mkeys.filter(k => log[k].m).length;
+    const wDays = mkeys.filter(k => log[k].w && log[k].w !== 'Rest').length;
+    const mins = mkeys.reduce((a, k) => a + (log[k].m || 0), 0);
+    /**
+     * The streak walks REAL DATES backwards, across month boundaries.
+     *
+     * Was `for (d = TODAY; d >= 1; d--)`, which stopped at the 1st — so a streak running from 28
+     * September into October read as 1 on 2 October. Bounded at 400 so a corrupt log cannot spin.
+     */
     let streak = 0;
-    for (let d = TODAY; d >= 1; d--) { if (log[d] && log[d].m) streak++; else if (d < TODAY) break; }
+    for (let i = 0; i < 400; i++) {
+      const k = isoMinusDays(dayKey(TODAY), i);
+      if (log[k] && log[k].m) streak++; else if (i > 0) break;
+    }
 
-    const e = log[sel] || {};
+    const e = log[dayKey(sel)] || {};
     const selDow = DOWS[(OFFSET + sel - 1) % 7];
     // `.filter(d => d >= 1)` added 2026-09-21. This was `TODAY - i` for i in 6..0 with no floor,
     // which was safe only while TODAY was the literal 26. Since the date became real (04a350e),
@@ -6396,9 +6500,9 @@ class Component extends DCLogic {
     // exist. The strip now renders fewer than seven cells at the start of a month, which is the
     // truth: there are fewer than seven days behind you.
     const trailing = [6, 5, 4, 3, 2, 1, 0].map(i => TODAY - i).filter(d => d >= 1);
-    const weekDone = trailing.filter(d => log[d] && log[d].m).length;
+    const weekDone = trailing.filter(d => log[dayKey(d)] && log[dayKey(d)].m).length;
     const strip = trailing.map(d => {
-      const en = log[d] || {};
+      const en = log[dayKey(d)] || {};
       return {
         dow: DOWS[(OFFSET + d - 1) % 7],
         onClick: this.pick(d),
@@ -6533,10 +6637,10 @@ class Component extends DCLogic {
       })),
       setsRead: s.sets.filter(Boolean).length + ' of 4 sets logged',
       resetSets: () => this.setState({ sets: [false, false, false, false] }),
-      todayLogLabel: (log[TODAY] && log[TODAY].m) ? 'Logged ✓' : 'Log today',
+      todayLogLabel: (log[dayKey(TODAY)] && log[dayKey(TODAY)].m) ? 'Logged ✓' : 'Log today',
       logFromToday: () => {
         const mm = 15 + s.sets.filter(Boolean).length * 5;
-        this.patch(TODAY, Object.assign({}, log[TODAY], { m: mm, b: 'Construction' }));
+        this.patch(TODAY, Object.assign({}, log[dayKey(TODAY)], { m: mm, b: 'Construction' }));
         this.setState({ view: 'cal', sel: TODAY });
       },
       tempoLabel: s.tempo + ' seconds',
@@ -6628,7 +6732,24 @@ class Component extends DCLogic {
       //
       // Now it says what is actually true — this is a note to yourself, on this device, until
       // there is somewhere to put it. The entry still renders; only the false claim is gone.
-      savedRead: (e.m || e.w) ? 'On this device only — not sent to your coach' : '',
+      /**
+       * TRUE AGAIN, AND IN THE OTHER DIRECTION — 2026-09-25.
+       *
+       * This line has now been wrong twice, each time for the opposite reason, which is why it is
+       * worth the comment. It originally read "Saved · visible to your coach" while nothing
+       * persisted and the roster had no field to carry it — the sentence that made Makel expect
+       * his sets to reach Yannick. It was corrected this morning to "On this device only".
+       *
+       * `golf.practice_sessions` landed this afternoon, so BOTH halves are now true: `patch()`
+       * PUTs the day, and the coach's roster reads `days` off the same table. The claim goes back
+       * — but only because the thing it claims is finally the case.
+       *
+       * `logErr` wins when a save failed, because a golfer must never be told their week was
+       * recorded when the request came back 403.
+       */
+      savedRead: this.state.logErr ? this.state.logErr
+        : (e.m || e.w) ? 'Saved · your coach can see this' : '',
+      savedColor: this.state.logErr ? '#d9885e' : '#7fa8c9',
 
       // build
       steps: this.buildSteps(),

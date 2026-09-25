@@ -484,12 +484,36 @@ async function main() {
   // documents the removal — the sentinel matched the note explaining why the literal is gone. Same
   // trap the section-E sentinels hit on 2026-09-21; a sentinel that cannot tell code from the
   // comment about the code reports its own documentation as the bug.
-  const PROTO_CODE = PROTO.replace(/<!--[\s\S]*?-->/g, '').replace(/^\s*\/\/.*$/gm, '')
+  // ⚠️ THREE comment styles, not two. Stripping only <!-- --> and // left JS /* */ BLOCKS in, and
+  // this file's comments quote the very strings the sentinels look for — so a comment explaining
+  // why a literal was removed reported that literal as still present. Third time this class of
+  // self-match has bitten: a sentinel that cannot tell code from prose about code is a false alarm
+  // generator.
+  const protoDataSrc = readFileSync(join(import.meta.dirname, '..', 'server', 'protoData.ts'), 'utf8')
+  const practiceSrc = readFileSync(join(import.meta.dirname, '..', 'server', 'routes', 'practice.ts'), 'utf8')
+  const PROTO_CODE = PROTO
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '')
   check('no hardcoded Forge run date', !PROTO_CODE.includes('21 Jul · Q3 baseline'),
     'nothing records a Forge run')
-  check('the practice log does not claim a coach can see it',
-    !PROTO_CODE.includes('Saved · visible to your coach'),
-    'nothing persists it and the roster row has no field for it')
+  /**
+   * ⚠️ THIS CHECK WAS INVERTED ON 2026-09-25, and the history is the point.
+   *
+   * This morning it asserted the ABSENCE of "Saved · visible to your coach", because that sentence
+   * was false twice over: nothing persisted the log, and the roster row had no field to carry it.
+   * It was the sentence that made Makel expect his sets to reach his coach.
+   *
+   * `golf.practice_sessions` landed the same afternoon, so both halves became true and this check
+   * correctly went red. It now guards the opposite thing: the claim is allowed ONLY while the
+   * producer behind it exists. Delete the table and this fails again — which is exactly the
+   * coupling that was missing the first time.
+   */
+  check('the practice log may claim a coach can see it — because one now can',
+    !PROTO_CODE.includes('On this device only')
+      && protoDataSrc.includes('lastPractisedBy')
+      && practiceSrc.includes("put('/practice/:day'"),
+    'the claim and its producer must land and leave together')
 
   // ── M. AUTOMATIC STEP SIGN-OFF ───────────────────────────────────────────────────────────────
   // Makel, 2026-09-25: two facts, but the second is DERIVED — a coach verifies each drill and the
@@ -559,7 +583,6 @@ async function main() {
 
   // The payload half: submitted must have an Atlas-writable source, or the coach's whole
   // "waiting on you" machinery can only ever be fired by an app that has not shipped.
-  const protoDataSrc = readFileSync(join(import.meta.dirname, '..', 'server', 'protoData.ts'), 'utf8')
   check('submitted resolves from the player’s own review request',
     /reviewRequests\[item\.id\] \?\? args\.drills\[item\.id\]\?\.tickedAt/.test(protoDataSrc),
     'Atlas’s own source must win over Forge’s unwritable one')
@@ -580,6 +603,59 @@ async function main() {
     /catch\(err => \{[\s\S]{0,200}before === undefined \? delete sub\[drillId\]/.test(PROTO)
       || PROTO.includes('if (before === undefined) delete sub[drillId]; else sub[drillId] = before;'),
     'a request that silently failed is worse than one that visibly did')
+
+  // ── O. THE PRACTICE LOG, AND THE DAY-OF-MONTH REMAP ──────────────────────────────────────────
+  // Behaviour is proven by `npm run e2e:practice`. These guard the REMAP, which is the part that
+  // fails silently: the log used to be keyed by bare day-of-month, so 3 Oct and 3 Sep were one
+  // entry. Harmless while nothing persisted; silent corruption the moment something did.
+  section('O. the practice log is keyed by date, not day-of-month')
+
+  check('the route takes a full ISO date, not a day number',
+    /practiceRouter\.put\('\/practice\/:day'/.test(practiceSrc) && practiceSrc.includes('parseDay'))
+  check('an impossible date is refused before Postgres sees it',
+    practiceSrc.includes('getUTCDate() !== d'),
+    'a regex alone accepts 2026-02-30 and turns a 400 into a 500')
+  check('practice cannot be logged in the future', practiceSrc.includes("error: 'date_in_future'"),
+    'a log is evidence of a week; it has to be believable')
+  check('the subject is the caller, never the body', practiceSrc.includes('${me.id}'))
+  check('a zero-row write is not reported as success',
+    /if \(!row\)[\s\S]{0,120}403/.test(practiceSrc))
+
+  // THE REMAP. Any surviving `log[<number>]` read is a day-of-month key and reintroduces the
+  // collision — so this asserts the absence, derived from the prototype rather than assumed.
+  const dayNumberReads = [...PROTO.matchAll(/\blog\[(d|sel|TODAY)\]/g)].map((m) => m[0])
+  check('no log read still uses a bare day number', dayNumberReads.length === 0,
+    dayNumberReads.slice(0, 4).join(', '))
+  check('every log read converts through dayKey()',
+    (PROTO.match(/log\[dayKey\(/g) ?? []).length >= 6,
+    'the ISO conversion happens at the boundary and nowhere else')
+  check('dayKey is built from _NOW at call time',
+    /function dayKey\(d\) \{[\s\S]{0,200}_NOW\.getFullYear\(\)/.test(PROTO),
+    'a captured key would write into last month after the midnight rollover')
+  check('month totals are scoped to the displayed month',
+    PROTO.includes('monthPrefix()') && PROTO.includes('const mkeys ='),
+    'an unscoped total mixes other months into a month-labelled panel')
+  check('the streak walks real dates across month boundaries',
+    PROTO.includes('isoMinusDays(dayKey(TODAY), i)'),
+    'counting down to the 1st made a streak crossing a month read as 1')
+
+  // The payload, and the producer that had been missing since the roster was built.
+  check('the practice log is seeded from the payload',
+    PROTO.includes('window.__ATLAS_DATA__.me.practice'),
+    'SEED = {} was the old "there is no practice table" state')
+  check('practice is on me, not only meRow',
+    JSON.stringify(casey.me ?? {}).includes('practice') || 'practice' in (casey.me ?? {}),
+    'the state seed reads me.* — meRow-only is the f437aa6 trap')
+  check('RosterRow.days finally has a producer',
+    !protoDataSrc.includes('days: null, // needs a practice_days producer')
+      && protoDataSrc.includes('lastPractisedBy.get(person.id)'),
+    'the roster’s last-logged column, silence flag and default sort all read it')
+  check('a logged rest day does not count as practice',
+    /if \(r\.minutes == null \|\| r\.minutes <= 0\) continue/.test(protoDataSrc),
+    'a rest day must not read as "practised today" on the coach’s roster')
+  check('a failed save is surfaced, not swallowed',
+    PROTO.includes('this.state.logErr ? this.state.logErr'),
+    'a golfer must never be told a week was recorded when the PUT came back 403')
 
   // ── report ───────────────────────────────────────────────────────────────────────────────────
   console.log(`\n${'='.repeat(74)}`)

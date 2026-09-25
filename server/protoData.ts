@@ -4,6 +4,7 @@ import {
   atlasCoachingNotes,
   golfDrillProgress,
   golfDrillReviewRequests,
+  golfPracticeSessions,
   golfPlayerProfile,
   orgMemberships,
   organizations,
@@ -714,6 +715,37 @@ export async function buildAtlasData(
       if (r.requestedAt) myReviewRequests[r.drillId] = r.requestedAt.toISOString()
     }
 
+    /**
+     * The player's own practice log, keyed by ISO DATE — never by day-of-month.
+     *
+     * The prototype's `log` used to be keyed `log[1..31]`, which made 3 October and 3 September
+     * the same entry. That was survivable only because nothing persisted; the client was remapped
+     * onto these keys in the same change that created this table.
+     *
+     * `session_date` is a Postgres `date`, which node-pg hands back as a 'YYYY-MM-DD' string
+     * already — no Date round-trip, so no time zone can shift it.
+     */
+    const myPractice = await db
+      .select({
+        sessionDate: golfPracticeSessions.sessionDate,
+        minutes: golfPracticeSessions.minutes,
+        zone: golfPracticeSessions.zone,
+        workout: golfPracticeSessions.workout,
+      })
+      .from(golfPracticeSessions)
+      .where(eq(golfPracticeSessions.userId, me.id))
+    const myLog: Record<string, { m?: number; b?: string; w?: string }> = {}
+    for (const r of myPractice) {
+      // Only keys the page actually reads, and only when set — an entry of all-undefined would
+      // make `hasLog` true and turn every dashed total into a zero, which is the exact
+      // "nobody counted" vs "you did none" distinction the dashes exist to preserve.
+      const e: { m?: number; b?: string; w?: string } = {}
+      if (r.minutes != null) e.m = r.minutes
+      if (r.zone) e.b = r.zone
+      if (r.workout) e.w = r.workout
+      if (Object.keys(e).length) myLog[String(r.sessionDate)] = e
+    }
+
     const myDrills: RosterRow['drills'] = {}
     for (const r of myProgress) {
       myDrills[r.drillId] = {
@@ -946,6 +978,15 @@ export async function buildAtlasData(
       notes: notesBy.get(me.id) ?? [],
       tier: meRowTier,
       zone: meRowZone,
+      /**
+       * The practice log, keyed by ISO date. Read by the prototype's state seed in place of the
+       * old `const SEED = {}`.
+       *
+       * ⚠️ ON `me`, NOT ONLY ON `meRow` — the trap f437aa6 shipped. The prototype's state seed
+       * reads `window.__ATLAS_DATA__.me`, so a value written only to `meRow` is invisible to it
+       * and the feature does nothing while every test against a hand-built payload passes.
+       */
+      practice: myLog,
     }
 
     /**
@@ -1125,6 +1166,43 @@ export async function buildAtlasData(
       requestsBy.set(r.userId, bucket)
     }
 
+    /**
+     * WHEN EACH STUDENT LAST PRACTISED — the producer `RosterRow.days` has been waiting for.
+     *
+     * The roster already renders `last: days === 0 ? 'Today' : days + 'd ago' : 'never logged'`
+     * and flags a student silent for more than a week (`flag: p.days > 7`), and the default sort
+     * uses it. All of that has been inert since the roster was built, because `days` was a
+     * hardcoded null with the comment "needs a practice_days producer". This is that producer.
+     *
+     * `practice_sessions_select` carries the `coaches(user_id)` branch, so the DATABASE decides
+     * which students appear here — this file adds no filter of its own.
+     */
+    const practiceRows = await db
+      .select({
+        userId: golfPracticeSessions.userId,
+        sessionDate: golfPracticeSessions.sessionDate,
+        minutes: golfPracticeSessions.minutes,
+      })
+      .from(golfPracticeSessions)
+    // Midnight UTC today, compared against a 'YYYY-MM-DD' string parsed the same way — so the
+    // difference is a whole number of days and cannot come out as 6.97.
+    const todayMs = Date.UTC(
+      new Date().getUTCFullYear(),
+      new Date().getUTCMonth(),
+      new Date().getUTCDate(),
+    )
+    const lastPractisedBy = new Map<string, number>()
+    for (const r of practiceRows) {
+      // A day with no minutes is not practice — a logged rest day must not read as "practised
+      // today" on the coach's roster.
+      if (r.minutes == null || r.minutes <= 0) continue
+      const [y, m, d] = String(r.sessionDate).split('-').map(Number)
+      const days = Math.round((todayMs - Date.UTC(y, m - 1, d)) / 86_400_000)
+      if (days < 0) continue
+      const prev = lastPractisedBy.get(r.userId)
+      if (prev === undefined || days < prev) lastPractisedBy.set(r.userId, days)
+    }
+
     const progressBy = new Map<string, RosterRow['drills']>()
     for (const r of progressRows) {
       const bucket = progressBy.get(r.userId) ?? {}
@@ -1186,7 +1264,10 @@ export async function buildAtlasData(
         // nobody has set one, which renders as '—' rather than as a default: a benchmark computed
         // against a target the coach never chose is the fabrication this column exists to end.
         target: toHcp(profile?.targetHandicap),
-        days: null, // needs a practice_days producer
+        // ✅ HAS A PRODUCER, 2026-09-25 (was `null` with "needs a practice_days producer").
+        // Whole days since this student last logged practice; null still means NEVER, which the
+        // roster renders as "never logged" rather than as a number.
+        days: lastPractisedBy.get(person.id) ?? null,
         leak: '', // Forge
         sg: [], // Forge
         hist: {}, // see THE `hist` NOTE above

@@ -20,12 +20,12 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-25 14:03 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-25 14:28 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **2 file(s)** | **1 ahead** |
-| eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | **3 ahead** |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **11 file(s)** | pushed |
+| eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | pushed |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
 | locker-room | `~/Desktop/ATR/apps/locker-room` | makel-ryp/locker-room | feature | clean | pushed |
@@ -33,8 +33,8 @@ _Regenerated 2026-09-25 14:03 CDT by `docs/refresh-status.sh`._
 | practice-dna | `~/Desktop/ATR/apps/practice-dna` | **not a git repo** | — | — | — |
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
-- **@ryp/eco version:** `0.22.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.22.0.tgz`
-- **Atlas HEAD:** `e3b979d The player can tell their coach a rep is ready (T-97)`
+- **@ryp/eco version:** `0.23.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.23.0.tgz`
+- **Atlas HEAD:** `b126654 devSession: ATLAS_BASE, so a deploy is verified as a signed-in golfer`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -80,6 +80,7 @@ Each line here was observed working. Do not rebuild any of it.
 | **Whole intake, live, in a browser** | ✅ verified | signup → quiz → result → dashboard on `atlas.ryptest.com`, 2026-09-01 |
 | `handicap_history` is a trend, not a log | ✅ verified | appends only when the index actually moved |
 | `npm run seed` resets the intake | ✅ verified | row back to `in_progress` / tier 0, confirmed in the DB |
+| **The practice log persists, and drives the coach's roster** | ✅ live | 2026-09-25. `golf.practice_sessions` on production. The log was remapped from day-of-month to ISO date in the same change — `log[1..31]` made 3 Oct and 3 Sep one key, harmless only while nothing persisted. **`RosterRow.days` finally has a producer**, so the roster's last-logged column, its silence flag (`days > 7`) and its default sort stop being inert. `npm run e2e:practice` 10/10 and 9/9 falsification tests, both against production |
 | **A player can tell their coach a rep is ready** | ✅ live | 2026-09-25. `golf.drill_review_requests` applied to production ryp-core. The FIRST player-side write Atlas has ever had — before this, every control on the player's surface wrote to React state and stopped, which is why six of thirteen alpha findings were "nothing I do reaches my coach". **8/8 falsification tests on production as `atlas_app`** (incl. `rolbypassrls` = false, so policies bind — unlike ryp-red); `npm run e2e:review` 11/11 through the real route, ending on the request appearing in the COACH's payload |
 | **Parental consent gate — access is refused server-side** | ✅ verified | 2026-09-21. `requireConsent` in every chain that gates on Atlas entitlement, incl. `/proto/dashboard` in page mode. Real middleware vs. all 12 live rows + 4 synthetic: 14yo-no-consent → 403 `consent_required`, 14yo-with-consent → allowed, no-DOB → 403 `dob_required`, adult → allowed. 24 smoke checks, **falsified first** — 3 deliberate regressions each produced the expected FAIL. The DOB write itself was round-tripped against live ryp-core: `returning()` yields a row (so no silent-zero-row lockout), 14 March reads back as the 14th, and a second write matches 0 rows so write-once is the database's rule and not just an `if`. ⚠️ **0/12 accounts carry a DOB, so everyone sees the one-field screen once on next sign-in.** What counts as consent is still counsel's (T-16) |
 | Consent cannot be self-granted | 🟡 one layer, not two | The route surface refuses it and a smoke check enforces that. **The DB still permits it — MEASURED, not inferred:** on 2026-09-21 the probe account wrote its own `parental_consent_at` through `withRls` under its own identity, 1 row, no error (reset immediately). `grant update (… parental_consent_at …)` + `users_update`'s own-row rule, and RLS scopes rows not columns. `docs/operations/CONSENT-GRANT-REVOKE.sql` closes it: **written, NOT applied** |
