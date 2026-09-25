@@ -49,7 +49,16 @@ if (process.env.NODE_ENV === 'production') {
 const API_KEY = process.env.VITE_FIREBASE_API_KEY
 if (!API_KEY) throw new Error('VITE_FIREBASE_API_KEY is not set — cannot exchange the custom token')
 
-const BASE = `http://localhost:${process.env.PORT ?? '5000'}`
+/**
+ * Which Atlas to talk to. Defaults to the local dev server; `ATLAS_BASE` points it elsewhere —
+ * which is how a deploy gets verified as a real signed-in golfer rather than by a 200 on /health.
+ *
+ *   ATLAS_BASE=https://atlas.ryptest.com npm run session -- demo.player1@rypgolf.com --html
+ *
+ * ⚠️ Pointing this at production means the session it mints is a REAL session on the live app.
+ * Use seeded demo accounts only, and never in a script that writes.
+ */
+const BASE = process.env.ATLAS_BASE ?? `http://localhost:${process.env.PORT ?? '5000'}`
 
 export async function sessionCookieFor(email: string): Promise<{ cookie: string; uid: string; userId: string }> {
   const row = await withRlsBypass(pool, `devSession: resolve ${email}`, { users }, (db) =>
