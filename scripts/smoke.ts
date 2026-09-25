@@ -396,6 +396,100 @@ async function main() {
   check('30 February is refused, not rolled into March', storedDateOfBirth(2010, 2, 30) === null)
   check('month 13 is refused', storedDateOfBirth(2010, 13, 1) === null)
 
+  // ── K. THE PROTOTYPE ITSELF IS SYNTACTICALLY SOUND ───────────────────────────────────────────
+  // ⚠️ THIS IS THE GATE THE REPO HAS NEVER HAD, and the reason it matters is structural: `tsc`
+  // CANNOT SEE INSIDE proto/Dashboard.dc.html. It is a 6.6k-line .html file holding ~4.2k lines of
+  // JavaScript, and it is the file that IS the product — every screen a golfer or coach touches.
+  // A stray bracket in it ships a blank page, and `npm run typecheck` passes happily.
+  // Everything below is cheap and runs on every smoke.
+  section('K. the prototype parses and its markup closes')
+
+  const protoLines = PROTO.split('\n')
+  const scriptStart = protoLines.findIndex((l) => l.includes('data-dc-script'))
+  const scriptEnd = protoLines.length - 1 - [...protoLines].reverse().findIndex((l) => l.includes('</script>'))
+  check('the logic block is locatable', scriptStart > 0 && scriptEnd > scriptStart, `${scriptStart}..${scriptEnd}`)
+  const logic = protoLines.slice(scriptStart + 1, scriptEnd).join('\n')
+  let parseErr = ''
+  try {
+    // Function() compiles without executing — exactly the syntax check, none of the side effects.
+    new Function(logic)
+  } catch (e) {
+    parseErr = (e as Error).message
+  }
+  check('the prototype logic parses as JavaScript', parseErr === '', parseErr)
+
+  // Markup balance. An unclosed <div> in a 2.4k-line markup half does not throw — it silently
+  // reparents everything after it, which reads as "the page looks wrong" and is very hard to find
+  // by eye. Comments are stripped FIRST: prose inside <!-- --> contains things like "<their>"
+  // that a naive tag scan reads as markup. (Found the hard way on 2026-09-25.)
+  const markupHalf = PROTO.slice(0, PROTO.indexOf('<script type="text/x-dc"')).replace(/<!--[\s\S]*?-->/g, '')
+  const VOID = new Set(['br','hr','img','input','meta','link','source','path','circle','rect','line','polyline','polygon','use','stop','ellipse','area','base','col','embed','track','wbr'])
+  const openStack: { tag: string; line: number }[] = []
+  const tagErrs: string[] = []
+  for (const m of markupHalf.matchAll(/<(\/?)([a-zA-Z][\w-]*)([^>]*?)(\/?)>/g)) {
+    const [, closing, rawTag, , selfClose] = m
+    const tag = rawTag.toLowerCase()
+    if (VOID.has(tag) || selfClose) continue
+    const line = markupHalf.slice(0, m.index).split('\n').length
+    if (!closing) openStack.push({ tag, line })
+    else if (!openStack.length) tagErrs.push(`line ${line}: </${tag}> with nothing open`)
+    else if (openStack[openStack.length - 1].tag !== tag) {
+      tagErrs.push(`line ${line}: </${tag}> but <${openStack[openStack.length - 1].tag}> is open`)
+    } else openStack.pop()
+  }
+  // html/body are legitimately left open at the split point — the logic <script> is where we cut.
+  const unclosed = openStack.filter((o) => o.tag !== 'html' && o.tag !== 'body')
+  check('every markup tag closes', unclosed.length === 0 && tagErrs.length === 0,
+    [...unclosed.map((o) => `<${o.tag}> line ${o.line}`), ...tagErrs].slice(0, 4).join('; '))
+
+  // ── L. THE 2026-09-25 ALPHA FIXES STAY FIXED ─────────────────────────────────────────────────
+  section('L. Makel\'s alpha findings do not regress')
+
+  // #12 — a coach opening Profile from the rail was pinned to an arbitrary student, and the note
+  // composer / sign-off / plan pane all act on who.id. Worst case: prose written about the wrong
+  // named person. `|| ROSTER[0]` is the whole of the bug.
+  check('a coach with no student selected is NOT pinned to ROSTER[0]',
+    !/ROSTER\.filter\(p => p\.id === s\.profileOf\)\[0\] \|\| ROSTER\[0\]/.test(PROTO),
+    'the arbitrary-student fallback is back')
+  check('the no-student-selected state says so',
+    PROTO.includes("pfName: who.id ? who.n : 'No player selected'"),
+    'an empty <h1> reads as a broken page, not as "pick someone"')
+
+  // #2 — "it has me stuck in sep 18th". refreshDate() moved the header and the grid but never
+  // state.sel, so the day panel kept the day the TAB WAS OPENED.
+  check('the day rollover carries the selected day with it',
+    /rollDay\(\)\s*\{[\s\S]*?sel: this\.state\.sel === prev \? TODAY : this\.state\.sel/.test(PROTO),
+    'sel no longer follows the clock — the Sep 18 bug')
+  check('both rollover triggers go through rollDay',
+    (PROTO.match(/this\.rollDay\(\)/g) ?? []).length >= 2,
+    'the 1s tick and visibilitychange must both use it')
+
+  // #4 — two inert cards inviting a click and naming a door that is shut.
+  check('the plan screen shows only the tier the golfer is on',
+    PROTO.includes('Object.keys(TIERS).filter(k => k === s.tier)'),
+    'off-tier cards are back')
+  check('no card tells the golfer to change their plan in the intake',
+    !PROTO.includes("'Change in your intake'"),
+    'that surface cannot reopen a completed interview')
+
+  // #8 — removed on request.
+  check('course simulation is gone from the page', !PROTO.includes('>Course simulation<'))
+
+  // Forge honesty: the last dead control still advertising a save.
+  check('the Forge session button no longer claims to save',
+    !PROTO.includes("'Save index'") && !PROTO.includes("'Save result'"),
+    'finishDriving writes nothing — there is no route and no column')
+  // ⚠️ Scanned with COMMENTS STRIPPED. The first version of this check failed on the comment that
+  // documents the removal — the sentinel matched the note explaining why the literal is gone. Same
+  // trap the section-E sentinels hit on 2026-09-21; a sentinel that cannot tell code from the
+  // comment about the code reports its own documentation as the bug.
+  const PROTO_CODE = PROTO.replace(/<!--[\s\S]*?-->/g, '').replace(/^\s*\/\/.*$/gm, '')
+  check('no hardcoded Forge run date', !PROTO_CODE.includes('21 Jul · Q3 baseline'),
+    'nothing records a Forge run')
+  check('the practice log does not claim a coach can see it',
+    !PROTO_CODE.includes('Saved · visible to your coach'),
+    'nothing persists it and the roster row has no field for it')
+
   // ── report ───────────────────────────────────────────────────────────────────────────────────
   console.log(`\n${'='.repeat(74)}`)
   if (failures.length) {

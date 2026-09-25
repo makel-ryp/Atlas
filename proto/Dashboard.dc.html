@@ -1807,7 +1807,9 @@
 
             <div style="display:flex; gap:10px;">
               <div onClick="{{ backToRoadmap }}" style="cursor:pointer; flex:none; padding:20px 22px; border-radius:16px; border:1px solid rgba(255,255,255,0.12); font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8;">Back</div>
-              <div onClick="{{ finishDriving }}" style="cursor:pointer; flex:1; text-align:center; padding:20px 0; border-radius:16px; background: {{ saveBg }}; font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color: {{ saveColor }};" style-active="opacity:0.82">{{ saveLabel }}</div>
+              <!-- Border, not a cream fill: this control finishes the screen, it does not save.
+                   Same treatment as the workbook row and the demo tick — see saveLabel. -->
+              <div onClick="{{ finishDriving }}" style="cursor:pointer; flex:1; text-align:center; padding:20px 0; border-radius:16px; border:1px solid rgba(255,255,255,0.16); font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8;" style-active="opacity:0.82">{{ saveLabel }}</div>
             </div>
           </div>
         </sc-if>
@@ -1842,7 +1844,10 @@
           </div>
           <div style="flex:none; text-align:right;">
             <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f; margin-bottom:8px;">Last run</div>
-            <div style="font-family:'Newsreader',serif; font-size:19px; color:#ece7db; margin-bottom:18px;">21 Jul · Q3 baseline</div>
+            <!-- Was "21 Jul · Q3 baseline" — a hardcoded date telling every golfer they had run a
+                 Forge session in July. Nothing records a Forge run; there is no table for one.
+                 Same class as the speeds/lifts literals emptied in T-85 (2026-09-21). -->
+            <div style="font-family:'Newsreader',serif; font-size:19px; color:#66717f; margin-bottom:18px;">&mdash;</div>
             <div onClick="{{ openSession }}" style="cursor:pointer; display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#0E141B; background:#c8a05e; padding:13px 26px; border-radius:999px;">Start Forge session</div>
           </div>
         </div>
@@ -2028,34 +2033,24 @@
         </div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 320px; gap:20px; align-items:start; margin-bottom:20px;">
-        <div style="border:1px solid rgba(255,255,255,0.09); border-radius:18px; background:#161d28; padding:clamp(19px,3.4vw,30px) clamp(19px,3.6vw,32px);">
-          <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px;">
-            <h3 style="font-family:'Newsreader',serif; font-size:25px; color:#ece7db; margin:0;">Course simulation</h3>
-            <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f;">{{ simCount }}</span>
-          </div>
-          <p style="font-family:'Newsreader',serif; font-size:15.5px; line-height:1.5; color:#97a2af; margin:0 0 18px; max-width:520px;">Pick a course you know, then play it in your head shot by shot on the range. Grade each hole honestly, carry a ball in your pocket for every stroke over par, and audit yourself on mechanics at the end.</p>
-          <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:24px;">
-            <span onClick="{{ vrOpenPicker }}" style="cursor:pointer; display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#0E141B; background:#c8a05e; padding:12px 24px; border-radius:999px;">Start virtual round</span>
-            <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#66717f;">Last played · {{ vrCourseName }}</span>
-          </div>
-          <div style="display:flex; align-items:stretch; gap:14px; margin-bottom:18px;">
-            <sc-for list="{{ simRounds }}" as="r" hint-placeholder-count="4">
-              <div style="flex:1; min-width:0;">
-                <div style="height:16px; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#ece7db;">{{ r.score }}</div>
-                <div style="height:120px; display:flex; align-items:flex-end;">
-                  <div style="width:100%; border-radius:4px 4px 0 0; height: {{ r.h }}; background:rgba(200,160,94,0.55);"></div>
-                </div>
-                <div style="height:16px; margin-top:8px; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.1em; color:#66717f;">{{ r.label }}</div>
-                <div style="text-align:center; font-family:'IBM Plex Mono',monospace; font-size:8.5px; letter-spacing:0.08em; text-transform:uppercase; color: {{ r.cleanColor }};">{{ r.clean }}</div>
-              </div>
-            </sc-for>
-          </div>
-          <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:20px; border-top:1px solid rgba(255,255,255,0.08); padding-top:20px;">
-            <div><div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f; margin-bottom:6px;">Round average</div><div style="font-family:'Archivo'; font-weight:800; font-size:clamp(22px,4.3vw,26px); color:#ece7db;">{{ simAvg }}</div></div>
-            <div><div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f; margin-bottom:6px;">Mechanical leak rate</div><div style="font-family:'Archivo'; font-weight:800; font-size:clamp(22px,4.3vw,26px); color:#cf7d5c;">{{ simLeakPct }}</div></div>
-          </div>
-        </div>
+      <div style="display:grid; grid-template-columns:minmax(0,1fr); gap:20px; align-items:start; margin-bottom:20px;">
+        <!-- ============ COURSE SIMULATION — REMOVED 2026-09-25 ============ -->
+        <!-- Makel: "Remove course simulation for now, useless." The card that stood here (the
+             heading, {{ simCount }}, the "Start virtual round" button, the {{ simRounds }} bar
+             chart, {{ simAvg }} and {{ simLeakPct }}) is gone, and the grid above is now one
+             column so the remaining cards are not squeezed into a 320px gutter beside a hole.
+
+             ⚠️ "FOR NOW" — the virtual-round PICKER (markup ~1470-1596, vals ~5520-5650, 77
+             references) is deliberately left in place and is now UNREACHABLE: this button was
+             its only entry point. It is dormant, not live; nothing renders it and no state
+             reaches it. Left rather than excised because pulling 260 lines out of the file that
+             IS the product, to satisfy "for now", risks more than it removes — and because
+             putting it back is then one line. If the decision becomes permanent, delete that
+             block, the sim keys in forgeVals, and `sim` from the state seed together.
+
+             The numbers it displayed were Luke demo literals (state.forge.sim), not this
+             golfer's rounds — see the Transfer note. So this removes a surface that was
+             asserting four dated rounds nobody played. -->
 
         <div style="display:flex; flex-direction:column; gap:20px;">
           <div style="border:1px solid rgba(255,255,255,0.09); border-radius:18px; background:#161d28; padding:26px 24px;">
@@ -2237,7 +2232,10 @@
     <sc-if value="{{ isPlan }}" hint-placeholder-val="{{ false }}">
     <div>
       <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.28em; text-transform:uppercase; color:#c8a05e; margin-bottom:14px;">Commitment</div>
-      <h1 style="font-family:'Archivo'; font-weight:800; font-size:clamp(30px,7vw,46px); line-height:1.04; letter-spacing:-0.03em; color:#ece7db; margin:0 0 12px;">Pick the floor you'll actually hit.</h1>
+      <!-- Copy follows the card, 2026-09-25. "Pick the floor you'll actually hit." was an
+           instruction to choose, above a grid that no longer offers a choice — the same
+           control-that-lies problem one layer up, in prose. -->
+      <h1 style="font-family:'Archivo'; font-weight:800; font-size:clamp(30px,7vw,46px); line-height:1.04; letter-spacing:-0.03em; color:#ece7db; margin:0 0 12px;">The floor you committed to.</h1>
       <p style="font-family:'Newsreader',serif; font-size:clamp(16px,2.6vw,18px); line-height:1.55; color:#97a2af; margin:0 0 34px; max-width:640px;">Hours are structured practice only — rounds are never subtracted from them. The floor is a minimum, not a ceiling. Play as much as you'd like.</p>
 
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:40px;">
@@ -3388,7 +3386,17 @@ class Component extends DCLogic {
       briefScoring: (def.id === 'chip20' ? CHIP_LEVELS[chipLevel].rows : def.scoring)
         .map(x => ({ label: x.label, note: x.note, color: TONE[x.tone] })),
       // Saving a half-finished index would poison the number it produces.
-      saveLabel: isAbacus && total < 20 ? (20 - total) + ' left to log' : def.diagnostic ? 'Save result' : 'Save index',
+      // ⚠️ NOT "Save index" — 2026-09-25, Makel: "My forge results are not saved and not
+      // communicated to the coach." He is right, and this label was the reason he expected them
+      // to be. `finishDriving` advances a screen and writes NOTHING: there is no route, no table,
+      // and golf.drill_progress has no score column for a number like this to land in. Forge owns
+      // the practice index and Forge has not shipped.
+      //
+      // This was the last dead control in the file still advertising a save with no comment
+      // disarming it — every other one (the workbook row, the demo tick, the tier card) was made
+      // a statement weeks ago. Now it matches them: it says what the screen does, which is finish.
+      // The fill and pointer are dropped below for the same reason.
+      saveLabel: isAbacus && total < 20 ? (20 - total) + ' left to log' : 'Done — not recorded yet',
       saveBg: !isAbacus || total >= 20 ? '#f2ede1' : 'rgba(255,255,255,0.05)',
       saveColor: !isAbacus || total >= 20 ? '#0E141B' : '#8d99a8',
 
@@ -3813,18 +3821,47 @@ class Component extends DCLogic {
     };
   }
 
+  /**
+   * Carry the page across midnight — INCLUDING the selected day.
+   *
+   * ⚠️ THIS IS MAKEL'S "it has me stuck in sep 18th", 2026-09-25. `refreshDate()` was already
+   * correct and already wired to both the 1s tick and `visibilitychange` — the header, the month
+   * grid and `logFromToday` all followed the clock. `state.sel` did not. It is seeded once at
+   * construction (`sel: TODAY`) and nothing ever moved it, so the day panel kept rendering
+   * whatever day was current when the tab was OPENED: "{{ monthName }} {{ selDay }}" said
+   * September 18 while the header two screens up said September 25.
+   *
+   * The only signal that it had gone stale was the quiet disappearance of the "· today" suffix
+   * in `selWeekday` — which reads as a design detail, not as a broken clock. That is why this
+   * survived the date fix on 2026-09-17: that change was verified against the header and the
+   * calendar grid, and the day panel is a third surface nobody thought to look at.
+   *
+   * A DELIBERATE choice stays put. If the golfer has clicked the 12th to look at it, midnight
+   * must not yank them to the 13th — so `sel` only follows the clock when it was still pointing
+   * at the day that WAS today. Hence capturing `prev` before the refresh: after it, `TODAY` is
+   * already the new day and the comparison could never be true.
+   */
+  rollDay() {
+    const prev = TODAY;
+    if (!refreshDate()) return;
+    this.setState({
+      dateTick: (this.state.dateTick || 0) + 1,
+      sel: this.state.sel === prev ? TODAY : this.state.sel,
+    });
+  }
+
   componentDidMount() {
     this._t = setInterval(() => {
       // Day rollover. The date constants are captured once at parse, and this page is one a golfer
       // leaves open overnight — without this the header names yesterday and `logFromToday` writes
       // practice into yesterday. `refreshDate()` is cheap and returns true only on an actual
       // change, so this re-renders once a day rather than once a second.
-      if (refreshDate()) this.setState({ dateTick: (this.state.dateTick || 0) + 1 });
+      this.rollDay();
       if (this.state.clock) this.setState({ now: Date.now() });
     }, 1000);
     // Phones suspend timers while backgrounded, so the interval alone can miss the rollover
     // entirely — catch it on the way back too.
-    this._vis = () => { if (refreshDate()) this.setState({ dateTick: (this.state.dateTick || 0) + 1 }); };
+    this._vis = () => this.rollDay();
     document.addEventListener('visibilitychange', this._vis);
     this._rz = () => {
       const w = window.innerWidth;
@@ -3897,24 +3934,37 @@ class Component extends DCLogic {
     const bar = (val, max) => Math.max(0, Math.min(100, max ? (val / max) * 100 : 0));
 
     return {
-      tierCards: Object.keys(TIERS).map(k => {
-        const on = k === s.tier, T = TIERS[k];
+      // ── ONE CARD: THE PLAN YOU ARE ACTUALLY ON ────────────────────────────────────────────
+      // Makel, 2026-09-25: "I cant select a higher fidelity plan if id like, but the option is
+      // there. Lets remove the options and put it somwhere where it can be toggleable."
+      //
+      // This used to map all three tiers. The two you are NOT on rendered as full cards with a
+      // pointer cursor and a badge reading "Change in your intake" — which was worse than an
+      // inert control, because it was an inert control that named a door. That door is SHUT:
+      // `tier` is stored in atlas.intake_submissions.interview, and once a run is completed
+      // nothing in the served page or the SPA reopens the interview to change it. So the card
+      // offered a choice, refused the click, and sent the golfer somewhere that could not help.
+      //
+      // Why the FILTER and not deleting the <sc-for>: Luke's markup is not ours to restructure,
+      // and the grid is already `auto-fit, minmax(200px, 1fr)` so a single card simply fills the
+      // row. Closing a surface from the vals is this repo's own idiom (same shape as `hidden`).
+      //
+      // ⚠️ Do NOT "fix" this by re-arming onClick with a local setState. That was removed
+      // deliberately: switching tier here repaints the weekly floor, phase label, mix, split, the
+      // seven-day week, the calendar ghost bars and the calendar export, then loses all of it on
+      // reload with no message. A real toggle needs a PATCH route that writes the stored answer —
+      // that is the "somewhere toggleable" half of Makel's note, and it is not built yet.
+      tierCards: Object.keys(TIERS).filter(k => k === s.tier).map(k => {
+        const T = TIERS[k];
         return {
           name: T.name, floor: T.floor + ' hrs / week',
           who: T.who,
           speed: T.speed ? T.speed + ' × 15 min Speed' : 'No prescribed Speed',
-          border: on ? 'rgba(200,160,94,0.55)' : 'rgba(255,255,255,0.09)',
-          bg: on ? '#1e2733' : '#161d28',
-          nameColor: on ? '#c8a05e' : '#ece7db',
-          // Was 'Switch' with a local setState. `tier` is now a stored answer
-          // (atlas.intake_submissions.interview), so switching here repainted the entire
-          // prescription — weekly floor, phase label, mix, split, the seven-day week, the calendar
-          // ghost bars and the calendar export — and threw it away on reload with no message. Same
-          // class as the workbook tick f6089e0 disarmed. Until there is a PATCH route for it, the
-          // card states which plan you are on and where to change it, rather than offering a
-          // control that does not work.
-          badge: on ? 'Current plan' : 'Change in your intake',
-          badgeColor: on ? '#c8a05e' : '#66717f',
+          border: 'rgba(200,160,94,0.55)',
+          bg: '#1e2733',
+          nameColor: '#c8a05e',
+          badge: 'Current plan',
+          badgeColor: '#c8a05e',
           onClick: () => {}
         };
       }),
@@ -4257,9 +4307,23 @@ class Component extends DCLogic {
     // EMPTY_PLAYER stays as the last resort — a coach who has not picked anyone yet. It must never
     // be what a player sees, which is the whole bug.
     const viewingSelf = ROSTER.length === 0;
+    // ⚠️ NO `|| ROSTER[0]`, and its absence is the fix — Makel, 2026-09-25: "Profile is attached
+    // to a single player. This cant be the case."
+    //
+    // The rail's Profile item is `nav('profile')`, which sets `profileOf: null`. So a coach
+    // arriving that way ALWAYS had no student selected, the filter always returned [], and the
+    // fallback pinned them to `ROSTER[0]` — one arbitrary student's dossier, presented as the
+    // Profile screen. Arbitrary literally: `people` in server/protoData.ts has no ORDER BY, and
+    // `rosterVals` sorts a LOCAL copy, so ROSTER[0] is neither a chosen student nor the one at
+    // the top of the roster screen.
+    //
+    // Worse than merely wrong: the note composer, the drill sign-off and the plan pane all act on
+    // `who.id`, so a coach who opened Profile and started typing was writing about a student they
+    // never picked. The guards for the no-student case were already written (`who.id` checks at
+    // pfNotesShow, pfDrillsShow, pfPlanShow) against a branch this fallback had made unreachable.
     const who = viewingSelf
       ? (ATLAS_ME_ROW || EMPTY_PLAYER)
-      : (ROSTER.filter(p => p.id === s.profileOf)[0] || ROSTER[0] || EMPTY_PLAYER);
+      : (ROSTER.filter(p => p.id === s.profileOf)[0] || EMPTY_PLAYER);
     // `self` now means what it reads like: this is my own file, so the editable branches and the
     // live unsaved state below are mine to use.
     const self = viewingSelf;
@@ -4741,7 +4805,14 @@ class Component extends DCLogic {
       dnaMiHcp: dna && dna.mi.handicap !== null ? String(dna.mi.handicap) : '\u2014',
       dnaMiGap: dna && dna.mi.gap !== null ? (dna.mi.gap > 0 ? '+' : '') + dna.mi.gap.toFixed(1) : '\u2014',
       dnaMiVerdict: dna ? dna.mi.verdict : '',
-      pfName: who.n,
+      // ── THE NO-STUDENT-SELECTED STATE, 2026-09-25 ─────────────────────────────────────────
+      // Reachable for the first time today: `|| ROSTER[0]` used to pin a coach to an arbitrary
+      // student, so `who` was never EMPTY_PLAYER for a coach and this branch was dead code.
+      // With the fallback gone it is the ordinary state of the rail's Profile item, and an empty
+      // <h1> over a dossier of blanks would read as a broken page rather than as "pick someone".
+      // The guards below (pfDrillsShow / pfNotesShow / pfPlanShow, all `who.id` checks) already
+      // hide every pane, so this is the only line that has to say anything.
+      pfName: who.id ? who.n : 'No player selected',
       // Same tiebreaker as the roster row, carried onto the file the coach opens from it — landing
       // on a dossier headed by one of three identical names, with no way to tell which, is the
       // half of the problem that clicking through does not solve.
@@ -4771,7 +4842,9 @@ class Component extends DCLogic {
       // GUARDED: was string concatenation, so a missing tier/zone/days rendered the literal text
       // 'undefined · Zone undefined · last logged undefinedd ago'. Absent parts are now dropped
       // rather than printed; nothing here is substituted.
-      pfMeta: [
+      // With no student picked there is nothing to describe, so this line becomes the instruction
+      // instead — the roster is one tap away in the rail and is where a coach actually chooses.
+      pfMeta: !who.id ? 'Open a player from your roster to see their file' : [
         who.tier,
         // "Phase", NOT "Zone". `who.zone` carries the interview's PHASE (1-4) because `zone` is the
         // key Luke's markup reads — but "zone" in this file means the four PRACTICE zones on the
@@ -5839,7 +5912,8 @@ class Component extends DCLogic {
       ccComposite: fmtSG(t - composite),
       ccCompositeSub: 'Plays to ' + hcpLabel(+composite),
       ccTarget: t <= 0 ? 'Scratch' : String(t),
-      ccDate: '21 Jul · Q3 baseline',
+      // Same literal as the "Last run" line above, on the coach's card. Nothing records a Forge run.
+      ccDate: '\u2014',
       ccRows: rows.map(r => {
         const g = sgFor(r.k, d[r.k], t);
         return {
@@ -6449,7 +6523,19 @@ class Component extends DCLogic {
       prescribedShow: this.plannedZone((OFFSET + sel - 1) % 7) ? 'block' : 'none',
       workChips: WORKS.map(w => Object.assign({ label: w }, this.greenChip(e.w === w, this.setWork(sel, w)))),
       clearDay: () => this.patch(sel, null),
-      savedRead: (e.m || e.w) ? 'Saved · visible to your coach' : '',
+      // ⚠️ WAS 'Saved · visible to your coach'. That was the only outright FALSE STATEMENT in the
+      // practice-logging chain, and it is the sentence that made Makel expect his sets to reach
+      // his coach (2026-09-25: "This information is not relayed to the coach").
+      //
+      // Neither half was true. Nothing is SAVED: `patch()` is `setState({log})` and the whole log
+      // dies with the tab — there is no practice table in ryp-core, no route that accepts a
+      // minute, and no localStorage. And nothing is VISIBLE TO A COACH: the roster row carries
+      // `days: null` with the comment "needs a practice_days producer", so there is not even a
+      // field for it to arrive in.
+      //
+      // Now it says what is actually true — this is a note to yourself, on this device, until
+      // there is somewhere to put it. The entry still renders; only the false claim is gone.
+      savedRead: (e.m || e.w) ? 'On this device only — not sent to your coach' : '',
 
       // build
       steps: this.buildSteps(),
