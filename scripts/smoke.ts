@@ -657,6 +657,78 @@ async function main() {
     PROTO.includes('this.state.logErr ? this.state.logErr'),
     'a golfer must never be told a week was recorded when the PUT came back 403')
 
+  // ── P. THE CLOCK WRITES, AND SPEED STAYS OUT OF THE FLOOR ────────────────────────────────────
+  // The clock's arithmetic was silently wrong for months — it kept only the LAST zone and the
+  // total, so 30 min Construction + 20 min Calibration logged as "50 min Calibration". This
+  // section EXECUTES `summariseSession` out of the prototype rather than grepping for it: a rule
+  // checked only by reading is not checked.
+  section('P. the clock summarises a session correctly')
+
+  const fnMatch = PROTO.match(/function summariseSession\(blocks, zones\) \{[\s\S]*?\n\}/)
+  check('summariseSession is extractable from the prototype', !!fnMatch)
+  const ZONES_FIXTURE = [
+    { k: 'construction', label: 'Construction' },
+    { k: 'calibration', label: 'Calibration' },
+    { k: 'transfer', label: 'Transfer' },
+    { k: 'performance', label: 'Performance' },
+    { k: 'speed', label: 'Speed', workout: true },
+  ]
+  if (fnMatch) {
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    const summarise = new Function(`${fnMatch[0]}; return summariseSession;`)() as (
+      b: { zone: string; secs: number }[],
+      z: typeof ZONES_FIXTURE,
+    ) => { practiceMins: number; speedMins: number; dominant: string | null }
+
+    const r1 = summarise([{ zone: 'construction', secs: 1800 }, { zone: 'calibration', secs: 1200 }], ZONES_FIXTURE)
+    check('a split session files under the DOMINANT zone, not the last one',
+      r1.dominant === 'Construction' && r1.practiceMins === 50,
+      `${r1.practiceMins}m ${r1.dominant} — the old code said 50m Calibration`)
+
+    const r2 = summarise([{ zone: 'construction', secs: 1800 }, { zone: 'speed', secs: 900 }], ZONES_FIXTURE)
+    check('Speed minutes stay OUT of the practice floor',
+      r2.practiceMins === 30 && r2.speedMins === 15,
+      `practice ${r2.practiceMins}m, speed ${r2.speedMins}m — the floor must not include Speed`)
+
+    const r3 = summarise([{ zone: 'speed', secs: 900 }], ZONES_FIXTURE)
+    check('a Speed-only session logs no practice minutes',
+      r3.practiceMins === 0 && r3.speedMins === 15 && r3.dominant === null)
+
+    const r4 = summarise([{ zone: 'performance', secs: 3600 }], ZONES_FIXTURE)
+    check('Performance is a clockable zone', r4.dominant === 'Performance' && r4.practiceMins === 60,
+      'it was missing from the chip list entirely')
+
+    const r5 = summarise([{ zone: 'construction', secs: 600 }, { zone: 'transfer', secs: 600 }], ZONES_FIXTURE)
+    check('a tie breaks on curriculum order, not object key order',
+      r5.dominant === 'Construction', String(r5.dominant))
+
+    const r6 = summarise([{ zone: 'nonsense', secs: 600 }, { zone: 'construction', secs: 300 }], ZONES_FIXTURE)
+    check('an unknown zone key is ignored, not counted',
+      r6.practiceMins === 5 && r6.dominant === 'Construction', `${r6.practiceMins}m`)
+
+    check('a zero-length session produces nothing',
+      summarise([], ZONES_FIXTURE).practiceMins === 0 && summarise([{ zone: 'construction', secs: 20 }], ZONES_FIXTURE).practiceMins === 0)
+  }
+
+  // Wiring: the summary has to reach the log, and the in-progress block has to be closed off.
+  check('stopClock writes the day through patch()',
+    /stopClock: \(\) => \{[\s\S]{0,2200}this\.patch\(TODAY, next\)/.test(PROTO),
+    'it used to write lastSession into React state and stop there')
+  check('the in-progress block is closed before summarising',
+    /const all = c\.blocks\.concat\(\[\{ zone: c\.zone, secs: Math\.max\(0, spent\) \}\]\)/.test(PROTO),
+    'the running block is not in c.blocks until the golfer switches away')
+  check('a clocked session merges with the day, never clobbers it',
+    /const prev = this\.state\.log\[dayKey\(TODAY\)\] \|\| \{\}/.test(PROTO),
+    'a hand-logged workout must survive a clocked practice session')
+  check('Performance is in the clock chip list',
+    /k: 'performance', label: 'Performance'/.test(PROTO))
+  check('Speed is flagged as a workout, not a zone',
+    /k: 'speed'[\s\S]{0,80}workout: true/.test(PROTO),
+    'WORKS already lists it beside Lift, Mobility and Rest')
+  check('the golfer is told which zone it filed under',
+    PROTO.includes("s.lastSession.zone ? ' · ' + s.lastSession.zone : ''"),
+    'a dominant-zone rule the golfer cannot see is a silent choice')
+
   // ── report ───────────────────────────────────────────────────────────────────────────────────
   console.log(`\n${'='.repeat(74)}`)
   if (failures.length) {

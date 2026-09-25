@@ -2858,6 +2858,42 @@ function dayKey(d) {
   return _NOW.getFullYear() + '-' + mm + '-' + String(d).padStart(2, '0');
 }
 
+/**
+ * Turn a finished clock session into one day's log entry.
+ *
+ * PURE, and at module scope on purpose: this is the only arithmetic in the clock and it is the
+ * part that was silently wrong for months, so `scripts/smoke.ts` extracts and executes this exact
+ * function rather than grepping for it. A rule that is only checked by reading is not checked.
+ *
+ * `blocks` is [{zone: <chip key>, secs}] INCLUDING the final in-progress block — closing that off
+ * is the caller's job and is the easy thing to forget, because it is not in `c.blocks` until the
+ * golfer switches away from it.
+ *
+ * Returns { practiceMins, speedMins, dominant } where `dominant` is the practice zone with the
+ * most minutes (the log holds ONE zone per day, so the loudest is the only non-arbitrary summary)
+ * and `speedMins` is deliberately NOT part of practiceMins — Speed sits outside the practice
+ * floor (Makel, 2026-09-25).
+ */
+function summariseSession(blocks, zones) {
+  const byZone = {};
+  let practiceMins = 0, speedMins = 0;
+  (blocks || []).forEach(b => {
+    const z = zones.find(x => x.k === b.zone);
+    if (!z) return;
+    const m = Math.round(b.secs / 60);
+    if (m <= 0) return;
+    if (z.workout) { speedMins += m; return; }
+    byZone[z.label] = (byZone[z.label] || 0) + m;
+    practiceMins += m;
+  });
+  const labels = Object.keys(byZone);
+  // Ties break on the zone that appears first in `zones`, which is curriculum order — stable, and
+  // not dependent on object key ordering.
+  labels.sort((a, b) => (byZone[b] - byZone[a])
+    || (zones.findIndex(z => z.label === a) - zones.findIndex(z => z.label === b)));
+  return { practiceMins: practiceMins, speedMins: speedMins, dominant: labels[0] || null };
+}
+
 /** The ISO keys of the displayed month, so month totals stay month totals. */
 function monthPrefix() {
   return _NOW.getFullYear() + '-' + String(_NOW.getMonth() + 1).padStart(2, '0') + '-';
@@ -3937,11 +3973,30 @@ class Component extends DCLogic {
 
   clockVals() {
     const s = this.state, c = s.clock;
+    /**
+     * ── THE CLOCK'S LIST, CORRECTED 2026-09-25 ──────────────────────────────────────────────
+     *
+     * Was construction / calibration / transfer / **speed**, which was wrong twice over:
+     *
+     *   1. IT WAS MISSING PERFORMANCE. The curriculum ladder is Construction → Calibration →
+     *      Transfer → Performance — that is the rail, and `ZONE_COLOR` / `ZONE_LETTER` agree. A
+     *      golfer practising in the performance zone could not clock it at all.
+     *   2. SPEED IS NOT A ZONE, IT IS A WORKOUT. `WORKS` already lists it beside Lift, Mobility
+     *      and Rest, Fitness prescribes it as "3 × 15 min Speed", and the Plan screen says it
+     *      outright: "Play, Speed and Fitness sit outside the practice floor. None is subtracted
+     *      from it."
+     *
+     * So `label` now matches the log's own zone vocabulary exactly (`ZONE_COLOR` keys), and Speed
+     * is kept as an option but flagged `workout: true` — it writes `workout`, never `zone`, and
+     * its minutes never enter the practice floor. Makel, 2026-09-25: "speed doesnt count toward
+     * the floor".
+     */
     const ZONES = [
       { k: 'construction', label: 'Construction', note: 'Home · prescribed' },
       { k: 'calibration', label: 'Calibration', note: 'Range' },
       { k: 'transfer', label: 'Transfer', note: 'Range / course' },
-      { k: 'speed', label: 'Speed', note: '15 min' }
+      { k: 'performance', label: 'Performance', note: 'Course · scoring' },
+      { k: 'speed', label: 'Speed', note: '15 min · outside the floor', workout: true }
     ];
     const secs = c ? Math.floor((s.now - c.start) / 1000) : 0;
     const mm = String(Math.floor(secs / 60)).padStart(2, '0');
@@ -3953,16 +4008,62 @@ class Component extends DCLogic {
       clockRunning: !!c, clockNotRunning: !c,
       clockRead: mm + ':' + ss,
       clockZoneLabel: cur ? cur.label : 'Construction',
+      // GUARDED: was `ZONES.find(...).label`, which throws on any block whose zone key is not in
+      // the list — reachable the moment the list changes under a running session, which it just
+      // did when 'performance' was added.
       clockBlocks: c ? c.blocks.map(b => ({
-        label: ZONES.find(z => z.k === b.zone).label,
+        label: (ZONES.find(z => z.k === b.zone) || {}).label || 'Practice',
         mins: Math.max(1, Math.round(b.secs / 60)) + 'm'
       })) : [],
       clockOverrun: over,
       startClock: () => this.setState({ clock: { start: Date.now(), zone: 'construction', blocks: [] }, now: Date.now() }),
+      /**
+       * STOP THE CLOCK AND WRITE THE DAY. Rebuilt 2026-09-25.
+       *
+       * ⚠️ IT USED TO THROW THE SESSION AWAY — twice over, and the second one was silent data
+       * loss the golfer could see.
+       *
+       *   1. It wrote `lastSession` into React state and nothing merged it into the log, so a
+       *      clocked session was discarded even within the tab. That is half of Makel's "after a
+       *      revisit to the page my progress is erased".
+       *   2. It kept only `c.zone` — the LAST zone selected — and the total. The chip row
+       *      carefully accumulates `blocks: [{zone, secs}]` every time you switch zone
+       *      mid-session, and all of that was dropped: 30 minutes of Construction followed by 20
+       *      of Calibration logged as "50 minutes of Calibration".
+       *
+       * Now: the in-progress block is closed off (it is NOT in `c.blocks` until you switch away,
+       * which is the easy thing to miss), Speed is separated out, and the day gets the DOMINANT
+       * practice zone by minutes — because the log holds one zone per day and picking the
+       * loudest is the only summary that is not arbitrary. `lastRead` says which zone it filed
+       * under, so the choice is visible rather than silent.
+       */
       stopClock: () => {
         if (!c) return;
-        const total = Math.round((Date.now() - c.start) / 60000);
-        this.setState({ clock: null, lastSession: { mins: total, zone: c.zone } });
+        // Close the running block. Everything before it is already in c.blocks.
+        const spent = Math.floor((Date.now() - c.start) / 1000) - c.blocks.reduce((a, b) => a + b.secs, 0);
+        const all = c.blocks.concat([{ zone: c.zone, secs: Math.max(0, spent) }]);
+
+        const sum = summariseSession(all, ZONES);
+        const practiceMins = sum.practiceMins, speedMins = sum.speedMins, dominant = sum.dominant;
+
+        // Merge, never clobber: the golfer may already have logged a workout by hand today, and
+        // a clocked practice session must not wipe it.
+        const prev = this.state.log[dayKey(TODAY)] || {};
+        const next = Object.assign({}, prev);
+        if (practiceMins > 0) {
+          next.m = (prev.m || 0) + practiceMins;
+          next.b = dominant || prev.b;
+        }
+        // ⚠️ SPEED MINUTES ARE NOT ADDED TO `m`. "Play, Speed and Fitness sit outside the
+        // practice floor. None is subtracted from it." — the Plan screen. Confirmed by Makel
+        // 2026-09-25. It is recorded as the day's workout instead.
+        if (speedMins > 0) next.w = 'Speed';
+
+        this.setState({
+          clock: null,
+          lastSession: { mins: practiceMins, zone: dominant, speedMins: speedMins }
+        });
+        if (practiceMins > 0 || speedMins > 0) this.patch(TODAY, next);
       },
       zoneChips: ZONES.map(z => {
         const on = c && c.zone === z.k;
@@ -3978,7 +4079,21 @@ class Component extends DCLogic {
           }
         };
       }),
-      lastRead: s.lastSession ? s.lastSession.mins + ' min logged · ' + (ZONES.find(z => z.k === s.lastSession.zone) || {}).label : null,
+      /**
+       * Say WHICH ZONE it was filed under, not just how long.
+       *
+       * The old line looked up `s.lastSession.zone` in ZONES by KEY while stopClock stored... the
+       * key, so it worked — but it could only ever name the last zone selected. Now that the day
+       * gets the dominant zone, the golfer has to be told which one that was, or a session split
+       * across two zones is summarised by a rule they cannot see. Speed is reported separately
+       * and explicitly outside the floor.
+       */
+      lastRead: s.lastSession
+        ? [
+            s.lastSession.mins > 0 ? s.lastSession.mins + ' min logged' + (s.lastSession.zone ? ' · ' + s.lastSession.zone : '') : '',
+            s.lastSession.speedMins > 0 ? s.lastSession.speedMins + ' min Speed · outside the floor' : ''
+          ].filter(Boolean).join('  ·  ')
+        : null,
       hasLast: !!s.lastSession
     };
   }
