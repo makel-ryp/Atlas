@@ -32,6 +32,7 @@ import { buildAtlasData, HIDDEN_FOR_PLAYER, HIDDEN_FOR_COACH } from '../server/p
 import { INTERVIEW_FIELDS } from '../shared/interview'
 import { REVIEW_ITEMS } from '../shared/drills'
 import { consentStateFor, storedDateOfBirth, ageInYears, MINOR_AGE_THRESHOLD } from '../shared/consent'
+import { drillIdsInStep, stepCompletionIdFor, isStepCompletionId } from '../shared/drills'
 
 // ── tiny harness ───────────────────────────────────────────────────────────────────────────────
 let passed = 0
@@ -489,6 +490,49 @@ async function main() {
   check('the practice log does not claim a coach can see it',
     !PROTO_CODE.includes('Saved · visible to your coach'),
     'nothing persists it and the roster row has no field for it')
+
+  // ── M. AUTOMATIC STEP SIGN-OFF ───────────────────────────────────────────────────────────────
+  // Makel, 2026-09-25: two facts, but the second is DERIVED — a coach verifies each drill and the
+  // step signs itself off when all of them are verified. The behaviour is proven end to end by
+  // `npm run e2e` (which needs a running server); these are the static halves that guard the
+  // wiring, and the FIRST one is the f437aa6 check: a value written into a key the page does not
+  // read is a feature that does nothing.
+  section('M. the step rollup is wired end to end')
+
+  // Asserted against a REAL built payload, and specifically on a `plan:step-N` row — the only
+  // place signed_off_at is ever set. Checking the whole JSON for the substring would also pass on
+  // a payload where every step row happened to be absent.
+  const caseyStepRows = Object.entries((casey.me?.drills ?? {}) as Record<string, any>)
+    .filter(([id]) => id.startsWith('plan:step-'))
+  check('the payload carries signedOffAt on step rows',
+    caseyStepRows.length > 0 && caseyStepRows.every(([, v]) => 'signedOffAt' in v),
+    caseyStepRows.length === 0 ? 'fixture has no step rows — check is inert' : 'the route writes it; unread, it is f437aa6 again')
+  // Derived from the prototype, not hardcoded — same rule as section A.
+  check('the prototype reads signedOffAt for step completion',
+    /plan:step-\)\s*===\s*0[\s\S]{0,200}signedOffAt/.test(PROTO) || PROTO.includes('drills[id].signedOffAt'),
+    'the `signed` derivation must consult the derived column')
+  check('a legacy manually-signed step still reads as complete',
+    /signedOffAt \|\| drills\[id\]\.verifiedAt/.test(PROTO),
+    'dropping the fallback would hide a real coach’s completed step')
+
+  // The rollup rule itself, in shared/ so the server and the page cannot disagree.
+  check('step 1 rolls up exactly its four plan drills', drillIdsInStep(1).length === 4, drillIdsInStep(1).join(','))
+  check('a step id is never part of its own precondition',
+    drillIdsInStep(1).every((id) => !isStepCompletionId(id)),
+    'plan:step-1 starts with "plan:" — an id-shape rule would wrongly include it')
+  check('every plan drill maps to its step', stepCompletionIdFor('plan:2-P1') === 'plan:step-2')
+  check('a step id maps to no parent step', stepCompletionIdFor('plan:step-2') === null)
+  for (const n of [1, 2, 3, 4, 5]) {
+    check(`step ${n} has drills to roll up`, drillIdsInStep(n).length > 0)
+  }
+
+  // Two writers for one derived fact can contradict each other. Both are closed.
+  check('the route refuses a manual step sign-off',
+    readFileSync(join(import.meta.dirname, '..', 'server', 'routes', 'coach.ts'), 'utf8').includes("error: 'step_is_automatic'"),
+    'plan:step-N is a valid review-item id, so the UI is not the gate')
+  check('the coach’s step pill no longer posts',
+    !/tick: ev => \{[\s\S]{0,160}completion\.toggle\(\)/.test(PROTO),
+    'a control that posts and is refused is worse than one that never offered')
 
   // ── report ───────────────────────────────────────────────────────────────────────────────────
   console.log(`\n${'='.repeat(74)}`)

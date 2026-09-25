@@ -1,6 +1,6 @@
 import { Router, type RequestHandler } from 'express'
 import { z } from 'zod'
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import { attachUser, requireApp, verifyToken } from '@ryp/eco/auth'
 import { withRls } from '@ryp/eco/db'
 import {
@@ -15,7 +15,12 @@ import {
 import { pool } from '../db'
 import { cookieOrBearer } from '../cookieOrBearer'
 import { requireConsent } from '../requireConsent'
-import { isReviewItemId } from '../../shared/drills'
+import {
+  isReviewItemId,
+  isStepCompletionId,
+  stepCompletionIdFor,
+  drillIdsInStep,
+} from '../../shared/drills'
 import { ensureAtlasAccess } from '../ensureAtlasAccess'
 
 const schema = {
@@ -307,6 +312,24 @@ coachRouter.post(
         return
       }
 
+      /**
+       * A STEP CANNOT BE SIGNED BY HAND — Makel's decision, 2026-09-25.
+       *
+       * He chose "two facts, but sign-off is automatic": a coach verifies each drill, and the step
+       * signs itself off when all of its drills are verified. That makes `plan:step-N` a DERIVED
+       * row, and a derived row with a second, manual writer is a row that can contradict itself —
+       * sign the step, then untick one of its drills, and the two facts disagree with no rule for
+       * which wins.
+       *
+       * Refused here rather than hidden in the UI alone, because the UI is not the gate: this
+       * endpoint is reachable from the served page with a session cookie, and `plan:step-N` is a
+       * perfectly valid `isReviewItemId`.
+       */
+      if (isStepCompletionId(drillId)) {
+        res.status(409).json({ error: 'step_is_automatic' })
+        return
+      }
+
       const row = await withRls(
         pool,
         { userId: me.id, firebaseUid: me.firebaseUid, app: 'atlas' },
@@ -331,7 +354,63 @@ coachRouter.post(
               updated_at          = now()
             returning drill_id, verified_at, verified_by_user_id, video_ref, verify_note
           `)
-          return (out.rows as Record<string, unknown>[])[0] ?? null
+          const written = (out.rows as Record<string, unknown>[])[0] ?? null
+          // RLS refused the write — do not then go and roll up a step off a change that did not
+          // happen. The caller gets the 403 below.
+          if (!written) return null
+
+          /**
+           * ── ROLL THE STEP UP, IN THIS SAME TRANSACTION ─────────────────────────────────────
+           *
+           * The step is complete when every plan drill in it is verified, and NOT complete the
+           * moment one of them is not. Both directions, deliberately: implementing only the
+           * forward one builds a latch, not a derivation — a coach who unticks a drill would
+           * leave the step asserting a completion that no longer holds, and the player's
+           * `openStep` is derived from exactly that row, so a stale sign-off silently advances
+           * them to work they have not earned.
+           *
+           * Same transaction as the verify above so the drill and its step commit together. Split
+           * across two transactions, a failure between them leaves the pair disagreeing, which is
+           * the one state this rule exists to make impossible.
+           */
+          const stepId = stepCompletionIdFor(drillId)
+          if (stepId) {
+            const step = Number(stepId.slice('plan:step-'.length))
+            const siblings = drillIdsInStep(step)
+            // ⚠️ The query builder, NOT a raw `= any(${siblings})`. A JS array does not bind as
+            // a Postgres array through drizzle's sql template — it produced
+            // "op ANY/ALL (array) requires array on right side" and every verify 500'd. Caught by
+            // the live round-trip, invisible to typecheck and to every static check in the smoke
+            // suite, because the SQL is only wrong at execution.
+            const seen = await db
+              .select({ drillId: golfDrillProgress.drillId })
+              .from(golfDrillProgress)
+              .where(
+                and(
+                  eq(golfDrillProgress.userId, subjectId),
+                  inArray(golfDrillProgress.drillId, siblings),
+                  isNotNull(golfDrillProgress.verifiedAt),
+                ),
+              )
+            const complete = seen.length === siblings.length
+
+            // `verified_by_user_id` is a real fact even here: it is the coach whose verification
+            // completed the step. It is NOT a claim that anyone judged the step itself — that is
+            // what `signed_off_at` now means, and why the two columns are not interchangeable.
+            await db.execute(sql`
+              insert into golf.drill_progress
+                (user_id, drill_id, signed_off_at, verified_by_user_id, updated_at)
+              values
+                (${subjectId}, ${stepId},
+                 ${complete ? sql`now()` : sql`null`},
+                 ${complete ? me.id : null}, now())
+              on conflict (user_id, drill_id) do update set
+                signed_off_at       = ${complete ? sql`now()` : sql`null`},
+                verified_by_user_id = ${complete ? me.id : null},
+                updated_at          = now()
+            `)
+          }
+          return written
         },
       )
 

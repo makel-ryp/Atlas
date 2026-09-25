@@ -240,3 +240,39 @@ export const REVIEW_ITEM_IDS: ReadonlySet<string> = new Set(REVIEW_ITEMS.map((d)
 export function isReviewItemId(id: string): boolean {
   return REVIEW_ITEM_IDS.has(id)
 }
+
+/**
+ * The step-completion ids (`plan:step-1` … `plan:step-5`), and the drills each one is made of.
+ *
+ * ── Why this exists, 2026-09-25 ─────────────────────────────────────────────────────────────
+ * Makel settled the question `eco/sql/rls_core.sql:1213` was blocking on — "decide whether
+ * verified/signed are genuinely two coach actions or one" — with a third answer: TWO facts, but
+ * the second is DERIVED. A coach verifies each drill; the step signs itself off when all of its
+ * drills are verified.
+ *
+ * That makes "which drills belong to step N" a rule the SERVER has to know, not just the page.
+ * It lives here rather than in the route because `REVIEW_ITEMS` is already the one list both
+ * sides read, and a second copy of the step→drills mapping in TypeScript is exactly the drift
+ * this module exists to prevent.
+ */
+export function isStepCompletionId(id: string): boolean {
+  return REVIEW_ITEMS.some((d) => d.id === id && d.group === 'step')
+}
+
+/** The `plan:step-N` id a plan drill rolls up into, or null if the id is not a plan drill. */
+export function stepCompletionIdFor(drillId: string): string | null {
+  const item = REVIEW_ITEMS.find((d) => d.id === drillId)
+  if (!item || item.group !== 'plan' || item.step === undefined) return null
+  return `plan:step-${item.step}`
+}
+
+/**
+ * Every plan drill in a step — the set that must ALL be verified for the step to sign off.
+ *
+ * ⚠️ Deliberately excludes `group: 'step'` itself. Including the step row in its own precondition
+ * is a rule that can never be satisfied, and it is an easy mistake to make from the id shape
+ * alone (`plan:step-1` starts with `plan:`).
+ */
+export function drillIdsInStep(step: number): string[] {
+  return REVIEW_ITEMS.filter((d) => d.group === 'plan' && d.step === step).map((d) => d.id)
+}

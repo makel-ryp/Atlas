@@ -138,6 +138,16 @@ export type RosterRow = {
     string,
     {
       verifiedAt: string | null
+      /**
+       * When this step became COMPLETE. Derived, not judged — see the rollup in
+       * routes/coach.ts. Only ever set on a `plan:step-N` row.
+       *
+       * ⚠️ Added 2026-09-25 and the payload is the point: the route began writing
+       * `signed_off_at`, and `me.drills[id]` did not carry it, so the page could not have seen
+       * it. That is precisely how f437aa6 shipped inert — a correct write into a key nothing
+       * reads. Injected here, read by the `signed` derivation in the prototype's state seed.
+       */
+      signedOffAt: string | null
       videoRef: string | null
       verifyNote: string | null
       /**
@@ -293,11 +303,39 @@ const RAIL_METRICS = ['railMetrics'] as const
 
 const PLAYER_ONLY = ['today', 'cal', 'plan', 'build', 'fitness', 'transfer', 'perf', 'thread'] as const
 
+/**
+ * Screens whose every number is a Forge output that has no producer yet — hidden from EVERYONE
+ * until Forge ships, rather than rendered full of demo literals.
+ *
+ * ── Why, Makel 2026-09-25 ───────────────────────────────────────────────────────────────────
+ * His alpha note said the Transfer window was "fine". It was the opposite. Every value on it —
+ * the four practice indices, the transfer gap, the challenge level, the dated virtual rounds,
+ * the quarterly history — comes from `forgeVals()`, whose only input is `state.forge`: a
+ * HARDCODED object in the prototype's state seed that no code path ever overwrites. So every
+ * account saw Luke's identical demo numbers presented as their own strokes-gained.
+ *
+ * Same class as the rail's fabricated figures (B-10), the fitness literals (T-85) and the
+ * invented message thread (T-80) — and the largest one that was left.
+ *
+ * ── Why HIDE rather than EMPTY ──────────────────────────────────────────────────────────────
+ * Makel's call, and it is the right one: "Hide but keep it ready for when we get a copy of
+ * forge." Emptying `state.forge` would leave a skeleton screen of dashes that still has to be
+ * designed, maintained and explained; hiding closes the section AND its nav item through the
+ * mechanism Luke's markup already has (`sc-if`), and every line of forgeVals, the session flow
+ * and the virtual-round picker stays exactly where it is. When Forge produces real indices,
+ * deleting one entry here turns the whole screen back on.
+ *
+ * ⚠️ 'perf' (Performance) is deliberately NOT in this list. It has the same missing producer,
+ * but Makel named Transfer and only Transfer, and silently removing a second screen from five
+ * people mid-alpha is not a call to make on inference. It is on the board as its own row.
+ */
+const FORGE_ONLY_SCREENS = ['transfer'] as const
+
 export const HIDDEN_FOR_COACH: readonly string[] = [
   ...VIDEO_TEST_SECTIONS, ...PLAYER_ONLY, ...FITNESS_SCREEN, ...RAIL_METRICS,
 ]
 export const HIDDEN_FOR_PLAYER: readonly string[] = [
-  ...VIDEO_TEST_SECTIONS, ...FITNESS_SCREEN, 'roster',
+  ...VIDEO_TEST_SECTIONS, ...FITNESS_SCREEN, ...FORGE_ONLY_SCREENS, 'roster',
 ]
 
 export type AtlasData = {
@@ -629,6 +667,7 @@ export async function buildAtlasData(
       .select({
         drillId: golfDrillProgress.drillId,
         verifiedAt: golfDrillProgress.verifiedAt,
+        signedOffAt: golfDrillProgress.signedOffAt,
         videoRef: golfDrillProgress.videoRef,
         verifyNote: golfDrillProgress.verifyNote,
         // The player's own claim, read back to them. This is the one audience for whom these two
@@ -644,6 +683,7 @@ export async function buildAtlasData(
     for (const r of myProgress) {
       myDrills[r.drillId] = {
         verifiedAt: r.verifiedAt ? r.verifiedAt.toISOString() : null,
+        signedOffAt: r.signedOffAt ? r.signedOffAt.toISOString() : null,
         videoRef: r.videoRef,
         verifyNote: r.verifyNote,
         tickedAt: r.tickedAt ? r.tickedAt.toISOString() : null,
@@ -962,6 +1002,7 @@ export async function buildAtlasData(
           userId: golfDrillProgress.userId,
           drillId: golfDrillProgress.drillId,
           verifiedAt: golfDrillProgress.verifiedAt,
+          signedOffAt: golfDrillProgress.signedOffAt,
           videoRef: golfDrillProgress.videoRef,
           verifyNote: golfDrillProgress.verifyNote,
           // Read-only. See the note on RosterRow.drills — these are the player's columns, and
@@ -1033,6 +1074,7 @@ export async function buildAtlasData(
       const bucket = progressBy.get(r.userId) ?? {}
       bucket[r.drillId] = {
         verifiedAt: r.verifiedAt ? r.verifiedAt.toISOString() : null,
+        signedOffAt: r.signedOffAt ? r.signedOffAt.toISOString() : null,
         videoRef: r.videoRef,
         verifyNote: r.verifyNote,
         tickedAt: r.tickedAt ? r.tickedAt.toISOString() : null,

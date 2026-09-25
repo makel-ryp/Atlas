@@ -3211,8 +3211,18 @@ class Component extends DCLogic {
       const refs = (pick) => Object.keys(drills)
         .filter(id => id.indexOf('plan:') === 0 && id.indexOf('plan:step-') !== 0 && pick(drills[id]))
         .map(id => id.slice(5));
+      // ── `signedOffAt` FIRST, 2026-09-25 ─────────────────────────────────────────────────
+      // A step is complete when every plan drill in it is verified, and the server now derives
+      // that into `signed_off_at` on the `plan:step-N` row (routes/coach.ts). Makel's decision:
+      // two facts, but the second one is computed, not clicked.
+      //
+      // `|| verifiedAt` is a COMPATIBILITY FALLBACK, not a second rule: step rows signed by hand
+      // before this existed carry verified_at and no signed_off_at, and dropping them would make
+      // a real coach's completed step vanish from the ladder. New completions only ever write
+      // signed_off_at, so the fallback shrinks to nothing on its own.
       const signed = Object.keys(drills)
-        .filter(id => id.indexOf('plan:step-') === 0 && drills[id] && drills[id].verifiedAt)
+        .filter(id => id.indexOf('plan:step-') === 0 && drills[id]
+                   && (drills[id].signedOffAt || drills[id].verifiedAt))
         .map(id => Number(id.slice(10)))
         .filter(n => n >= 1 && n <= 5);
       let open = 1;
@@ -4555,9 +4565,18 @@ class Component extends DCLogic {
         // ⚠️ stopPropagation, or ticking the step also folds the bar it sits on. support.js maps
         // `onclick` to React's `onClick` (support.js:318), so the handler receives a real event and
         // the inner click would otherwise bubble to the bar.
+        // ── THE STEP IS NOT TICKED BY HAND ANY MORE, 2026-09-25 ─────────────────────────────
+        // It signs itself off when every drill in it is verified (routes/coach.ts), so this pill
+        // is a STATUS now. Leaving it live would put two writers on one derived fact: a coach
+        // could sign the step, then untick one of its drills, and the two would disagree with no
+        // rule for which wins. The route refuses a manual `plan:step-N` write with 409
+        // `step_is_automatic`, so this would have failed at the server anyway — and a control
+        // that posts and gets refused is worse than one that never offered.
+        //
+        // stopPropagation stays: the pill sits inside the bar that folds, and a click on it must
+        // still not fold the bar.
         tick: ev => {
           if (ev && ev.stopPropagation) ev.stopPropagation();
-          if (completion) completion.toggle();
         },
         drillsShow: open ? 'flex' : 'none',
         drills: kids
