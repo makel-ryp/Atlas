@@ -12,10 +12,11 @@
     "seed": "sh -c 'f=.env.local; [ -f \"$f\" ] || f=.env; exec node --env-file=\"$f\" --import tsx/esm scripts/seed.ts'",
     "smoke": "sh -c 'f=.env.local; [ -f \"$f\" ] || f=.env; exec node --env-file=\"$f\" --import tsx/esm scripts/smoke.ts'",
     "session": "sh -c 'f=.env.local; [ -f \"$f\" ] || f=.env; exec node --env-file=\"$f\" --import tsx/esm scripts/devSession.ts \"$@\"' --",
-    "e2e": "sh -c 'f=.env.local; [ -f \"$f\" ] || f=.env; exec node --env-file=\"$f\" --import tsx/esm scripts/e2eStepRollup.ts'"
+    "e2e": "sh -c 'f=.env.local; [ -f \"$f\" ] || f=.env; exec node --env-file=\"$f\" --import tsx/esm scripts/e2eStepRollup.ts'",
+    "e2e:review": "sh -c 'f=.env.local; [ -f \"$f\" ] || f=.env; exec node --env-file=\"$f\" --import tsx/esm scripts/e2eReviewRequest.ts'"
   },
   "dependencies": {
-    "@ryp/eco": "file:vendor/ryp-eco-0.21.0.tgz",
+    "@ryp/eco": "file:vendor/ryp-eco-0.22.0.tgz",
     "drizzle-orm": "^0.39.3",
     "express": "^5.0.1",
     "firebase": "^10.14.1",

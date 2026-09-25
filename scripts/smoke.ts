@@ -534,6 +534,53 @@ async function main() {
     !/tick: ev => \{[\s\S]{0,160}completion\.toggle\(\)/.test(PROTO),
     'a control that posts and is refused is worse than one that never offered')
 
+  // ── N. THE PLAYER CAN SAY SOMETHING ──────────────────────────────────────────────────────────
+  // The first player-side write Atlas has ever had. Behaviour is proven by `npm run e2e:review`
+  // against a database that has golf.drill_review_requests; these are the static halves.
+  section('N. the player-side write path')
+
+  const reviewSrc = readFileSync(join(import.meta.dirname, '..', 'server', 'routes', 'review.ts'), 'utf8')
+
+  // The whole safety argument of this feature is that the player's router cannot reach the
+  // coach's table. Asserted, because "it doesn't import it today" is exactly the kind of thing a
+  // later convenience edit undoes.
+  check('the player router cannot reach golf.drill_progress',
+    !reviewSrc.includes('golfDrillProgress'),
+    'a player must never be able to write a coach’s judgement')
+  check('the subject is the caller, never the body',
+    reviewSrc.includes('${me.id}') && !/user_id.*req\.body/.test(reviewSrc))
+  check('a step cannot be sent for review', reviewSrc.includes("error: 'step_is_automatic'"),
+    'there is no video of a step, so nothing could ever clear the request')
+  check('an unknown drill id is refused', reviewSrc.includes('isReviewItemId'))
+  // The silent-zero-rows trap, which has bitten this repo three times.
+  check('a zero-row write is not reported as success',
+    /if \(!row\)[\s\S]{0,120}403/.test(reviewSrc),
+    'an RLS-filtered write matches nothing and throws nothing')
+
+  // The payload half: submitted must have an Atlas-writable source, or the coach's whole
+  // "waiting on you" machinery can only ever be fired by an app that has not shipped.
+  const protoDataSrc = readFileSync(join(import.meta.dirname, '..', 'server', 'protoData.ts'), 'utf8')
+  check('submitted resolves from the player’s own review request',
+    /reviewRequests\[item\.id\] \?\? args\.drills\[item\.id\]\?\.tickedAt/.test(protoDataSrc),
+    'Atlas’s own source must win over Forge’s unwritable one')
+  check('both payload paths query the requests',
+    (protoDataSrc.match(/golfDrillReviewRequests/g) ?? []).length >= 4,
+    'the player path and the roster path each need it')
+
+  // The control, and that it reads as live rather than as another dead button.
+  check('the prototype posts a review request',
+    PROTO.includes("'/api/drills/' + encodeURIComponent(drillId) + '/review-request'"))
+  check('the live control is offered only on filmed drills',
+    /onTick: \(d\.cam && !vd && !signedStep\)/.test(PROTO),
+    'nothing to watch on an unfilmed drill')
+  check('the live control looks live, unlike the disarmed ones around it',
+    /tickCursor: \(d\.cam && !vd && !signedStep\) \? 'pointer'/.test(PROTO),
+    'affordance follows capability — the rule this screen learned the hard way')
+  check('a failed request rolls the optimistic write back',
+    /catch\(err => \{[\s\S]{0,200}before === undefined \? delete sub\[drillId\]/.test(PROTO)
+      || PROTO.includes('if (before === undefined) delete sub[drillId]; else sub[drillId] = before;'),
+    'a request that silently failed is worse than one that visibly did')
+
   // ── report ───────────────────────────────────────────────────────────────────────────────────
   console.log(`\n${'='.repeat(74)}`)
   if (failures.length) {

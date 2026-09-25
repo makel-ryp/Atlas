@@ -5209,6 +5209,50 @@ class Component extends DCLogic {
    * The session cookie carries the auth (this is a server-rendered page, not the SPA, so there is
    * no bearer token to hand); `credentials: 'same-origin'` is what sends it.
    */
+  /**
+   * "I have filmed this rep — please look at it." THE PLAYER'S WRITE.
+   *
+   * ⚠️ THE FIRST ONE THIS PAGE HAS EVER HAD. Every other player-side control here writes to React
+   * state and stops — which is Makel's alpha finding, 2026-09-25: *"This information is not
+   * relayed to the coach."* It was not, because there was no table a player could write to. Now
+   * there is: `golf.drill_review_requests`, whose only writer is the subject themselves.
+   *
+   * ── This is NOT the disarmed tick, and must not be confused with it ─────────────────────────
+   * `ticked_at` (Forge's column, which Atlas cannot write) means "I did the rep". This means "I
+   * have put a video up for you to watch". Two different claims, which is exactly why the design
+   * note rejected reusing that column. The controls around this one are still inert on purpose —
+   * so this one is given a real fill and a pointer, and they keep neither.
+   *
+   * Optimistic, with rollback, same as `tickDrill` below: a player at the range gets an immediate
+   * response, and a request that silently failed is worse than one that visibly did — because the
+   * player would stand there believing their coach had been asked.
+   */
+  requestReview(drillId, on) {
+    if (!drillId) return;
+    const sub = ATLAS_ME.submitted || (ATLAS_ME.submitted = {});
+    const before = sub[drillId];
+    if (on) sub[drillId] = new Date().toISOString(); else delete sub[drillId];
+    this.setState({ reviewErr: '', reviewTick: (this.state.reviewTick || 0) + 1 });
+
+    fetch('/api/drills/' + encodeURIComponent(drillId) + '/review-request', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requested: !!on })
+    }).then(r => {
+      if (r.ok) return;
+      return r.json().catch(() => null).then(j => {
+        throw new Error(j && j.error === 'step_is_automatic'
+          ? 'A step completes itself when its drills are signed off.'
+          : 'Could not send that for review.');
+      });
+    }).catch(err => {
+      if (before === undefined) delete sub[drillId]; else sub[drillId] = before;
+      this.setState({ reviewErr: err.message || 'Could not send that for review.',
+                      reviewTick: (this.state.reviewTick || 0) + 1 });
+    });
+  }
+
   tickDrill(userId, drillId, on) {
     if (!userId || !drillId) return;
     const row = ROSTER.filter(p => p.id === userId)[0];
@@ -6161,7 +6205,14 @@ class Component extends DCLogic {
     const key = st.n + '-' + d.ref;
     const on = s.ticked.indexOf(key) > -1, vd = s.verified.indexOf(key) > -1;
     const signedStep = s.signed.indexOf(st.n) > -1;
-    const pending = d.cam && on && !vd;
+    // The DB id. `key` is the page's short form ('1-1a'); `refs()` built it by stripping the
+    // 'plan:' namespace, so putting it back is how the two line up — same mapping, inverted.
+    const drillKey = 'plan:' + key;
+    // Has THIS player asked for a look? Server-resolved: `submitted` is the one map that answers
+    // "the player has done their part" for every source, so the page reads it and decides nothing.
+    // `reviewTick` is in the deps only to force a repaint after the optimistic write.
+    const req = !!(ATLAS_ME.submitted || {})[drillKey];
+    const pending = d.cam && req && !vd;
     return {
       name: d.name, std: d.std,
       why: whyFor(st.n, d.ref, d.name),
@@ -6169,19 +6220,42 @@ class Component extends DCLogic {
       // Same as signLabel above — real verification, invented verifier.
       status: vd ? 'Verified by your coach' : pending ? 'Awaiting Parallax review' : on ? 'Logged by you' : 'Not started',
       statusColor: vd ? GREEN : pending ? GOLD : on ? GOLD : '#8d99a8',
-      // Same reason as the workbook row above: no write grant on ticked_at, so the button is
-      // inert and must not advertise an action. It states where the tick comes from instead.
-      onTick: () => {},
-      tickLabel: signedStep ? 'Locked — step completed' : on ? 'You marked this done' : 'Not yet marked done',
-      // The labels were made statements when this was disarmed; the AFFORDANCES were not, so the
-      // row kept the page's primary cream fill and a pointer cursor on every unticked drill —
-      // the comment above it claimed "the button is inert and must not advertise an action" while
-      // it went on advertising one. Now a status line: no fill, no pointer.
-      // ⚠️ The IMPACT_OPP branch above is a genuinely live control and keeps its pointer.
-      tickColor: '#8d99a8',
-      tickBg: 'transparent',
+      /**
+       * ── A LIVE CONTROL, 2026-09-25 — and the only one on this screen ────────────────────────
+       *
+       * It does NOT write `ticked_at` ("I did the rep", Forge's column, still unwritable by Atlas
+       * and still shown as a statement above). It writes a REVIEW REQUEST: "I have filmed this,
+       * please watch it." That is a different claim, in a different table, whose only writer is
+       * the player — see server/routes/review.ts.
+       *
+       * Offered ONLY on filmed drills (`d.cam`). There is nothing for a coach to watch on a drill
+       * that is not filmed, so a request against one would sit in their queue with nothing that
+       * could ever clear it. And withdrawn once verified: the coach has answered, so the ask is
+       * spent.
+       */
+      onTick: (d.cam && !vd && !signedStep) ? () => this.requestReview(drillKey, !req) : () => {},
+      tickLabel: signedStep ? 'Locked — step completed'
+        : !d.cam ? (on ? 'You marked this done' : 'Not yet marked done')
+        : vd ? 'Your coach has signed this off'
+        : req ? 'Sent — waiting on your coach' : 'Send for review',
+      /**
+       * AFFORDANCE FOLLOWS CAPABILITY — the rule this screen learned the hard way.
+       *
+       * When the ticked_at control was disarmed, the LABELS were made statements but the styling
+       * was not: the row kept the page's primary cream fill and a pointer on every unticked drill,
+       * so a comment reading "the button is inert and must not advertise an action" sat directly
+       * above a button still advertising one.
+       *
+       * So the split here is strict. A filmed drill that can still be sent gets the real cream
+       * fill and a pointer, because it genuinely writes. Everything else — an unfilmed drill, one
+       * already verified, one inside a completed step — gets no fill and no pointer, because
+       * nothing happens. A player must be able to tell the live control from the four dead ones
+       * around it without clicking to find out.
+       */
+      tickColor: (d.cam && !vd && !signedStep && !req) ? '#0E141B' : '#8d99a8',
+      tickBg: (d.cam && !vd && !signedStep && !req) ? '#f2ede1' : 'transparent',
       tickBorder: signedStep ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.16)',
-      tickCursor: 'default',
+      tickCursor: (d.cam && !vd && !signedStep) ? 'pointer' : 'default',
       parallaxShow: d.cam && !vd ? 'inline-block' : 'none'
     };
   }

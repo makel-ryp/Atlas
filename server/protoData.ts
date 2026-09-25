@@ -3,6 +3,7 @@ import { withRls } from '@ryp/eco/db'
 import {
   atlasCoachingNotes,
   golfDrillProgress,
+  golfDrillReviewRequests,
   golfPlayerProfile,
   orgMemberships,
   organizations,
@@ -486,6 +487,16 @@ function resolveSubmitted(args: {
    * A trigger has to mean "there is something here to review", not "a column is non-null".
    */
   intakeScored: boolean
+  /**
+   * `golf.drill_review_requests.requested_at` for this student, keyed by drill_id.
+   *
+   * ⚠️ THE FIRST SOURCE HERE ATLAS CAN ACTUALLY WRITE, added 2026-09-25. Until now the only
+   * 'drill' trigger was `ticked_at`, which belongs to forge_app — so `submitted` could only ever
+   * be populated by an app that has not shipped, and the entire "waiting on you" machinery (the
+   * coach's queue, the per-step counts, the badges) had no way to fire for a real golfer. That is
+   * the mechanism behind Makel's *"This information is not relayed to the coach."*
+   */
+  reviewRequests: Record<string, string>
 }): Record<string, string> {
   const out: Record<string, string> = {}
   const iso = (v: Date | string | null | undefined): string | null =>
@@ -494,9 +505,19 @@ function resolveSubmitted(args: {
   for (const item of REVIEW_ITEMS) {
     switch (item.source ?? 'drill') {
       case 'drill': {
-        // The PLAYER's claim that the rep happened. Atlas reads it and can never write it — no
-        // self-insert policy on drill_progress and no column grant on ticked_at.
-        const t = args.drills[item.id]?.tickedAt
+        /**
+         * The PLAYER's claim that this rep is ready to be looked at.
+         *
+         * TWO sources, and the order is deliberate. `requested_at` is Atlas's own — written by the
+         * player through POST /api/drills/:id/review-request — and it means "I have filmed this,
+         * please watch it". `ticked_at` is FORGE's and means "I did the rep"; Atlas reads it and
+         * can never write it (no column grant, 42501).
+         *
+         * Atlas's own wins when both exist, because it is the more specific claim and the one the
+         * player made most recently by hand. Forge's is kept as a fallback so the seeded history
+         * and, later, real Forge ticks still raise a review.
+         */
+        const t = args.reviewRequests[item.id] ?? args.drills[item.id]?.tickedAt
         if (t) out[item.id] = t
         break
       }
@@ -678,6 +699,20 @@ export async function buildAtlasData(
       })
       .from(golfDrillProgress)
       .where(eq(golfDrillProgress.userId, me.id))
+
+    /**
+     * The player's own review requests. `drill_review_requests_select` scopes to
+     * `user_id = current_user_id()`, so this needs no extra clause — the same owner-scoped read
+     * as the progress query above.
+     */
+    const myRequests = await db
+      .select({ drillId: golfDrillReviewRequests.drillId, requestedAt: golfDrillReviewRequests.requestedAt })
+      .from(golfDrillReviewRequests)
+      .where(eq(golfDrillReviewRequests.userId, me.id))
+    const myReviewRequests: Record<string, string> = {}
+    for (const r of myRequests) {
+      if (r.requestedAt) myReviewRequests[r.drillId] = r.requestedAt.toISOString()
+    }
 
     const myDrills: RosterRow['drills'] = {}
     for (const r of myProgress) {
@@ -957,6 +992,7 @@ export async function buildAtlasData(
         // Same guard as the roster: a row marked completed but holding nothing is not a
         // submission. `myDna` is computed once and used by both this and `dna` below.
         intakeScored: myDna !== null,
+        reviewRequests: myReviewRequests,
       }),
       // Two-sided like `drills` and `notes`: the same panel, the same words, whichever side of the
       // conversation is reading it. That is the entire point of surfacing this to a coach.
@@ -1069,6 +1105,26 @@ export async function buildAtlasData(
       if (dna) dnaBy.set(r.user_id, dna)
     }
 
+    /**
+     * Every student's review requests, in one query. `drill_review_requests_select` carries the
+     * `app_private.coaches(user_id)` branch, so the DATABASE decides which students this coach may
+     * see — this file adds no filter of its own, same discipline as the progress query.
+     */
+    const requestRows = await db
+      .select({
+        userId: golfDrillReviewRequests.userId,
+        drillId: golfDrillReviewRequests.drillId,
+        requestedAt: golfDrillReviewRequests.requestedAt,
+      })
+      .from(golfDrillReviewRequests)
+    const requestsBy = new Map<string, Record<string, string>>()
+    for (const r of requestRows) {
+      if (!r.requestedAt) continue
+      const bucket = requestsBy.get(r.userId) ?? {}
+      bucket[r.drillId] = r.requestedAt.toISOString()
+      requestsBy.set(r.userId, bucket)
+    }
+
     const progressBy = new Map<string, RosterRow['drills']>()
     for (const r of progressRows) {
       const bucket = progressBy.get(r.userId) ?? {}
@@ -1107,6 +1163,7 @@ export async function buildAtlasData(
           intakeCompletedAt: intakeDoneBy.get(person.id) ?? null,
           // The same object the panel renders from, so the chip and the panel cannot disagree.
           intakeScored: dnaBy.has(person.id),
+          reviewRequests: requestsBy.get(person.id) ?? {},
         }),
         // The player's own result vocabulary — archetype, zones, growth zone, time split. null
         // when there is no scoreable run, which the page renders as "no read on file".
