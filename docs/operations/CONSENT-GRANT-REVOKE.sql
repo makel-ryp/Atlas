@@ -1,9 +1,21 @@
 -- ─────────────────────────────────────────────────────────────────────────────────────────────
 -- Close the self-consent hole: a minor can currently consent for themselves.
 --
--- ⚠️ NOT APPLIED. Written 2026-09-21, never run against any database. Needs Makel's go-ahead and
---    an eco release, because eco owns public.* — Atlas cannot migrate this table.
---    Do not mark this done until someone has run it and re-run the falsification test at the end.
+-- ✅ APPLIED TO PRODUCTION ryp-core ON 2026-09-25, on Makel's "finish the consent gate".
+--    Kept as the record of WHY, and because the falsification tests at the bottom are the ones to
+--    re-run if anyone ever re-grants it.
+--
+--    ⚠️ AND IT WAS NOT ENOUGH ON ITS OWN. Writing this file only addressed UPDATE. On applying it
+--    I found `grant select, insert on public.users to atlas_app` was TABLE-WIDE, so INSERT also
+--    covered `parental_consent_at` AND `plan` — the same escalation, on the other verb. Narrow
+--    (users_insert pins firebase_uid to your own, so it is one row, once, on a brand-new account)
+--    and not reachable by any code path, since the only two inserters pass neither column. Closed
+--    in the same change: INSERT is now column-scoped to (firebase_uid, email, display_name,
+--    created_at, updated_at).
+--
+--    ⚠️ red_app and lr_app STILL HAVE BOTH table-wide INSERT and UPDATE on parental_consent_at.
+--    Not fixed from here — RYP-RED owns 16 columns on public.users and its cold-start path cannot
+--    be tested from this repo. That is a finding for whoever owns Red, not a task for Atlas.
 -- ─────────────────────────────────────────────────────────────────────────────────────────────
 --
 -- THE HOLE

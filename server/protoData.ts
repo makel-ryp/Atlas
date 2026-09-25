@@ -327,11 +327,13 @@ const PLAYER_ONLY = ['today', 'cal', 'plan', 'build', 'fitness', 'transfer', 'pe
  * and the virtual-round picker stays exactly where it is. When Forge produces real indices,
  * deleting one entry here turns the whole screen back on.
  *
- * ⚠️ 'perf' (Performance) is deliberately NOT in this list. It has the same missing producer,
- * but Makel named Transfer and only Transfer, and silently removing a second screen from five
- * people mid-alpha is not a call to make on inference. It is on the board as its own row.
+ * 'perf' (Performance) joined it on Makel's instruction, 2026-09-25 — "hide performance too". It
+ * had the identical defect: every number on it comes from the same hardcoded `state.forge` seed,
+ * so it rendered Luke's demo strokes-gained as the golfer's own. It was held back one round only
+ * because he had named Transfer and nothing else, and pulling a second screen out from under five
+ * testers on inference is not a call to make unasked.
  */
-const FORGE_ONLY_SCREENS = ['transfer'] as const
+const FORGE_ONLY_SCREENS = ['transfer', 'perf'] as const
 
 export const HIDDEN_FOR_COACH: readonly string[] = [
   ...VIDEO_TEST_SECTIONS, ...PLAYER_ONLY, ...FITNESS_SCREEN, ...RAIL_METRICS,
