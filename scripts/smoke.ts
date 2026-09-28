@@ -729,6 +729,77 @@ async function main() {
     PROTO.includes("s.lastSession.zone ? ' · ' + s.lastSession.zone : ''"),
     'a dominant-zone rule the golfer cannot see is a silent choice')
 
+  // ── Q. MESSAGES, AND THE UNDER-18 RULE ───────────────────────────────────────────────────────
+  // Behaviour is proven by `npm run e2e:messages` and by 9/9 falsification tests on production.
+  // These guard the thing a UI change can quietly undo: that the rule is enforced in the DATABASE
+  // and the page only explains it.
+  section('Q. direct messages — the safeguarding rule')
+
+  const msgSrc = readFileSync(join(import.meta.dirname, '..', 'server', 'routes', 'messages.ts'), 'utf8')
+
+  check('the route does not gate on age itself',
+    !/if\s*\([^)]*isMinor[^)]*\)\s*\{[\s\S]{0,120}(403|res\.status)/.test(msgSrc)
+      || msgSrc.includes('explanation, never permission') || msgSrc.includes('never as the gate'),
+    'the refusal must come from messages_insert, not from a branch a client bug can miss')
+  check('a refusal is EXPLAINED to the caller',
+    msgSrc.includes('dm_unavailable_minor') && msgSrc.includes('not_your_coach'),
+    'a coach staring at a dead button deserves to know which rule stopped them')
+  check('the sender is the caller, never the body', msgSrc.includes('${me.id}'))
+  check('a zero-row write is not reported as success', /if \(!row\)[\s\S]{0,140}403/.test(msgSrc))
+  check('you cannot message yourself', msgSrc.includes('cannot_message_yourself'))
+
+  // The page half: hidden, not disabled, and never the gate.
+  check('the compose box is HIDDEN when DMs are unavailable',
+    /msgComposeShow: \(!dmBlocked/.test(PROTO),
+    'a greyed box invites a click and then explains itself')
+  check('the coach side is hidden for a minor student too',
+    /pfMsgShow: \(ROSTER\.length > 0 && who\.id && !who\.dmBlocked\)/.test(PROTO))
+  check('the player is told WHY, and where to read instead',
+    PROTO.includes('Direct messages are turned off for players under 18'),
+    'no compose box and no explanation reads as broken')
+  check('the coach is pointed at Notes',
+    PROTO.includes('Use Notes above') || PROTO.includes('Write a note instead.'))
+  check('a message is not shown optimistically',
+    !/sendMessage\(\)\s*\{[\s\S]{0,400}ATLAS_ME\.messages = \(ATLAS_ME\.messages \|\| \[\]\)\.concat[\s\S]{0,80}fetch\(/.test(PROTO),
+    'a message that appears then vanishes reads as "my coach saw that"')
+  check('the message draft is cleared when the subject changes',
+    /NOTE_RESET = \{[\s\S]{0,400}pfMsgDraft: ''/.test(PROTO),
+    'prose typed about student A must not sit in student B’s box')
+  check('the thread is bucketed per student for a coach',
+    protoDataSrc.includes('const msgsBy = new Map<string,'),
+    'a merged inbox on a per-student screen attributes other people’s words to whoever is open')
+
+  // ⚠️ THE THRESHOLD NOW EXISTS IN TWO LANGUAGES. A policy cannot import TypeScript, so
+  // app_private.is_minor() hardcodes 18 alongside MINOR_AGE_THRESHOLD. If counsel moves it and only
+  // one changes, the app and the database disagree about who is a child — silently, and in the
+  // direction of permitting more.
+  const ecoSql = join(import.meta.dirname, '..', '..', 'eco', 'sql', 'rls_core.sql')
+  let sqlText = ''
+  try {
+    sqlText = readFileSync(ecoSql, 'utf8')
+  } catch {
+    /* eco is vendored as a tarball; the source repo may not be beside Atlas on every machine */
+  }
+  if (sqlText) {
+    const m = sqlText.match(/interval '(\d+) years'/)
+    check('the SQL minor threshold matches MINOR_AGE_THRESHOLD',
+      !!m && Number(m[1]) === MINOR_AGE_THRESHOLD,
+      `SQL says ${m?.[1] ?? 'nothing'}, TypeScript says ${MINOR_AGE_THRESHOLD}`)
+    // Extract the FUNCTION BODY and assert against that, rather than a fixed-width window in the
+    // whole file — the first version used {0,120} and failed on formatting alone while the
+    // behaviour was correct (e2e proves an unknown DOB is refused). A check that breaks on
+    // whitespace trains people to ignore it.
+    const isMinorBody = sqlText.match(
+      /create or replace function app_private\.is_minor[\s\S]*?\$\$;/,
+    )?.[0] ?? ''
+    check('is_minor fails closed on an unknown date of birth',
+      isMinorBody.includes('date_of_birth is null') && /\),\s*true\)/.test(isMinorBody),
+      'unknown age must never resolve to adult — the coalesce default is the control')
+  } else {
+    check('eco sql not readable from here — threshold check is inert', true,
+      'run smoke from a checkout with ../../eco beside it to enable it')
+  }
+
   // ── report ───────────────────────────────────────────────────────────────────────────────────
   console.log(`\n${'='.repeat(74)}`)
   if (failures.length) {

@@ -1,10 +1,11 @@
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { withRls } from '@ryp/eco/db'
 import {
   atlasCoachingNotes,
   golfDrillProgress,
   golfDrillReviewRequests,
   golfPracticeSessions,
+  atlasMessages,
   golfPlayerProfile,
   orgMemberships,
   organizations,
@@ -14,6 +15,10 @@ import {
 import { pool } from './db'
 import { summarizeRun, type DnaSummary } from './dnaSummary'
 import { REVIEW_ITEMS, type ReviewItem } from '../shared/drills'
+// Mirrors app_private.is_minor() on the SQL side. Two copies of one threshold, asserted equal by
+// scripts/smoke.ts — a policy cannot import TypeScript, so the duplication is unavoidable and the
+// check is what keeps them honest.
+import { isMinor } from '../shared/consent'
 
 /**
  * The data half of serving Luke's prototype: builds the single blob the page reads as
@@ -203,6 +208,12 @@ export type RosterRow = {
    */
   submitted: Record<string, string>
   /**
+   * The thread between the CALLER and this person. Empty for a student the coach has never
+   * messaged, and empty for everyone when DMs are unavailable — see atlas.messages' insert policy,
+   * which refuses when either party is under 18.
+   */
+  messages: { id: string; mine: boolean; who: string; body: string; at: string | null; read: boolean }[]
+  /**
    * What the PLAYER sees on their own Practice DNA result screen, projected down to the parts a
    * coach may read. REAL — scored on the fly from `atlas.intake_submissions`, never stored.
    *
@@ -246,7 +257,7 @@ export type CoachingNoteRow = {
 const EMPTY_ROSTER_ROW: RosterRow = {
   id: '', n: '', tier: '', zone: '', hcp: null, target: null, days: null, leak: '',
   hand: '', carry: '', intake: '', dupe: '', sg: [], hist: {}, read: {}, note: {}, tone: {},
-  answer: {}, est: {}, grid: [], file: {}, drills: {}, notes: [], submitted: {}, dna: null,
+  answer: {}, est: {}, grid: [], file: {}, drills: {}, notes: [], submitted: {}, messages: [], dna: null,
 }
 
 /**
@@ -658,6 +669,9 @@ export async function buildAtlasData(
           displayName: users.displayName,
           email: users.email,
           deletedAt: users.deletedAt,
+          // Needed to decide whether the compose box is offered — see `dmBlocked`. The DATABASE
+          // still enforces the rule; this only decides what the page explains.
+          dateOfBirth: users.dateOfBirth,
         })
         .from(users)
         .where(and(eq(users.firebaseUid, firebaseUid), isNull(users.deletedAt)))
@@ -747,6 +761,71 @@ export async function buildAtlasData(
       if (r.workout) e.w = r.workout
       if (Object.keys(e).length) myLog[String(r.sessionDate)] = e
     }
+
+    /**
+     * THE CALLER'S OWN COACHES — the inverse of the roster query above.
+     *
+     * The roster asks "who do I coach" (`actor_user_id = me`). A player's thread needs "who
+     * coaches me" (`subject_user_id = me`), which is the same edge read from the other end. Only
+     * ACTIVE and APPROVED edges: a pending coach request is not a relationship, and messaging one
+     * would be a channel the student never agreed to — the same rule `coaches_directly` applies.
+     */
+    const myCoachRows = await db
+      .select({ coachId: userRelationships.actorUserId })
+      .from(userRelationships)
+      .where(
+        and(
+          eq(userRelationships.subjectUserId, me.id),
+          eq(userRelationships.relationship, 'coach_of'),
+          eq(userRelationships.status, 'active'),
+          isNotNull(userRelationships.approvedAt),
+        ),
+      )
+    const myCoachIds = [...new Set(myCoachRows.map((r) => r.coachId))]
+    const coachNameRows = myCoachIds.length
+      ? await db
+          .select({ id: users.id, displayName: users.displayName, email: users.email })
+          .from(users)
+          .where(inArray(users.id, myCoachIds))
+      : []
+    const myCoaches = coachNameRows.map((c) => ({
+      id: c.id,
+      name: c.displayName ?? c.email ?? 'Your coach',
+    }))
+
+    /**
+     * THE THREAD. `messages_select` already scopes to "I am one of the two", so this needs no
+     * filter of its own beyond dropping soft-deleted rows.
+     *
+     * ⚠️ `dmBlocked` is EXPLANATION, NEVER PERMISSION. The refusal lives in `messages_insert`,
+     * which checks `not is_minor(sender) and not is_minor(recipient)` in the database. This flag
+     * exists so the page can say WHY the compose box is absent instead of rendering a control that
+     * posts and gets a 403 — but if it were wrong in the permissive direction, the write would
+     * still be refused. Makel, 2026-09-28: "DMs are disabled for anyone under 18."
+     */
+    const myMessageRows = await db
+      .select({
+        id: atlasMessages.id,
+        senderUserId: atlasMessages.senderUserId,
+        recipientUserId: atlasMessages.recipientUserId,
+        body: atlasMessages.body,
+        readAt: atlasMessages.readAt,
+        createdAt: atlasMessages.createdAt,
+      })
+      .from(atlasMessages)
+      .where(isNull(atlasMessages.deletedAt))
+      .orderBy(atlasMessages.createdAt)
+    const nameById = new Map(myCoaches.map((c) => [c.id, c.name]))
+    const myMessages = myMessageRows.map((m) => ({
+      id: m.id,
+      mine: m.senderUserId === me.id,
+      who: m.senderUserId === me.id ? 'You' : (nameById.get(m.senderUserId) ?? 'Your coach'),
+      body: m.body,
+      at: m.createdAt ? m.createdAt.toISOString() : null,
+      read: !!m.readAt,
+    }))
+    // Mirrors app_private.is_minor(): unknown age counts as a minor, on both sides of the wire.
+    const meIsMinor = !me.dateOfBirth || isMinor(new Date(me.dateOfBirth))
 
     const myDrills: RosterRow['drills'] = {}
     for (const r of myProgress) {
@@ -989,6 +1068,14 @@ export async function buildAtlasData(
        * and the feature does nothing while every test against a hand-built payload passes.
        */
       practice: myLog,
+      /** The caller's real coaches — who they may actually message. Not the hardcoded four. */
+      coaches: myCoaches,
+      messages: myMessages,
+      /**
+       * ⚠️ A REASON TO SHOW, NOT A GATE. See the query above — atlas.messages' insert policy is
+       * the gate. If this said false for a 15-year-old the database would still refuse the write.
+       */
+      dmBlocked: meIsMinor,
     }
 
     /**
@@ -1052,7 +1139,9 @@ export async function buildAtlasData(
     // NOT queried — see THE `hist` NOTE above.
     const [people, profiles] = await Promise.all([
       db
-        .select({ id: users.id, displayName: users.displayName, email: users.email })
+        .select({ id: users.id, displayName: users.displayName, email: users.email,
+                  // Needed for the DM rule's EXPLANATION — the policy is what refuses the write.
+                  dateOfBirth: users.dateOfBirth })
         .from(users)
         .where(and(inArray(users.id, ids), isNull(users.deletedAt))),
       db
@@ -1205,6 +1294,42 @@ export async function buildAtlasData(
       if (prev === undefined || days < prev) lastPractisedBy.set(r.userId, days)
     }
 
+    /**
+     * EVERY THREAD THIS COACH IS PART OF, bucketed by the student.
+     *
+     * `messages_select` scopes to "I am one of the two", so a coach sees only their own
+     * conversations — this file adds no filter. Bucketing by the OTHER party is what turns one
+     * flat list into per-student threads, which is the only shape that makes sense on a player
+     * file: a merged inbox on a screen about one student would attribute other people's words to
+     * the person whose file is open.
+     */
+    const coachMsgRows = await db
+      .select({
+        id: atlasMessages.id,
+        senderUserId: atlasMessages.senderUserId,
+        recipientUserId: atlasMessages.recipientUserId,
+        body: atlasMessages.body,
+        readAt: atlasMessages.readAt,
+        createdAt: atlasMessages.createdAt,
+      })
+      .from(atlasMessages)
+      .where(isNull(atlasMessages.deletedAt))
+      .orderBy(atlasMessages.createdAt)
+    const msgsBy = new Map<string, RosterRow['messages']>()
+    for (const m of coachMsgRows) {
+      const other = m.senderUserId === me.id ? m.recipientUserId : m.senderUserId
+      const bucket = msgsBy.get(other) ?? []
+      bucket.push({
+        id: m.id,
+        mine: m.senderUserId === me.id,
+        who: m.senderUserId === me.id ? 'You' : '',
+        body: m.body,
+        at: m.createdAt ? m.createdAt.toISOString() : null,
+        read: !!m.readAt,
+      })
+      msgsBy.set(other, bucket)
+    }
+
     const progressBy = new Map<string, RosterRow['drills']>()
     for (const r of progressRows) {
       const bucket = progressBy.get(r.userId) ?? {}
@@ -1245,6 +1370,10 @@ export async function buildAtlasData(
           intakeScored: dnaBy.has(person.id),
           reviewRequests: requestsBy.get(person.id) ?? {},
         }),
+        messages: msgsBy.get(person.id) ?? [],
+        // Mirrors app_private.is_minor(): a coach must not be offered a compose box for a student
+        // the database will refuse. The refusal is the policy's; this is the explanation.
+        dmBlocked: !person.dateOfBirth || isMinor(new Date(person.dateOfBirth)),
         // The player's own result vocabulary — archetype, zones, growth zone, time split. null
         // when there is no scoreable run, which the page renders as "no read on file".
         dna: dnaBy.get(person.id) ?? null,

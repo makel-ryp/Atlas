@@ -795,6 +795,38 @@
     </sc-if>
     </sc-if>
 
+    <!-- ============ THREAD WITH THIS STUDENT · coach side ============ -->
+    <!-- Added 2026-09-28. The player has a Team tab; this is the coach's half of the same
+         conversation, on the file where they already have the context to reply.
+
+         ⚠️ UNDER-18: the compose box is absent, not disabled, and the empty-state line says why
+         and names Notes above as the place to write instead. The DATABASE refuses the send either
+         way (atlas.messages' insert policy) — this is the explanation, never the gate. -->
+    <div style="display: {{ pfThreadShow }}; margin-top:26px; border-top:1px solid rgba(20,25,31,0.12); padding-top:22px;">
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.22em; text-transform:uppercase; color:#8a6a2f; margin-bottom:12px;">Messages</div>
+
+      <div style="display: {{ pfMsgShow }}; gap:10px; align-items:flex-end; margin-bottom:18px;">
+        <textarea value="{{ pfMsgDraft }}" onChange="{{ pfMsgSet }}" placeholder="Reply to this player." style="flex:1 1 auto; min-width:0; box-sizing:border-box; min-height:62px; background:transparent; border:1px solid rgba(20,25,31,0.22); border-radius:10px; padding:10px 12px; color:#14191f; font-family:'Newsreader',serif; font-size:15.5px; line-height:1.5; outline:none; resize:vertical;"></textarea>
+        <div onClick="{{ pfMsgSend }}" style="cursor:pointer; flex:none; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#efe9dc; background:#14191f; padding:11px 18px; border-radius:999px;">{{ pfMsgSendLabel }}</div>
+      </div>
+      <div style="display: {{ pfMsgErrShow }}; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.1em; color:#a8422f; margin-bottom:14px;">{{ pfMsgErr }}</div>
+
+      <div style="display: {{ pfThreadEmptyShow }}; font-family:'Newsreader',serif; font-style:italic; font-size:14.5px; line-height:1.5; color:#6f7681;">{{ pfThreadEmptyText }}</div>
+
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <sc-for list="{{ pfThread }}" as="t" hint-placeholder-count="2">
+          <div style="border:1px solid {{ t.border }}; border-radius:12px; padding:13px 16px;">
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;">
+              <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color: {{ t.accent }};">{{ t.who }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#8a8f98;">{{ t.when }}</span>
+            </div>
+            <p style="font-family:'Newsreader',serif; font-size:15.5px; line-height:1.55; color:#14191f; margin:0;">{{ t.body }}</p>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+
     <!-- ============ ROSTER ============ -->
     <sc-if value="{{ isRoster }}" hint-placeholder-val="{{ false }}">
     <div>
@@ -2434,6 +2466,20 @@
 
       <div style="display: {{ threadEmptyShow }}; max-width:820px; font-family:'Newsreader',serif; font-size:17px; line-height:1.6; color:#66717f;">{{ threadEmptyText }}</div>
 
+      <!-- ============ COMPOSE ============ -->
+      <!-- Hidden entirely when DMs are unavailable (under 18, or age unknown) rather than shown
+           disabled: a greyed box invites a click and then explains itself, which is the
+           control-that-lies pattern this file has spent a month removing. The empty-state line
+           above carries the explanation instead. The DATABASE is the gate — see atlas.messages. -->
+      <div style="display: {{ msgComposeShow }}; gap:10px; align-items:flex-end; max-width:820px; margin-bottom:22px;">
+        <div style="flex:1 1 auto; min-width:0;">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:#66717f; margin-bottom:7px;">{{ msgToLabel }}</div>
+          <textarea value="{{ msgDraft }}" onChange="{{ msgSet }}" placeholder="Ask a question, or tell them how it went." style="width:100%; box-sizing:border-box; min-height:74px; background:#161d28; border:1px solid rgba(255,255,255,0.12); border-radius:12px; padding:12px 14px; color:#ece7db; font-family:'Newsreader',serif; font-size:16px; line-height:1.5; outline:none; resize:vertical;"></textarea>
+        </div>
+        <div onClick="{{ msgSend }}" style="cursor:pointer; flex:none; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#0E141B; background:#c8a05e; padding:13px 26px; border-radius:999px;">{{ msgSendLabel }}</div>
+      </div>
+      <div style="display: {{ msgErrShow }}; max-width:820px; margin-bottom:18px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.1em; color:#d9885e;">{{ msgErr }}</div>
+
       <div style="display:flex; flex-direction:column; gap:16px; max-width:820px;">
         <sc-for list="{{ messages }}" as="m" hint-placeholder-count="3">
           <div style="border:1px solid {{ m.border }}; border-radius:16px; background: {{ m.bg }}; padding:clamp(16px,3.4vw,26px) clamp(17px,3.6vw,28px);">
@@ -3038,7 +3084,13 @@ const fx1 = v => isNum(v) ? v.toFixed(1) : DASH;
  * `this.state.noteVis || 'coaching_team'` — so a coach who chose "Player can read" for one student
  * does not silently inherit it for the next.
  */
-const NOTE_RESET = { noteDraft: '', noteVis: undefined, noteErr: '', noteBusy: false };
+const NOTE_RESET = {
+  noteDraft: '', noteVis: undefined, noteErr: '', noteBusy: false,
+  // The message draft is VIEWER state in a PER-SUBJECT pane, exactly like noteDraft — and carries
+  // exactly the same hazard: prose typed about student A must not be sitting in student B's box
+  // when the coach opens their file. Cleared at every site that moves the subject.
+  pfMsgDraft: '', pfMsgErr: '', pfMsgBusy: false,
+};
 
 const EMPTY_PLAYER = {
   id: '', n: '', tier: '', zone: '', hcp: null, target: null, days: null, leak: '',
@@ -4879,6 +4931,42 @@ class Component extends DCLogic {
         pick: () => this.setState({ noteVis: k })
       })),
       pfNoteSend: () => this.postNote(who.id),
+
+      // ── THE THREAD WITH THIS STUDENT — coach side, 2026-09-28 ───────────────────────────────
+      // The player's messages tab is their half; this is the reply. It lives on the player FILE
+      // rather than in a coach inbox because that is where a coach already has the context they
+      // are replying about — and because a merged inbox on a per-student screen would attribute
+      // other people's words to whoever's file happened to be open.
+      //
+      // ⚠️ SELF ONLY SHOWS NOTHING: a player viewing their own file uses the Team tab. This block
+      // is `ROSTER.length > 0 && who.id`, the same gate the notes block above uses.
+      pfThreadShow: (ROSTER.length > 0 && who.id) ? 'block' : 'none',
+      pfThread: (who.messages || []).map(m => ({
+        who: m.mine ? 'You' : (who.n || 'Your student'),
+        when: m.at ? new Date(m.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '',
+        body: m.body,
+        accent: m.mine ? '#8a6a2f' : '#4a6a85',
+        border: m.mine ? 'rgba(138,106,47,0.3)' : 'rgba(74,106,133,0.3)'
+      })),
+      pfThreadEmptyShow: (who.messages || []).length ? 'none' : 'block',
+      /**
+       * ⚠️ THE UNDER-18 LINE, AND IT NAMES THE ALTERNATIVE.
+       *
+       * Makel, 2026-09-28: "DMs are disabled for anyone under 18 and just the profile comments
+       * will then be visible coach to coach." A coach who simply found no compose box would read
+       * it as broken, so this says what the rule is AND where to write instead — the notes block
+       * directly above, which is unchanged and is the coach-to-coach record.
+       */
+      pfThreadEmptyText: who.dmBlocked
+        ? 'Direct messages are off for players under 18. Use Notes above — those are the record, and your coaching team can read them.'
+        : 'No messages yet.',
+      pfMsgShow: (ROSTER.length > 0 && who.id && !who.dmBlocked) ? 'flex' : 'none',
+      pfMsgDraft: this.state.pfMsgDraft || '',
+      pfMsgSet: ev => this.setState({ pfMsgDraft: ev.target.value }),
+      pfMsgSendLabel: this.state.pfMsgBusy ? 'Sending…' : 'Send message',
+      pfMsgSend: () => this.sendToStudent(who.id),
+      pfMsgErr: this.state.pfMsgErr || '',
+      pfMsgErrShow: this.state.pfMsgErr ? 'block' : 'none',
       pfNoteSendLabel: this.state.noteBusy ? 'Sending…' : 'Send note',
       pfNoteErr: this.state.noteErr || '',
       pfNoteErrShow: this.state.noteErr ? 'block' : 'none',
@@ -5391,6 +5479,99 @@ class Component extends DCLogic {
    * response, and a request that silently failed is worse than one that visibly did — because the
    * player would stand there believing their coach had been asked.
    */
+  /**
+   * Send a message to the golfer's coach.
+   *
+   * ⚠️ NOT optimistic, unlike `requestReview` and `patch` — and the difference is deliberate. A
+   * tick that appears instantly and rolls back is a small lie for a moment; a MESSAGE that appears
+   * in a thread and then vanishes reads as "my coach saw that", which is a different kind of wrong.
+   * So the draft stays in the box until the server has taken it, and only then clears.
+   *
+   * `dm_unavailable_minor` is the under-18 rule answering from the database. The page should never
+   * reach this — the compose box is hidden when `dmBlocked` — but the handler names it anyway,
+   * because the rule is enforced server-side and the UI is only its explanation.
+   */
+  sendMessage() {
+    const body = (this.state.msgDraft || '').trim();
+    const coaches = ATLAS_ME.coaches || [];
+    if (!body || !coaches.length || this.state.msgBusy) return;
+    this.setState({ msgBusy: true, msgErr: '' });
+
+    fetch('/api/messages/' + coaches[0].id, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: body })
+    }).then(r => {
+      if (!r.ok) {
+        return r.json().catch(() => null).then(j => {
+          throw new Error(
+            j && j.error === 'dm_unavailable_minor'
+              ? 'Direct messages are turned off for players under 18. Your coach writes on your player file instead.'
+              : j && j.error === 'not_your_coach'
+                ? 'That coach is not linked to your account.'
+                : 'Could not send that. Nothing was delivered.');
+        });
+      }
+      return r.json();
+    }).then(m => {
+      // Appended to the injected list so the thread updates without a reload. `who: 'You'` matches
+      // exactly what the server would send back on the next load, so nothing shifts under them.
+      ATLAS_ME.messages = (ATLAS_ME.messages || []).concat([
+        { id: m.id, mine: true, who: 'You', body: m.body, at: m.created_at || new Date().toISOString(), read: false }
+      ]);
+      this.setState({ msgDraft: '', msgBusy: false, msgErr: '' });
+    }).catch(err => {
+      this.setState({ msgBusy: false, msgErr: err.message || 'Could not send that.' });
+    });
+  }
+
+  /**
+   * A coach replying to a student, from that student's file.
+   *
+   * Same not-optimistic rule as `sendMessage`: a message that appears and then vanishes reads as
+   * "they saw that". The draft clears only once the server has it.
+   *
+   * ⚠️ NOTE_RESET's sibling problem applies here too — `pfMsgDraft` is VIEWER state inside a
+   * PER-SUBJECT pane, so it is cleared whenever the subject changes (see NOTE_RESET's comment:
+   * a coach typing about student A, clicking back, and opening student B must not find that text
+   * waiting in B's box). `who.id` is resolved at CLICK time by the caller, never captured.
+   */
+  sendToStudent(userId) {
+    const body = (this.state.pfMsgDraft || '').trim();
+    if (!userId || !body || this.state.pfMsgBusy) return;
+    this.setState({ pfMsgBusy: true, pfMsgErr: '' });
+
+    fetch('/api/messages/' + userId, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: body })
+    }).then(r => {
+      if (!r.ok) {
+        return r.json().catch(() => null).then(j => {
+          throw new Error(
+            j && j.error === 'dm_unavailable_minor'
+              ? 'This player is under 18 — direct messages are off. Write a note instead.'
+              : j && j.error === 'not_your_coach'
+                ? 'This player is not linked to you.'
+                : 'Could not send that. Nothing was delivered.');
+        });
+      }
+      return r.json();
+    }).then(m => {
+      const row = ROSTER.filter(p => p.id === userId)[0];
+      if (row) {
+        row.messages = (row.messages || []).concat([
+          { id: m.id, mine: true, who: 'You', body: m.body, at: m.created_at || new Date().toISOString(), read: false }
+        ]);
+      }
+      this.setState({ pfMsgDraft: '', pfMsgBusy: false, pfMsgErr: '' });
+    }).catch(err => {
+      this.setState({ pfMsgBusy: false, pfMsgErr: err.message || 'Could not send that.' });
+    });
+  }
+
   requestReview(drillId, on) {
     if (!drillId) return;
     const sub = ATLAS_ME.submitted || (ATLAS_ME.submitted = {});
@@ -6514,6 +6695,21 @@ class Component extends DCLogic {
   }
 
   renderVals() {
+    /**
+     * Is this golfer barred from direct messages?
+     *
+     * ⚠️ MIRRORS `app_private.is_minor()`, it does not implement it. The server computes
+     * `me.dmBlocked` the same way the SQL function does — under 18, OR date of birth unknown — and
+     * atlas.messages' insert policy is what actually refuses the write. This value only decides
+     * whether the page OFFERS a compose box, so that a blocked golfer gets an explanation instead
+     * of a control that posts and comes back 403.
+     *
+     * Makel, 2026-09-28: "DMs are disabled for anyone under 18 and just the profile comments will
+     * then be visible coach to coach." The profile comments are atlas.coaching_notes, which are
+     * unchanged and still render on the player file — so this is a narrowing of one channel, not
+     * a loss of contact with a coach.
+     */
+    const dmBlocked = !!ATLAS_ME.dmBlocked;
     const s = this.state, log = s.log, sel = s.sel, view = s.view;
     // Is there ANY practice logged at all? Nothing writes `log` — SEED is {} and no producer
     // exists — so without this every total below renders a measured-looking zero. See the
@@ -6959,9 +7155,45 @@ class Component extends DCLogic {
       // Nothing produces messages. The real written channel is `atlas.coaching_notes`, which IS
       // wired and renders on the player's own profile with correct visibility tiers, so this screen
       // was a second, fictional copy of a conversation that already had a real home.
-      messages: [],
-      threadEmptyShow: 'block',
-      threadEmptyText: 'Messages from your coach appear on your player file, under Notes.'
+      // Mirrors app_private.is_minor() — unknown age counts as a minor, same as the server.
+      // ── WIRED TO atlas.messages, 2026-09-28 ────────────────────────────────────────────────
+      // Was `[]` after T-80 emptied three fabricated messages. There is a real table now, and a
+      // real thread — between this golfer and the coaches who ACTUALLY coach them (me.coaches is
+      // the approved coach_of edges, not the four hardcoded names on the cards above).
+      messages: (ATLAS_ME.messages || []).map(m => ({
+        who: m.who,
+        when: m.at ? new Date(m.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '',
+        body: m.body,
+        // The golfer's own words sit in the page's own voice; a coach's arrive in the blue that
+        // every coach-authored surface in this file already uses.
+        accent: m.mine ? '#c8a05e' : '#7fa8c9',
+        border: m.mine ? 'rgba(200,160,94,0.28)' : 'rgba(127,168,201,0.28)',
+        bg: m.mine ? 'rgba(200,160,94,0.05)' : '#161d28'
+      })),
+      threadEmptyShow: (ATLAS_ME.messages || []).length ? 'none' : 'block',
+      threadEmptyText: dmBlocked
+        ? 'Direct messages are turned off for players under 18. Your coach writes on your player file instead, under Notes — you can read those any time.'
+        : !(ATLAS_ME.coaches || []).length
+          ? 'No coach is linked to your account yet. Once one is, your conversation starts here.'
+          : 'No messages yet. Say something — your coach reads your whole file before replying.',
+
+      // ── COMPOSE ────────────────────────────────────────────────────────────────────────────
+      // ⚠️ SHOWN ONLY WHEN A SEND COULD ACTUALLY SUCCEED. `dmBlocked` mirrors the DATABASE rule
+      // (atlas.messages' insert policy refuses when either party is under 18, or of unknown age);
+      // it does not create it. Hiding the box is courtesy — the write is refused either way, which
+      // is the whole reason the rule lives in a policy rather than here.
+      msgComposeShow: (!dmBlocked && (ATLAS_ME.coaches || []).length) ? 'flex' : 'none',
+      msgDraft: this.state.msgDraft || '',
+      msgSet: ev => this.setState({ msgDraft: ev.target.value }),
+      msgSendLabel: this.state.msgBusy ? 'Sending…' : 'Send',
+      msgSend: () => this.sendMessage(),
+      msgErr: this.state.msgErr || '',
+      msgErrShow: this.state.msgErr ? 'block' : 'none',
+      // Names the ONE person this will reach, not every coach on the account. A box labelled with
+      // three names that delivers to one is a promise the send does not keep.
+      msgToLabel: (ATLAS_ME.coaches || []).length
+        ? 'To ' + ATLAS_ME.coaches[0].name
+        : ''
     };
   }
 }

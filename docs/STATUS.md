@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-25 14:36 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-28 09:50 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **3 file(s)** | pushed |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **10 file(s)** | pushed |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | pushed |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -33,8 +33,8 @@ _Regenerated 2026-09-25 14:36 CDT by `docs/refresh-status.sh`._
 | practice-dna | `~/Desktop/ATR/apps/practice-dna` | **not a git repo** | — | — | — |
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
-- **@ryp/eco version:** `0.23.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.23.0.tgz`
-- **Atlas HEAD:** `5892af3 The practice log persists (T-99)`
+- **@ryp/eco version:** `0.24.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.24.0.tgz`
+- **Atlas HEAD:** `034cc07 Hide Performance (T-96), and record the applied consent grant revoke`
 <!-- AUTO:END -->
 
 Regenerate the block above with:

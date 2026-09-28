@@ -10,6 +10,7 @@ import { notesRouter } from './routes/notes'
 import { intakeRouter } from './routes/intake'
 import { reviewRouter } from './routes/review'
 import { practiceRouter } from './routes/practice'
+import { messagesRouter } from './routes/messages'
 
 const app = express()
 const isProduction = process.env.NODE_ENV === 'production'
@@ -40,6 +41,7 @@ app.use('/api', notesRouter)
 app.use('/api', intakeRouter)
 app.use('/api', reviewRouter)
 app.use('/api', practiceRouter)
+app.use('/api', messagesRouter)
 
 // Unmatched /api/* fails as JSON, in BOTH environments. In prod it would otherwise reach the SPA
 // fallback and return index.html with a 200 — the client then parses '<!doctype html>' and reports a
