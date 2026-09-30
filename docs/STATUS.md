@@ -20,7 +20,7 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-28 09:50 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-29 18:23 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
@@ -33,8 +33,8 @@ _Regenerated 2026-09-28 09:50 CDT by `docs/refresh-status.sh`._
 | practice-dna | `~/Desktop/ATR/apps/practice-dna` | **not a git repo** | — | — | — |
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
-- **@ryp/eco version:** `0.24.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.24.0.tgz`
-- **Atlas HEAD:** `034cc07 Hide Performance (T-96), and record the applied consent grant revoke`
+- **@ryp/eco version:** `0.27.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.27.0.tgz`
+- **Atlas HEAD:** `f0a6ba5 Messages, with DMs off under 18 (T-101); hide Performance; readout (T-102)`
 <!-- AUTO:END -->
 
 Regenerate the block above with:

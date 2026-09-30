@@ -3874,11 +3874,27 @@ class Component extends DCLogic {
   // solid one is the prescription — the gap between them is the accountability.
   // Which zone the plan asks for on that weekday, so the chip can be prompted
   // before it is filled in.
+  /**
+   * PHASE 4 HAS NO WEEK, and this guard is why all three functions now agree about that.
+   *
+   * Every tier's phase 4 is `hrs: null`, `mix: 'No fixed cadence'`, and a SINGLE prose row keyed
+   * '—' rather than seven weekday rows. `week[(dowIndex + 6) % 7]` therefore hands that one prose
+   * row to MONDAY and `undefined` to every other day — so Monday was being read as a schedule.
+   *
+   * `plannedMins` scrapes digits out of the label, which turned that prose into invented practice:
+   * Builder's "Speed continues at 3 × 15 regardless of phase" became **18 minutes**, and
+   * Competitive's "Highest Phase 4 volume" became **4 minutes** out of the words "Phase 4".
+   * Foundation's prose happens to contain no digits, which is the only reason it read 0.
+   *
+   * A placeholder is not a prescription. All three return nothing for it.
+   */
+  isPlaceholderRow(row) { return !row || row[0] === '\u2014'; }
+
   plannedZone(dowIndex) {
     const tier = TIERS[this.state.tier] || TIERS.foundation;
     const phase = tier.phases[this.state.phase] || tier.phases[1];
     const row = phase.week[(dowIndex + 6) % 7];
-    if (!row) return null;
+    if (this.isPlaceholderRow(row)) return null;
     const l = row[1];
     if (/play\s*\d+/i.test(l)) return 'Performance';
     if (/transfer/i.test(l)) return 'Transfer';
@@ -3892,8 +3908,19 @@ class Component extends DCLogic {
     const tier = TIERS[this.state.tier] || TIERS.foundation;
     const phase = tier.phases[this.state.phase] || tier.phases[1];
     const row = phase.week[(dowIndex + 6) % 7];
-    if (!row) return null;
+    if (this.isPlaceholderRow(row)) return null;
     if (/speed/i.test(row[1])) return 'Speed';
+    /**
+     * ⚠️ REST WINS OVER THE LIFT DAY. This returned 'Lift' for dowIndex 1 and 4 (Monday and
+     * Thursday — `getDay()` numbering, 0 = Sunday) BEFORE reading the row at all, so every
+     * Foundation phase prescribed a lift on a Thursday whose own text says "Rest". Three cells
+     * across the three Foundation phases contradicted themselves in the same square.
+     *
+     * The lift days themselves are left as Mon/Thu: which days a tier lifts is Phil's programme,
+     * not something to infer from the tier record. This only stops the hardcode overwriting a
+     * rest day Luke explicitly wrote.
+     */
+    if (/rest/i.test(row[1])) return null;
     if (dowIndex === 1 || dowIndex === 4) return 'Lift';
     return null;
   }
@@ -3902,7 +3929,7 @@ class Component extends DCLogic {
     const tier = TIERS[this.state.tier] || TIERS.foundation;
     const phase = tier.phases[this.state.phase] || tier.phases[1];
     const row = phase.week[(dowIndex + 6) % 7];
-    if (!row) return 0;
+    if (this.isPlaceholderRow(row)) return 0;
     const label = row[1];
     if (/rest/i.test(label)) return 0;
     // A played round is not practice minutes — strip it before summing.
@@ -3941,13 +3968,27 @@ class Component extends DCLogic {
 
   fitnessVals() {
     const s = this.state;
+    /**
+     * ⚠️ THE SPEED ROWS FOLLOW THE TIER, 2026-09-28.
+     *
+     * All five rows were hardcoded for every golfer — including Foundation, whose own tier record
+     * says `speed: 0` and whose Plan screen correctly renders no speed chips at all (`speedChips`
+     * is already gated on `t.speed`). So a Foundation golfer was told on one screen that no Speed
+     * is prescribed and shown three Speed sessions to tick on another.
+     *
+     * Read from `TIERS[tier].speed` — Luke's own number, not an invented one. The two lifts stay
+     * fixed: "two lifts a week" is what the card's own copy states on every tier.
+     */
+    const tier = TIERS[s.tier] || TIERS.foundation;
+    const SPEED_DAYS = ['Tue', 'Thu', 'Sun'];
     const ROWS = [
       { k: 'lift-a', name: 'Lower push · hinge complex', kind: 'Lift', day: 'Mon' },
       { k: 'lift-b', name: 'Upper pull · anti-rotation', kind: 'Lift', day: 'Thu' },
-      { k: 'speed-1', name: 'Flight School · Preflight', kind: 'Speed · 15m', day: 'Tue' },
-      { k: 'speed-2', name: 'Flight School · Preflight', kind: 'Speed · 15m', day: 'Thu' },
-      { k: 'speed-3', name: 'Flight School · Preflight', kind: 'Speed · 15m', day: 'Sun' }
-    ];
+    ].concat(
+      Array.from({ length: Math.min(tier.speed || 0, SPEED_DAYS.length) }, (_, i) => ({
+        k: 'speed-' + (i + 1), name: 'Flight School · Preflight', kind: 'Speed · 15m', day: SPEED_DAYS[i],
+      })),
+    );
     const done = s.lifts;
     return {
       liftRows: ROWS.map(r => {
@@ -4156,7 +4197,35 @@ class Component extends DCLogic {
     const rebuildOn = s.rebuild && s.phase === 2;
     const floorHrs = rebuildOn ? ph.hrs + t.play : ph.hrs;
     const playHrs = rebuildOn ? 0 : t.play;
-    const logged = { practice: 3.5, play: 4, speed: 2 };
+    /**
+     * ⚠️ WAS `{ practice: 3.5, play: 4, speed: 2 }` — THREE FABRICATED COMPLIANCE FIGURES.
+     *
+     * Every golfer in the system was told they had logged 3.5 of 5.0 hrs this week, played 4
+     * rounds and done 2 of 3 speed sessions. Not defaults — literals, printed as measurements of a
+     * named person, in the same class as the rail's invented numbers (B-10), the fitness ticks
+     * (T-85) and the message thread (T-80). The last of that class.
+     *
+     * They are REAL now, because `golf.practice_sessions` exists: the trailing seven days of the
+     * golfer's own log, the same window `weekDone` and the practice strip already use.
+     *
+     * ⚠️ `play` STAYS UNMEASURED and is deliberately null rather than derived. Nothing records a
+     * round — there is no producer, and counting the PRESCRIBED rounds instead would report the
+     * plan back as if it were the record, which is the exact substitution this whole clean-up has
+     * been removing. A dash is the honest answer.
+     */
+    const last7 = [0, 1, 2, 3, 4, 5, 6].map(i => isoMinusDays(dayKey(TODAY), i));
+    const wk = last7.map(k => s.log[k]).filter(Boolean);
+    const loggedMins = wk.reduce((a, e) => a + (e.m || 0), 0);
+    const anyLogged = wk.length > 0;
+    const logged = {
+      practice: loggedMins / 60,
+      play: null,                                   // no producer — see above
+      speed: wk.filter(e => e.w === 'Speed').length,
+      lift: wk.filter(e => e.w === 'Lift').length,
+    };
+    // '—' when the week holds nothing at all, not '0.0'. Same rule as the calendar totals: "nobody
+    // counted" is not "you did none", and on a brand-new account those are very different claims.
+    const hrsRead = anyLogged ? logged.practice.toFixed(1) : DASH;
     const bar = (val, max) => Math.max(0, Math.min(100, max ? (val / max) * 100 : 0));
 
     return {
@@ -4222,16 +4291,21 @@ class Component extends DCLogic {
       // tier has `hrs: null` there) the Weekly floor panel read "—" and this line read
       // "3.5 of 0.0 hrs" for the same quantity, one above the other. Mirrors playRead's guard.
       practiceRead: floorHrs === null || floorHrs === undefined
-        ? logged.practice + ' of —'
-        : logged.practice + ' of ' + floorHrs.toFixed(1) + ' hrs',
+        ? hrsRead + ' of —'
+        : hrsRead + ' of ' + floorHrs.toFixed(1) + ' hrs',
+      // Zero-width bar, not a fabricated fill: `bar(null, x)` is 0, which is the truth for a
+      // quantity nothing measures.
       playBar: bar(logged.play, playHrs) + '%',
-      playReadWk: playHrs ? logged.play + ' of ~' + playHrs + ' hrs' : 'Paused this phase',
+      // ⚠️ '— of ~N hrs', never a number. Rounds have no producer anywhere in ryp-core.
+      playReadWk: playHrs ? DASH + ' of ~' + playHrs + ' hrs · not recorded yet' : 'Paused this phase',
       speedChips: t.speed ? [0, 1, 2].map(i => ({
         bg: i < logged.speed ? '#7fa8c9' : 'rgba(255,255,255,0.05)',
         border: i < logged.speed ? '#7fa8c9' : 'rgba(255,255,255,0.12)'
       })) : [],
       hasSpeed: t.speed > 0,
-      speedCount: logged.speed + ' of ' + t.speed + ' this week',
+      // Real: Speed days in the golfer's own trailing week. The chips above already read the same
+      // number, so the two cannot disagree.
+      speedCount: anyLogged ? logged.speed + ' of ' + t.speed + ' this week' : DASH + ' of ' + t.speed + ' this week',
 
       fitnessOn: s.fitnessOn,
       fitnessLabel: s.fitnessOn ? 'Fitness on' : 'Fitness off',
@@ -4243,11 +4317,14 @@ class Component extends DCLogic {
       fitnessNote: s.fitnessOn
         ? 'Two lifts a week, programmed by Coach Phil against your movement screen. Additive — never subtracted from the practice floor, on any tier.'
         : 'Available on every tier. Turn it on and Coach Phil programs against your screen; a limited result changes the programming, not the build.',
+      // ⚠️ WAS `i < 1` and the literal '1 of 2 this week' — the FOURTH fabricated compliance
+      // figure, and the one the earlier sweep missed because it sits in a different vals block
+      // from the other three. Every golfer was shown one lift filled in, always.
       fitnessChips: s.fitnessOn ? [0, 1].map(i => ({
-        bg: i < 1 ? '#7fa8c9' : 'rgba(255,255,255,0.05)',
-        border: i < 1 ? '#7fa8c9' : 'rgba(255,255,255,0.12)'
+        bg: i < logged.lift ? '#7fa8c9' : 'rgba(255,255,255,0.05)',
+        border: i < logged.lift ? '#7fa8c9' : 'rgba(255,255,255,0.12)'
       })) : [],
-      fitnessCount: '1 of 2 this week',
+      fitnessCount: anyLogged ? logged.lift + ' of 2 this week' : DASH + ' of 2 this week',
 
       rebuildOn: s.rebuild,
       rebuildLabel: s.rebuild ? 'Rebuild Mode on' : 'Rebuild Mode off',
@@ -6772,7 +6849,20 @@ class Component extends DCLogic {
         tags: this.dayLoad(e).tags,
         mins: this.dayLoad(e).mins,
         ghostW: Math.min(100, this.plannedMins((OFFSET + d - 1) % 7) / 75 * 100) + '%',
-        ghostShow: this.plannedMins((OFFSET + d - 1) % 7) ? 'block' : 'none',
+        /**
+         * ⚠️ BOTH minutes AND a zone, 2026-09-28. `plannedZone` matches keywords in the day's
+         * label ("Home", "Transfer", "Calibration", "Play"), and several of Luke's rows name none
+         * of them — Competitive P3 Friday is "30 Range AM + 30 Range PM", for instance. Those days
+         * drew a ghost bar promising 60 minutes of work the page could not name, and offered
+         * nothing to tick underneath it.
+         *
+         * Gating on the zone makes the cell honest rather than inventing a prescription. The
+         * alternative — falling back to the PHASE's own zone — would have the page decide what a
+         * golfer practises on a day their coach left unlabelled, which is Luke's call and not a
+         * bug fix. Raised with Makel instead: Competitive Phase 3 is called "Transfer Introduced"
+         * and names Transfer on zero days.
+         */
+        ghostShow: (this.plannedMins((OFFSET + d - 1) % 7) && this.plannedZone((OFFSET + d - 1) % 7)) ? 'block' : 'none',
         emptyBar: e.m || (e.w && e.w !== 'Rest') ? 'transparent' : 'rgba(255,255,255,0.05)'
       });
     }

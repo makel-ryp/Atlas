@@ -1,6 +1,10 @@
 import type { RequestHandler } from 'express'
 import type { Pool } from 'pg'
 import { drizzle } from 'drizzle-orm/node-postgres'
+// ⚠️ A CHECKED-OUT client emits 'error' ON ITSELF, and an unhandled 'error' event exits the
+// process. `pool.on('error')` only covers clients sitting idle. Neon computes scale to zero, so
+// any request holding a client when one suspends would take Atlas down. See eco's guardClient.
+import { guardClient } from '@ryp/eco/db'
 import { userAppRoles } from '@ryp/eco/schema'
 
 const schema = { userAppRoles }
@@ -103,6 +107,7 @@ export function ensureAtlasAccess(pool: Pool): RequestHandler {
     if (!mayBeAutoGranted(user.email)) return next()
 
     const client = await pool.connect()
+    const unguard = guardClient(client)
     try {
       await client.query('begin')
       await client.query(
@@ -138,6 +143,7 @@ export function ensureAtlasAccess(pool: Pool): RequestHandler {
       await client.query('rollback').catch(() => {})
       next(e)
     } finally {
+      unguard()
       client.release()
     }
   }

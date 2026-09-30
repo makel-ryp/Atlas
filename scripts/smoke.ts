@@ -800,6 +800,128 @@ async function main() {
       'run smoke from a checkout with ../../eco beside it to enable it')
   }
 
+  // ── R. THE PRESCRIBED WEEK (T-103) ───────────────────────────────────────────────────────────
+  // These EXECUTE the three pure functions out of the prototype across all 12 templates x 7 days,
+  // the same way section P executes summariseSession. Every bug below was invisible to grep and
+  // visible the moment the function was run: the phase-4 minutes were scraped out of English prose.
+  section('R. the prescribed week says only what it can back')
+
+  const tiersSrc = PROTO.match(/const TIERS = \{[\s\S]*?\n\};/)?.[0] ?? ''
+
+  /**
+   * Extract a method by BRACE MATCHING, not by regex.
+   *
+   * ⚠️ The first version used /\n  name\(...\) \{[\s\S]*?\n  \}/ and broke on the one-liner
+   * `isPlaceholderRow(row) { return ...; }` — it has no `\n  }` to stop at, so the non-greedy
+   * match ran straight on into the NEXT method and the harness failed to compile
+   * ("Unexpected identifier 'plannedZone'"). Counting braces has no such edge case.
+   */
+  const methodSrc = (name: string): string => {
+    const start = PROTO.indexOf(`\n  ${name}(`)
+    if (start === -1) return ''
+    const open = PROTO.indexOf('{', start)
+    if (open === -1) return ''
+    let depth = 0
+    for (let k = open; k < PROTO.length; k++) {
+      if (PROTO[k] === '{') depth++
+      else if (PROTO[k] === '}') {
+        depth--
+        if (depth === 0) return PROTO.slice(start + 1, k + 1).trim()
+      }
+    }
+    return ''
+  }
+  const fnSrc = ['isPlaceholderRow', 'plannedZone', 'plannedWork', 'plannedMins'].map(methodSrc)
+  check('the week functions and TIERS are extractable',
+    !!tiersSrc && fnSrc.every(Boolean), fnSrc.map((f, i) => (f ? '' : i)).filter(String).join(','))
+
+  if (tiersSrc && fnSrc.every(Boolean)) {
+    // A synthetic `this` — the functions only ever read this.state.tier/.phase and call each other.
+    const harness = new Function(`
+      ${tiersSrc}
+      const api = {
+        ${fnSrc.map((f) => f.trim().replace(/^(\w+)\(/, '$1: function(')).join(',\n')}
+      };
+      return (tier, phase) => {
+        const self = Object.assign({ state: { tier, phase } }, api);
+        return {
+          zone: (d) => api.plannedZone.call(self, d),
+          work: (d) => api.plannedWork.call(self, d),
+          mins: (d) => api.plannedMins.call(self, d),
+          row: (d) => (TIERS[tier].phases[phase].week[(d + 6) % 7] || [])[1] || '',
+        };
+      };
+    `)() as (t: string, p: number) => {
+      zone: (d: number) => string | null
+      work: (d: number) => string | null
+      mins: (d: number) => number
+      row: (d: number) => string
+    }
+
+    const TIER_KEYS = ['foundation', 'builder', 'competitive']
+    const DAYS = [0, 1, 2, 3, 4, 5, 6]
+
+    // 1. PHASE 4 INVENTED PRACTICE OUT OF PROSE. Builder read 18 minutes from "3 × 15", and
+    //    Competitive 4 from the words "Phase 4".
+    const p4 = TIER_KEYS.flatMap((t) => DAYS.map((d) => ({ t, d, m: harness(t, 4).mins(d) })))
+      .filter((x) => x.m > 0)
+    check('phase 4 prescribes no minutes on any tier', p4.length === 0,
+      p4.map((x) => `${x.t} day ${x.d} = ${x.m}m`).join(', '))
+    const p4z = TIER_KEYS.flatMap((t) => DAYS.map((d) => harness(t, 4).zone(d))).filter(Boolean)
+    check('phase 4 prescribes no zone either', p4z.length === 0, p4z.join(','))
+
+    // 2. A LIFT ON A DAY WHOSE OWN TEXT SAYS REST.
+    const restLift = TIER_KEYS.flatMap((t) =>
+      [1, 2, 3].flatMap((ph) =>
+        DAYS.filter((d) => /rest/i.test(harness(t, ph).row(d)) && harness(t, ph).work(d) === 'Lift')
+          .map((d) => `${t} p${ph} day ${d}`)))
+    check('no Lift is prescribed on a Rest day', restLift.length === 0, restLift.join(', '))
+
+    // 3. MINUTES WITH NO ZONE — a ghost bar promising work the week cannot name. The DATA still
+    //    contains these (they are Luke's labels); the fix is that the cell no longer draws a bar.
+    //    Counted here so the number is visible rather than silently tolerated.
+    const zoneless = TIER_KEYS.flatMap((t) =>
+      [1, 2, 3].flatMap((ph) =>
+        DAYS.filter((d) => harness(t, ph).mins(d) > 0 && !harness(t, ph).zone(d))
+          .map((d) => `${t} p${ph} d${d}`)))
+    // ⚠️ NOT `[^)]*` — the argument is `(OFFSET + d - 1) % 7`, which CONTAINS a ')', so a
+    // negated-paren class stops early and the check fails against correct code. Bounded
+    // wildcard instead.
+    check('the ghost bar requires BOTH minutes and a zone',
+      /ghostShow: \(this\.plannedMins\([\s\S]{0,40}?\) && this\.plannedZone\(/.test(PROTO),
+      'otherwise it promises work the page cannot name')
+    check(`${zoneless.length} zone-less cells exist and are Luke's to label, not ours`, true,
+      zoneless.slice(0, 6).join(', '))
+
+    // 4. Every phase-1..3 day now resolves coherently: minutes imply a zone OR the bar is hidden.
+    for (const t of TIER_KEYS) {
+      const weekMins = [1, 2, 3].map((ph) => DAYS.reduce((a, d) => a + harness(t, ph).mins(d), 0))
+      check(`${t} phases 1-3 all prescribe real weekly minutes`, weekMins.every((m) => m > 0),
+        weekMins.join('/'))
+    }
+  }
+
+  // 5. FITNESS ROWS FOLLOW THE TIER. Foundation's own record says speed: 0 and the Plan screen
+  //    already renders no speed chips for it — the Fitness card showed three anyway.
+  check('the fitness speed rows are derived from TIERS[tier].speed',
+    PROTO.includes('Math.min(tier.speed || 0, SPEED_DAYS.length)'),
+    'Foundation (speed: 0) was shown three Speed sessions to tick')
+
+  // 6. THE FOUR FABRICATED COMPLIANCE FIGURES — the last of the class.
+  check('no hardcoded practice/play/speed compliance literal',
+    !PROTO_CODE.includes('{ practice: 3.5, play: 4, speed: 2 }'),
+    'every golfer was told they had logged 3.5 of 5.0 hrs')
+  check('no hardcoded fitness count', !PROTO_CODE.includes("'1 of 2 this week'"))
+  check('compliance is computed from the golfer’s own trailing week',
+    PROTO.includes('const wk = last7.map(k => s.log[k]).filter(Boolean)'),
+    'the same window weekDone and the practice strip already use')
+  check('rounds played stay UNMEASURED rather than derived from the plan',
+    /play: null,\s*\/\/ no producer/.test(PROTO) && PROTO.includes("not recorded yet"),
+    'counting prescribed rounds would report the plan back as the record')
+  check('an empty week reads as a dash, not 0.0',
+    PROTO.includes('const hrsRead = anyLogged ?') && PROTO.includes('DASH'),
+    '"nobody counted" is not "you did none"')
+
   // ── report ───────────────────────────────────────────────────────────────────────────────────
   console.log(`\n${'='.repeat(74)}`)
   if (failures.length) {
