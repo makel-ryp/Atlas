@@ -117,19 +117,63 @@ Forge tags every tunable. These are the ones it admits are unfitted:
 | `atg` | **GUESS** | `perYard 0.022, baseYards 12, rungStepYards 4, shortSided 0.35` |
 | `putt18` | **PROVISIONAL** | `base 8, k 1.2` — *"Both numbers must be calibrated against known reference rounds."* |
 | `sgRate`, `se20`, `expPutts` | ESTIMATED | derived from published slopes, defensible but not measured |
-| `carry`, `benchmarks`, `window` | MEASURED | from published shot data / established practice |
+| `carry`, `window` | MEASURED | from published shot data / established practice |
+| `benchmarks` | **MEASURED — but contradicted by Forge's own source** | see below |
+
+### ⚠️ Two benchmark tables that disagree, one of them mis-tagged
+
+Forge ships **two**:
+
+- `forge-math.js:56` `CAL.benchmarks`, tagged **MEASURED**: hcp 0 → 250 yd / 62% fairways
+- `FORGE.dc.html` a local `BENCH` cited to *"Arccos Driving Distance Report (men, ~25M rounds)"*,
+  with yardages scaled by `ROLL_F = 0.92` to convert total into carry
+
+At handicap 12.5 these give **220 yd / 50%** versus **207 yd / 45.3%** — 13 yards and ~5 fairway
+points apart. And the app's own comment rejects the other table's number: *"flatter than folklore:
+scratch–4.9 hit 50%"*, against the **62%** `CAL.benchmarks` carries under a MEASURED tag.
+
+**Do not treat `CAL.benchmarks` as measured.** Decide which table is real before either is shown.
+
+### ⚠️ The facet weights are not where the module says all numbers must live
+
+`forge-math.js` opens with *"Nothing outside this object may contain a magic number."* The composite
+weights break that rule: `practiceHandicap(valuesByFacet, weights)` takes them as a **parameter**,
+and they are absent from `CAL` entirely. They live untagged in the app and the spec
+(driving 0.30 · approach 0.35 · chipping 0.15 · putting 0.20).
+
+🔴 **And `forge-math.test.js:136` has chipping and putting SWAPPED (0.20 / 0.15).** Copy the weights
+from the Build Spec or the app — **never from the test file**.
 
 The README says it plainly: *"Open guesses still to fit against real players: `yardsPerShot`, ATG
 constants, Putt 18 calibration."*
 
-### The one failing test is the fixture, not the code
+### 🔴 The failing test is a THREE-WAY CONFLICT, not a typo
+
+**This entry was wrong in the first draft of this document and is corrected here.** It was first
+written up as "a bad fixture, one-line fix, the maths is sound." It is not that.
 
 ```
 FAIL  225 yd is half way 10→5   expected 7.5   actual 12.5
 ```
-The carry table is `255→5, 235→10, 215→15`. The midpoint of 10→5 is **245**, which returns 7.5
-correctly. `225` is the midpoint of 15→10 and correctly returns 12.5. **The yardage in the fixture
-is wrong** (`forge-math.test.js:33`). One-line fix; the maths is sound.
+
+Three different answers exist for the same input:
+
+| `baselineHandicap(225)` | value | source |
+| --- | --- | --- |
+| **Build Spec** | **15** | *"First row where `carry ≥ threshold` wins"* — an explicit **STEP** table |
+| **`forge-math.js`** | **12.5** | **linear interpolation** between table rows (`:96`) |
+| **test fixture** | **7.5** | interpolation at **245**, not 225 (`forge-math.test.js:33`) |
+
+So the fixture's yardage is wrong *and* the module does not implement what the spec specifies.
+**By the spec's own precedence rule — *"where the two disagree, this document wins"* — the shipped
+module is non-conformant.**
+
+⚠️ **But the module is probably right and the spec probably wrong.** `forge-math.js:94` states the
+reason: *"A step table would put 234 and 236 yards a full stroke apart."* Verified — under the
+spec's step model **234 yd → 15 and 236 yd → 10**. Two yards of carry, five handicap strokes.
+
+**This needs a decision, not a patch**, and it moves every driving index. Three things must end up
+agreeing: the spec's model, the module's model, and the fixture's input.
 
 ---
 
@@ -174,9 +218,39 @@ Worth reading because one of them is the exact failure mode Atlas spent a month 
 
 ---
 
+## Against Atlas's three formula conflicts (`ASK-luke-forge-repo.md` §1)
+
+| Conflict | Forge's answer |
+| --- | --- |
+| **§1a composite index** | ✅ **RESOLVED** in favour of the renormalised, played-only form. `practiceHandicap` (`forge-math.js:276`), stated as a contract in the Spec: *"Weights of scored facets are renormalised — a session that skipped putting is not penalised for it."* Plus the rule Atlas needs: **"The composite index is derived, never stored."** |
+| **§1b transfer gap** | ❌ **NOT ANSWERED — Forge has no transfer gap at all.** The only occurrence of "transfer" in the whole package is marketing copy. Forge deliberately refuses the comparison: its own help text reads *"Practice Handicap — Not your USGA handicap."* **Atlas must define this itself or drop it.** |
+| **§1c `sgFor`** | 🟡 **Shape resolved, constants are a THIRD set.** Forge uses `(target − value) × rate`, which is Dashboard's shape — AtlasPlayer's handicap-anchored model is rejected. But Forge's rates are `{driving .34, approach .42, chipping .13, putting .11}` (ESTIMATED) against Dashboard's `{.30, .35, .15, .20}`. ⚠️ **Dashboard's `SG_W` is literally the composite weight vector reused as an SG rate** — Forge separates the two explicitly: *"These are absolute rates, NOT shares."* |
+
+⚠️ **Semantic trap in §1c:** Forge's `target` is the player's **self-set goal** handicap (*"the goal,
+not the current state"*), not a peer expectation at their handicap. So Forge's figure means *strokes
+between you and your goal* and **must not be labelled plain "SG"** beside a tour-style strokes-gained
+number.
+
+---
+
 ## Still unanswered by this package
 
-- Atlas's `ASK-luke-forge-repo.md` §2 benchmark tables, the 5-axis skill radar and the tolerance
-  ladder are **not** addressed in the Build Spec's seven sections.
+- The **5-axis skill radar** and the **tolerance ladder** from §2 of the ask are not addressed.
+  (The benchmark tables ARE addressed — twice, inconsistently. See above.)
+- **No practice index is persisted anywhere**, so Atlas still has no producer to read.
 - Nothing here resolves Atlas's own open question for Luke: **Competitive Phase 3 is called
   "Transfer Introduced" and names Transfer on zero of its seven day labels.**
+
+---
+
+## How this document was built, and what is still soft
+
+Written from a first-hand read of the Build Spec and `forge-math.js`, then checked by a five-lane
+survey with an adversarial verification pass. **All five verification lanes returned `holds=false`**
+— they caught real precision failures in the first-pass survey, and two of those corrections landed
+on this document (the failing test, and the benchmark tables).
+
+Claims here are the ones that survived verification or that were re-checked by hand. The deeper
+per-screen detail of `FORGE.dc.html` (5,100 lines) has had one pass, not two — treat specific
+line-level claims about the player app as less settled than the Spec and `forge-math.js` material,
+which have both been read directly.
