@@ -255,7 +255,17 @@
         </div>
       </div>
 
-      <div style="border:1px solid rgba(200,160,94,0.3); border-radius:18px; background:linear-gradient(165deg,#1e2733,#161d28); padding:clamp(19px,3.4vw,30px) clamp(19px,3.6vw,32px); margin-bottom:22px;">
+      <!-- ============ TOMORROW · BUILT FOR YOU ============ -->
+      <!-- ⚠️ GATED 2026-09-30. This card printed a strokes-gained LEAK and a session built from it
+           — "Driving −1.2 SG", a named weakest facet, three prescribed blocks — for every golfer,
+           off `state.forge`, the hardcoded demo seed at :3301. Same defect that got Transfer and
+           Performance hidden, on the most-seen screen in the product, and missed when those were.
+
+           It is NOT deleted: the card is Luke's design and returns the day a practice index has a
+           producer. `autoVals` still computes it; `tomorrowShow` is what decides whether a golfer
+           is shown a number nobody measured. See docs/FORGE-CONTEXT.md — the FORGE package as
+           delivered persists nothing, so that producer does not exist yet. -->
+      <div style="display: {{ tomorrowShow }}; border:1px solid rgba(200,160,94,0.3); border-radius:18px; background:linear-gradient(165deg,#1e2733,#161d28); padding:clamp(19px,3.4vw,30px) clamp(19px,3.6vw,32px); margin-bottom:22px;">
         <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; justify-content:space-between; margin-bottom:18px;">
           <div style="flex:1 1 300px; min-width:0;">
             <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:#c8a05e; margin-bottom:10px;">Tomorrow · built for you</div>
@@ -286,6 +296,11 @@
           <div onClick="{{ autoReroll }}" style="cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#8d99a8; border:1px solid rgba(255,255,255,0.12); padding:14px 20px; border-radius:999px;">Second choice</div>
           <span style="font-family:'Newsreader',serif; font-size:14.5px; color:#4d5765;">{{ autoStamp }}</span>
         </div>
+      </div>
+
+      <div style="display: {{ tomorrowEmptyShow }}; border:1px solid rgba(255,255,255,0.09); border-radius:18px; background:#161d28; padding:clamp(19px,3.4vw,30px) clamp(19px,3.6vw,32px); margin-bottom:26px;">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:#66717f; margin-bottom:10px;">Tomorrow</div>
+        <p style="font-family:'Newsreader',serif; font-size:16.5px; line-height:1.55; color:#66717f; margin:0; max-width:56ch;">{{ tomorrowEmptyText }}</p>
       </div>
 
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(clamp(200px,42vw,260px),1fr)); gap:22px;">
@@ -4587,7 +4602,27 @@ class Component extends DCLogic {
       autoAcceptBg: accepted ? 'transparent' : '#f2ede1',
       autoAcceptBorder: accepted ? 'rgba(127,176,138,0.5)' : '#f2ede1',
       autoReroll: () => this.setState({ autoAlt: !alt, autoAccepted: false }),
-      autoStamp: (blocks.reduce((a, b) => a + parseInt(b.mins, 10), 0)) + ' minutes · regenerates every Sunday'
+      autoStamp: (blocks.reduce((a, b) => a + parseInt(b.mins, 10), 0)) + ' minutes · regenerates every Sunday',
+
+      /**
+       * ⚠️ THE GATE, 2026-09-30. Everything above is computed from `s.forge` — the hardcoded demo
+       * seed at :3301 that no code path ever overwrites — so `autoLeakSG`, `autoLeakName`,
+       * `autoHeadline` and the three prescribed blocks were IDENTICAL for every golfer, presented
+       * as a measured read of their weakest facet on the most-seen screen in the product.
+       *
+       * It is the same defect that got Transfer and Performance hidden, and it was missed when
+       * those were — because they are whole screens on the `hidden` list and this is one card
+       * inside a screen that is otherwise real.
+       *
+       * The card is NOT deleted. It is Luke's design and it comes back the day a practice index
+       * has a producer. The FORGE package delivered 2026-09-30 does not provide one: it persists
+       * to `localStorage['forge.v5']` and makes zero network calls (docs/FORGE-CONTEXT.md), so
+       * there is nothing for Atlas to read. When there is, this becomes a real check against real
+       * data and the flag flips.
+       */
+      tomorrowShow: 'none',
+      tomorrowEmptyShow: 'block',
+      tomorrowEmptyText: 'Tomorrow\u2019s session is built from your practice indices \u2014 which drill is losing you the most strokes. Nothing measures that yet, so there is nothing honest to build it from.'
     };
   }
 

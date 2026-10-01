@@ -922,6 +922,31 @@ async function main() {
     PROTO.includes('const hrsRead = anyLogged ?') && PROTO.includes('DASH'),
     '"nobody counted" is not "you did none"')
 
+  // ── S. THE TODAY CARD DOES NOT INVENT A LEAK ─────────────────────────────────────────────────
+  // Found 2026-09-30 by a full-project survey, AFTER T-103 was reported as "the last of the
+  // fabrication class". It was not. The Tomorrow card on Today — the most-seen screen in the
+  // product — printed a strokes-gained leak and a session built from it, for every golfer, off the
+  // same hardcoded `state.forge` seed that got Transfer and Performance hidden.
+  section('S. Today invents nothing')
+
+  check('the Tomorrow card is gated', /tomorrowShow: 'none'/.test(PROTO),
+    'autoVals computes from state.forge, which no code path overwrites')
+  check('the card is gated in the markup too',
+    PROTO.includes('display: {{ tomorrowShow }}'),
+    'a vals flag nothing binds is not a gate')
+  check('and an honest line replaces it',
+    PROTO.includes('{{ tomorrowEmptyText }}') && /tomorrowEmptyShow: 'block'/.test(PROTO))
+  check('the card is NOT deleted — it returns when a producer exists',
+    PROTO.includes('autoLeakSG: fmtSG(worst.sg)'),
+    'Luke’s design is kept; only the claim is withheld')
+
+  // Every reader of the hardcoded seed must be either hidden or gated. This is the check that
+  // would have caught it the first time.
+  const forgeReaders = [...PROTO.matchAll(/\n\s*(\w+)\(\)\s*\{[\s\S]{0,400}?s\.forge/g)].map((m) => m[1])
+  check('every state.forge reader is behind a gate or a hidden screen',
+    forgeReaders.every((fn) => ['forgeVals', 'autoVals', 'buildTrend', 'buildCoachCard'].includes(fn)),
+    `unexpected reader(s): ${forgeReaders.filter((f) => !['forgeVals','autoVals','buildTrend','buildCoachCard'].includes(f)).join(', ')}`)
+
   // ── report ───────────────────────────────────────────────────────────────────────────────────
   console.log(`\n${'='.repeat(74)}`)
   if (failures.length) {

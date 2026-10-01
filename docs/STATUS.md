@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-30 20:17 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-09-30 20:48 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **2 file(s)** | pushed |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **5 file(s)** | pushed |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | pushed |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-30 20:17 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.27.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.27.0.tgz`
-- **Atlas HEAD:** `6a63356 T-103: the prescribed week says only what it can back; T-104: stop the crashes`
+- **Atlas HEAD:** `163e834 FORGE-CONTEXT: correct the failing-test finding, and add the formula answers`
 <!-- AUTO:END -->
 
 Regenerate the block above with:

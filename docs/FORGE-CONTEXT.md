@@ -199,6 +199,8 @@ Worth reading because one of them is the exact failure mode Atlas spent a month 
 | The `assignments` design | **Yes as a design** — it is the `atlas.prescriptions` shape, already reasoned through. |
 | `PROVENANCE` measured/modelled split | **Yes** — a convention Atlas should adopt verbatim. |
 | Practice indices for Atlas's Transfer / Performance screens | **No.** Nothing persists them yet. Those screens stay hidden (`FORGE_ONLY_SCREENS`) until a producer exists. |
+| | ⚠️ **And the Tomorrow card on Today was reading the same seed** — found 2026-09-30, now gated (T-106). Forge does not fix it: the package persists to `localStorage['forge.v5']` and makes **zero network calls**, so there is still nothing for Atlas to read. |
+| | ⚠️ `build/forge-math.js` is referenced by **zero** of the three `.dc.html` files. The shipped screens run their own duplicated copies, so **the tested module is not the code that renders.** |
 | Drill library | **No** — Forge has six drills across four facets; Atlas has 35 review items on a five-step build. **These are different catalogues, not one catalogue in two places.** |
 
 ---
