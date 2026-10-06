@@ -20,12 +20,12 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-09-30 20:48 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-10-06 14:00 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **5 file(s)** | pushed |
-| eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | clean | pushed |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **5 file(s)** | **1 ahead** |
+| eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | main | **7 file(s)** | pushed |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
 | locker-room | `~/Desktop/ATR/apps/locker-room` | makel-ryp/locker-room | feature | clean | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-09-30 20:48 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.27.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.27.0.tgz`
-- **Atlas HEAD:** `163e834 FORGE-CONTEXT: correct the failing-test finding, and add the formula answers`
+- **Atlas HEAD:** `d39a60d T-105 decided: Forge comes to ryp-core. T-107 fixed and measured.`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
