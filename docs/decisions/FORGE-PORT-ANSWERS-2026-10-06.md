@@ -118,3 +118,49 @@ a database credential.**
 One credential store, one deploy, and the ladder and assignment completion — the two things
 `forge_svc` alone may stamp — cannot be written by code outside this repo. This also confirms the
 assumption the whole gap assessment was built on, so it stops being an assumption.
+
+## Batch 3 — behaviour, not schema
+
+### 9 · Provisional sessions → **COUNT toward the streak and blocks-per-week**
+
+The spec asks this of itself (§9) and does not answer. The answer is that **the streak measures
+attendance, not quality.** A player who drove to the range and hit 12 balls was there.
+
+The protection that matters is unchanged: a provisional session is still excluded from the current
+picture and still never becomes a headline number (§READ THIS FIRST). So quality is protected where
+it is actually at risk, and the streak stops creating an incentive to type in five fake shots —
+which is the failure mode that corrupts the data this whole product exists to collect.
+
+**Reads filter `completed_at IS NOT NULL` for the index, and do NOT filter it for the streak.**
+
+### 10 · Today calendar → **TWO DISTINCT ROWS** *(overrules the recommendation)*
+
+A Forge range visit and a self-logged practice day stay visually separate in the day cell.
+
+The recommendation was to merge, on the grain argument. Makel chose separation, and the reason it is
+a good call is **provenance**: a merged cell cannot show the player which part of their day was
+*measured* and which part they *typed*. Keeping them apart makes the distinction visible at a glance
+on the most-used screen — the same measured-vs-modelled discipline the rest of this port enforces.
+
+No schema change either way; the join is `(user_id, played_on)` ↔ `(user_id, session_date)`.
+
+### 11 · A player's self-set assignments → **COACH SEES THEM, READ-ONLY**
+
+The spec flagged this as assumed rather than decided. Now decided, and it matches the assumption.
+
+⚠️ **Changes a policy:** `assignments_update` must **exclude `source='player'` rows from coach
+revocation**, not merely rely on precedence. As designed, any approved coach could reword or revoke
+them. A coach needs to know what their student chose to work on; a student's own plan is not the
+coach's to delete.
+
+Conflict is already handled by precedence — a coach order outranks a player's on the same screen.
+
+### 12 · Collapsed notes → **ONE RECORD PER PLAYER**
+
+A Forge coach sees Atlas-authored notes and vice versa. That is the point of one backend and it is
+the documented Locker Room fix.
+
+**No note becomes visible to anyone who could not already read that student** — both sets are
+coach-only and both sit behind `app_private.coaches()`. The change is between coaches of the same
+student, not between a coach and a stranger. The failure it prevents: a colleague's note about a
+safeguarding issue being invisible because it was typed in the other app.
