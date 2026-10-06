@@ -61,6 +61,7 @@ Each line here was observed working. Do not rebuild any of it.
 | Coaching notes — first cross-user write | ✅ live | commit `3750cff`; exposed and closed 2 RLS holes |
 | Luke's prototype served from real DB | ✅ live | commit `d15d7a4`; zero sample names **on the coach roster and dossier**, which is what was verified. ⚠️ NOT true of the player-only surfaces — see T-70 — where named fictional coaches still appear |
 | `atlas.intake_submissions` table + RLS applied to ryp-core | ✅ applied | one Neon transaction, journal hash `26ba3786…` |
+| Migration journal reconciled with production (T-107) | ✅ fixed 2026-10-06 | `drizzle.__drizzle_migrations_eco` = 10 rows; `drizzle-kit migrate` against `main` is a measured no-op; `generate` prints "No schema changes". Reproduced the 42P07 failure first on branch `br-mute-sound-auuco5s2`. ⚠️ 4 objects are still in production but in no migration — `golf.drill_progress`, `player_profile.target_handicap`, `intake_submissions.interview`, `intake_submissions.result`. |
 | `POST /api/intake/start` unauthenticated → 401 | ✅ verified | smoke test 2026-08-31 |
 | **Practice DNA intake, API** | ✅ verified | 18/18 smoke assertions, 2026-09-01 |
 | **signup → quiz → result → home, in a browser** | ✅ verified | driven end to end 2026-09-01; `golf.player_profile` written by the quiz (4.2, right-handed), not the seed |
@@ -321,10 +322,14 @@ The smoke-test harness that runs these is described in [HANDOFF.md](HANDOFF.md) 
 
 ## 5. Structural facts that constrain everything
 
-- **Forge is the critical dependency.** Of the 81 metrics in Luke's prototypes, **44 (54%) are
-  produced by Forge**, which Luke is actively building and has **not delivered**. Six of his
-  twelve Dashboard screens cannot show real numbers until Forge exists. No amount of Atlas work
-  changes this.
+- **Forge is the critical dependency — and it ARRIVED 2026-09-30.** Of the 81 metrics in Luke's
+  prototypes, **44 (54%) are produced by Forge**. Six of his twelve Dashboard screens cannot show
+  real numbers until Forge exists. ✅ The package is in hand (`~/Downloads/FORGE-package/`) and
+  **Makel decided 2026-10-06 that it is ported onto ryp-core, not Luke's Supabase** — see
+  [FORGE-ON-RYP-CORE.md](FORGE-ON-RYP-CORE.md) and [FORGE-CONTEXT.md](FORGE-CONTEXT.md).
+  ⚠️ **Arrival is not a producer.** The package persists to `localStorage['forge.v5']` and makes
+  **zero network calls**, so until the port is built and running there is still nothing for Atlas
+  to read, and Transfer / Performance / the Tomorrow card stay gated.
 - **Practice DNA has 118 real runs** (2026-08-19 → 08-31) in the TGT-live DB. 48% reach tier 3,
   **39% stall at tier 1**, tier 4 is never used. `user_id` is populated on **zero** rows — the
   live quiz is anonymous, so none of that data can be attached to an Atlas account retroactively.

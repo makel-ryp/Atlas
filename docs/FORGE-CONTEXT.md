@@ -17,9 +17,33 @@ most important thing in the package.
 
 ---
 
-## 🔴 THE HEADLINE: Forge is specified as a SEPARATE application
+## ✅ ANSWERED 2026-10-06 — ONE BACKEND. Forge comes to ryp-core.
 
-This is the decision to make before anyone builds it, and it is not a detail.
+> **Makel:** *"we will need to configure forge to work on our database. not his."*
+
+**Forge runs on `ryp-core`** (Neon `orange-mountain-36415593`) with **Firebase** identity through
+Atlas. Supabase is off. Build Spec **§1** (the data model) and **§6.2** (auth and RLS) are
+**superseded** — and so is §6.2's *"coaches use a separate web app"*, because Atlas envelops the
+coach dashboard (decided 2026-08-24).
+
+➡️ **The superseding document is [`FORGE-ON-RYP-CORE.md`](FORGE-ON-RYP-CORE.md).** Read it beside
+the Build Spec. It exists because the Spec declares itself the contract — *"where the two disagree,
+this document wins"* — so without a document that outranks it, the next engineer reads §6.2 and
+builds Supabase.
+
+**Unchanged by this decision, and worth saying so:** the scoring engine (§2), the session state
+machine (§3), the challenge ladder (§4) and the ownership rules (§5) are untouched. The decision is
+about where rows live and who may read them, nothing else.
+
+**What follows below is the record of what the package actually specified.** It is kept because the
+collision table is still the map of what had to be reconciled — but it is no longer the plan.
+
+---
+
+## The headline as received: Forge was specified as a SEPARATE application
+
+This was the decision to make before anyone built it. It is made — see the banner above. Kept
+because the collisions it names are the work.
 
 **The spec never mentions Atlas, ryp-core, or a shared database.** Verified by search: zero
 occurrences of "Atlas" or "ryp-core" in any of the three `.dc.html` files.
@@ -45,8 +69,9 @@ the thing that architecture exists to prevent. §6.2 also says *"Coaches use a s
 two clients share the API and nothing else"* — so Forge assumes a second coach app too, while Atlas
 already has a coach surface in production.
 
-**This is Makel's call and it is urgent**, because the spec's stated purpose is *"everything needed
-to rebuild FORGE against a real backend"* — i.e. someone is about to build exactly this.
+~~**This is Makel's call and it is urgent**~~ — **made 2026-10-06: ryp-core.** The urgency was real:
+the spec's stated purpose is *"everything needed to rebuild FORGE against a real backend"*, so
+someone was about to build exactly the Supabase version.
 
 ---
 
@@ -207,9 +232,9 @@ Worth reading because one of them is the exact failure mode Atlas spent a month 
 
 ## Open questions for Makel
 
-1. **One backend or two?** Supabase + its own `players`/`coach_players`/`coach_notes`, or Forge
-   built against ryp-core with Firebase identity? Everything else follows from this.
-2. **If one backend:** `assignments` becomes `atlas.prescriptions`; `coach_players` collapses into
+1. ~~**One backend or two?**~~ ✅ **ANSWERED 2026-10-06 — ryp-core, Firebase identity.** So (2)
+   below is no longer a conditional; it is the work. See `FORGE-ON-RYP-CORE.md`.
+2. **Therefore:** `assignments` becomes `atlas.prescriptions`; `coach_players` collapses into
    `public.user_relationships`; `coach_notes` into `atlas.coaching_notes` — noting Forge wants them
    player-invisible in v1 and Atlas's already support a shared tier.
 3. **Whose handicap wins?** Forge's `players.usga_handicap` is self-reported and re-asked weekly;
