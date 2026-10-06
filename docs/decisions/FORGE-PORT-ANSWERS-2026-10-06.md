@@ -70,3 +70,51 @@ Why it matters: current-only storage is gameable. A player sitting at 1 of 5 blo
 target to 1/week and is instantly "on track" — and the coach's "behind" flag silently clears.
 
 **→ For Luke:** does a mid-week change to `blocks_per_week` apply to the current week or the next?
+
+## Batch 2 — access, the note record, and the credential
+
+### 5 · Forge access → **A `forge` ROLE ROW, GRANTED SEPARATELY**
+
+Forge is opt-in per user. `user_app_roles_atlas_signup` keeps admitting only `('atlas','user')` and
+does **not** auto-grant forge.
+
+⚠️ **Creates work, and it is on the alpha's critical path:** an admin "grant Forge access" action
+(the audited `billing_svc` + `withRlsBypass` pattern `parental-consent` already uses), one control in
+`Admin.tsx`, and a line in the alpha runbook. **Without it every tester 403s on their first Forge
+request** — so this ships before the first tester, not after.
+
+Upside: a clean lever for a paid tier later without a migration, which matters because pricing is
+frozen until Luke approves.
+
+### 6 · Atlas-authored notes → **APPEND-ONLY FOR EVERYONE**
+
+Narrow `atlas_app`'s grant on `atlas.coaching_notes` to `update (deleted_at, updated_at)`. The whole
+table becomes append-only **by privilege**, for both apps, which drops the `source_app <> 'forge'`
+policy predicate entirely. A correction is a new note.
+
+This is the better shape for the reason the schema file already argues elsewhere: a rule enforced by
+a grant cannot be "simplified away" by a later policy edit, and two halves of one table behaving
+differently is exactly what a later edit flattens.
+
+### 7 · Retracting a note → **AN AUDITED ADMIN PATH**
+
+Coaches cannot retract. An admin can soft-delete through an audited route.
+
+Mechanically this needs care, because of the defect that nearly shipped in this very file: an
+`UPDATE` policy that merely *intends* to be bypass-only, with no policy referencing
+`app_private.rls_bypass()`, is **denied by default and matches zero rows silently**. So the
+retraction needs an **explicit** `FOR UPDATE USING (app_private.rls_bypass()) WITH CHECK (…)` policy
+alongside the narrowed grant — the grant permits the column, the policy decides the principal.
+
+⚠️ Also fix the route: it currently returns **404** on a refused retraction, which reads as "no such
+note". It must return **409**.
+
+### 8 · `forge_svc` → **ATLAS HOLDS IT**
+
+FORGE's API runs inside Atlas's Express server as `server/routes/forge.ts`, behind `attachUser` and
+`requireConsent`, alongside the nine existing routers. Luke's client calls that API; **he never holds
+a database credential.**
+
+One credential store, one deploy, and the ladder and assignment completion — the two things
+`forge_svc` alone may stamp — cannot be written by code outside this repo. This also confirms the
+assumption the whole gap assessment was built on, so it stops being an assumption.
