@@ -164,3 +164,52 @@ the documented Locker Room fix.
 coach-only and both sit behind `app_private.coaches()`. The change is between coaches of the same
 student, not between a coach and a stranger. The failure it prevents: a colleague's note about a
 safeguarding issue being invisible because it was typed in the other app.
+
+## Batch 4 — authority, the consent tier, and two scoring calls
+
+### 13 · Coach vs coach → **ANY APPROVED COACH MAY REVOKE OR REWORD** *(overrules the recommendation)*
+
+Matches how an academy actually works: coaches cover for each other, and a student's plan should not
+freeze because one coach is away. It also keeps the orphan fix — an order outliving the relationship
+that created it can be cleared.
+
+⚠️ **The hole this leaves open, stated plainly rather than argued away.** A player who creates a
+second account, has account B request to coach account A, and approves it from A — which they can,
+because they own both — reaches **another coach's orders** on their own record. The self-edge CHECK
+closes "coach yourself"; it does not close "coach yourself through a second account."
+
+**Mitigation built instead of re-asking:** every revoke and reword writes a `public.admin_audit` row
+naming the acting coach. It does not prevent the move, but it stops it being silent — and a
+same-player pair is visible in the audit the moment anyone looks. Raise it if you want the stronger
+rule (author-only + admin cleanup); it is a policy change, not a migration.
+
+### 14 · The pending-coach tier → **TIGHTEN IT**
+
+`GET /api/coach/students` begins returning `profile: null` for a **pending** student. This is the
+two-tier rule from 2026-08-24 finally being enforced rather than described: identity until approved,
+metrics only after. Without it, approval on the direct-coach path grants nothing the coach could not
+already read, and **the consent loop is decorative.**
+
+⚠️ **Creates UI work:** the card must render *"awaiting approval"* rather than an empty profile.
+A null that renders as blank reads as a bug and will be reported as one.
+
+### 15 · Putt 18 "enter as a total" → **SURVIVES, flagged `entry_method='tally'`**
+
+The fast path after a real round, and people will use it. It writes a complete Putt 18 with **zero**
+per-hole rows, which is fine as long as it is labelled.
+
+⚠️ **Consequence to accept and to state in the UI:** §7.4's correlation work reads per-hole grain, so
+it will never see these sessions. That is honest and visible rather than silent — analytics filters
+on `entry_method`, and the putting calibration work draws only from hole-by-hole rounds.
+
+### 16 · Driving asymmetry → **SYMMETRIC. FIX IT.**
+
+The spec calls the prototype's behaviour a bug and says the intent was symmetric; only a miss **left**
+currently counts as a bad miss. A miss is a miss.
+
+Storage is unaffected (`outcome_value` 0–4 either way), so this is a scoring-formula change rather
+than a migration — **but it moves every driving index**, so it lands before the first row is written,
+not after.
+
+⚠️ Numbers will no longer match what Luke has been looking at in his prototype. That is the point,
+and he should be told rather than left to notice.
