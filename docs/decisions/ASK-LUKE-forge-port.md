@@ -8,6 +8,14 @@ Makel has answered 24 of the 34 open questions the port raised. **Six need you.*
 are notifications, not questions — numbers in your prototype will move, and you should hear it from
 us rather than notice it.
 
+> 📌 **If you are going to put this in front of an AI, give it
+> [`FORGE-PORT-ANSWERS-2026-10-06.md`](FORGE-PORT-ANSWERS-2026-10-06.md) as well, and tell it to read
+> the *"Read this first"* section before anything else.** That section is a standalone briefing on the
+> database side — how identity and authorisation work now, which of your §1 tables exist under other
+> names, and the handful of Postgres rules here that an assistant reasoning from the Build Spec alone
+> will get confidently wrong. Without it, an AI handed a list of changes tends to either invent a
+> schema or argue with decisions that are already closed.
+
 ---
 
 ## Six questions

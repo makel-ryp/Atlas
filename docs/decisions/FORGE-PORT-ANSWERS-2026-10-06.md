@@ -3,6 +3,139 @@
 Worked through live on **2026-10-06**. Each answer is the decision, then what it costs and what
 it creates. Where Makel overruled a recommendation that is recorded as an overrule, not rewritten.
 
+---
+
+# Read this first — the world these answers are about
+
+**If you are an AI assistant and the FORGE Build Spec is the only thing you have been given, stop
+here and read this section before the answers.** The answers below are deltas, and a delta against
+the wrong model of the world produces confident, wrong code. Nothing here is a criticism of the Build
+Spec — §2 (scoring), §3 (state machine), §4 (ladder), §5 (ownership) and §7 (outcomes) are intact and
+authoritative. What changed is **where rows live and who may read them**, which is §1 and §6.2.
+
+## The one-paragraph version
+
+FORGE no longer has its own database. It runs against **`ryp-core`**, one Postgres (Neon) shared by
+the whole RYP product family, where identity is **Firebase** and authorisation is **Postgres
+row-level security**. FORGE's client does not hold a database credential and does not talk to
+Postgres. It calls a JSON API inside RYP's own server, which authenticates the caller and runs every
+query as that user. Three of the tables §1 specifies are not built, because equivalents already exist
+and are already populated.
+
+## Four things to unlearn before writing any code
+
+| The Spec says | It is now |
+| --- | --- |
+| Supabase auth, `auth.uid()` | **Firebase**, resolved server-side to `public.users.id` (a uuid). `auth.uid()` does not exist in this database and never will. |
+| FORGE has its own Postgres | One shared database. FORGE's client talks **only** to an HTTP API; it has no connection string. |
+| *"Coaches use a separate web app; the two clients share the API and nothing else"* | **There is one coach surface and it is Atlas's**, decided 2026-08-24. The Coach Console's features are absorbed into it. Do not build a second coach client. |
+| `players`, `coach_players`, `coach_notes` | **Not built.** Equivalents exist — see the translation table below. |
+
+## How authorisation actually works here, and the part that is easy to get wrong
+
+Each application connects as its own Postgres role (`forge_app` for FORGE, `atlas_app` for Atlas,
+plus `red_app` and `lr_app` for the two shipped products). **Every one of those roles is
+`NOBYPASSRLS`** — none of them can see past a policy, including the one your code uses.
+
+Before any query, the server sets session variables identifying the caller, and policies read them
+through small helper functions:
+
+```sql
+app_private.current_user_id()   -- the caller's public.users.id
+app_private.firebase_uid()      -- their Firebase uid
+app_private.coaches(subject)    -- true if the caller is an APPROVED coach of that player
+```
+
+`app_private.coaches()` is the single authorisation oracle for every coach read. It is true on two
+paths — an approved coach relationship the player personally consented to, or shared academy
+membership an academy admin granted. **Never inline the rule; always call the function.** There is a
+weaker variant, `coaches_or_pending()`, for the identity tier only — a coach who has merely
+*requested* a player may confirm they asked for the right person and may not see their numbers.
+
+Three rules follow from this, and they are the ones an AI reasoning from general Postgres knowledge
+gets wrong:
+
+> **1. RLS scopes ROWS. It cannot refuse a COLUMN.** The only thing that can is a column-level
+> `GRANT`. This is why the design withholds specific columns from specific roles rather than writing
+> a cleverer policy. If you find yourself wanting a policy to protect one field, you want a grant —
+> or a separate table.
+>
+> **2. A refused write usually does not raise an error.** An `UPDATE` that no policy admits matches
+> **zero rows and returns success.** So "it didn't throw" is not evidence a write landed. Check
+> `ROW_COUNT`, or read the row back. A missing *grant* does raise (`42501`); a failing *policy* does
+> not. Those are two different failures with two different symptoms, and conflating them has already
+> cost this project real time.
+>
+> **3. Nothing holds `DELETE` on any table, deliberately.** Removal is a soft delete — a `deleted_at`
+> or `voided_at` column — and some tables are append-only by privilege, meaning even an author cannot
+> edit their own row in place. A correction is a new row.
+
+## The translation table — Spec §1 to what exists
+
+| §1 table | Where it lives now | Why |
+| --- | --- | --- |
+| `players` | **`golf.player_profile`** (existing). One row per user, `user_id` is the primary key. | It already holds `handicap_index`, `target_handicap`, `driver_carry_yds`, `handedness`, `ghin_number`. Two profile tables means two answers to "what is this golfer's handicap". |
+| `players.rungs` (jsonb) | **`golf.facet_rungs`** + **`golf.facet_rung_events`** (new) | A jsonb blob cannot be authorised per-facet or audited. The rung is writable only by the service principal that evaluates the ladder — which is §4's *"the ladder is the only thing that sets level"*, enforced rather than described. |
+| `sessions` | **`golf.range_sessions`** (new) | ⚠️ **Not** `golf.practice_sessions`, which already exists and is **one row per player per DAY**. A range visit is not a day. Both are "practice"; they are different grains and they stay separate tables. |
+| `session_facets` | **`golf.facet_scores`** (new) | |
+| `shots` | **`golf.range_shots`** (new) | ⚠️ The bare name `golf.shots` is reserved for on-course shot data from the RYP Stick product. Yours is range data. |
+| `putt18_holes` | **`golf.putt18_holes`** (new) | Name kept. |
+| `assignments` | **`atlas.assignments`** (new) + **`atlas.assignment_completions`** | Your design was adopted nearly as specified — it is the table RYP had named in three files and defined in none. |
+| `schedules` | **`golf.practice_commitment`** + **`..._history`** (new) | The history sibling exists so "were they behind in week N" stays answerable after someone changes their target. |
+| `coach_notes` | **`atlas.coaching_notes`** (existing) | Already has three visibility tiers. FORGE notes stay coach-only, as §1 asks. Now **append-only by privilege** for both apps. |
+| `coach_players` | **`public.user_relationships`** + `app_private.coaches()` (existing) | The consent loop is built, proven and in production. Atlas is the only door into it; FORGE reads the result and never writes it. |
+
+## Conventions that are not stylistic
+
+Code written against this database follows these, and a reviewer will reject code that does not:
+
+- **No `CREATE TYPE ... AS ENUM`.** Controlled vocabularies are `text` columns plus a `CHECK` and a
+  TypeScript constant. Adding a value must be a code change, not an `ALTER TYPE` migration.
+- **No `ON DELETE` clause on a foreign key.** Nothing cascades. Nothing is deleted.
+- **`timestamp without time zone`** for instants, **`date`** for calendar days, **`numeric`** for
+  handicaps. ⚠️ A session's `played_on` is the **local date at the range**, not UTC — the Spec is
+  right about this and the prototype gets it wrong.
+- **Provenance is mandatory.** Rows carry `source_app` and a measurement time. Six applications write
+  here; a row that cannot say where it came from is a row nobody can trust later.
+- **Derived values are not stored.** §READ-THIS-FIRST's *"the composite index is derived, never
+  stored"* is honoured. The narrow exceptions are values that must be **frozen at the time of play** —
+  `expected_putts`, the level as played, the target in force — because recomputing those later
+  rewrites history. That distinction is the whole game: freeze an input, derive an output.
+- **Prefer a second table over a cleverer policy.** If two parties write different facts about the
+  same subject, those are two tables. One shared row with a policy trying to keep the player out of
+  the coach's field is the thing that breaks.
+
+## What this means for FORGE's client, concretely
+
+Today the prototype persists to `localStorage['forge.v5']` and makes **zero network calls**. That is
+the gap, and it is the main build item:
+
+1. **Keep the local write-through.** §6.3 is right and nothing here changes it: write to local storage
+   on every tap, submit once at completion, retry quietly. Do **not** build an offline sync queue.
+2. **Submit to the API, not to a database.** No Supabase client, no connection string, no SQL in the
+   client. Sign-in is Firebase; the session cookie carries it.
+3. **Carry a client-generated idempotency key** from the moment a session starts. §6.3 asks for this
+   and the prototype does not do it. Without it a retried submit either duplicates a session or fails
+   forever.
+4. **Send the shots.** The prototype discards per-shot data at save. Server-side scoring cannot verify
+   an index it cannot recompute, and §1 is explicit that backfill is impossible.
+5. **Version the local payload and migrate on read.** The current key has no version field, so any
+   change to its shape silently corrupts a returning user's data rather than cleanly discarding it.
+   The Spec warns about exactly this.
+6. **Delete the demo seed.** §6.4 already flags it: eight fabricated sessions ship as the default
+   state. `boot()` also presets a handicap, a carry and a target, so accepting the onboarding defaults
+   writes numbers as if the golfer had answered them. All of it goes, or goes behind a flag.
+
+## Status, so nothing here is mistaken for shipped
+
+The schema and the RLS layer are **written and reviewed, not applied.** No FORGE table exists in the
+database yet, and the `forge_app` role has not been created. The design carries outstanding fixes and
+is deliberately on a branch. **Treat this document as the agreed target, not as the current state** —
+and if you are generating code, generate against the target and expect the first migration to land
+before any of it runs.
+
+---
+
 ## Settled before the walkthrough
 
 | # | Question | Answer |
