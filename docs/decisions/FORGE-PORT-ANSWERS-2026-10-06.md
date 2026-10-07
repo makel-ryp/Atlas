@@ -258,3 +258,70 @@ narrowed to five columns in September. Forge's onboarding displays the name it a
 **Is Forge practice data plan-gated?** **No plan predicate in v1.** The `forge` role row (Batch 2 #5)
 *is* the gate, and no `golf` table carries `plan_at_least()` today. Adding one later is a policy
 change. Pricing stays frozen until Luke approves.
+
+## Batch 6 — the last four
+
+### 21 · Benchmarks → **KEEP `CAL.benchmarks`** *(overrules the recommendation)*
+
+The recommendation was Arccos, on the grounds that it has a stated source and a stated method while
+`CAL.benchmarks` does not. Makel chose `CAL.benchmarks`. It ships.
+
+⚠️ **Two things to record, because they are facts rather than preferences:**
+
+1. **A genuinely scratch player will read as roughly an 11-handicap driver** against this table
+   (scratch = 250–280 yd carry / 62% fairways vs Arccos's ~230 / 45%). That is the first number a
+   good player sees. It is now a known, chosen characteristic rather than a bug, and it should not be
+   re-reported as one.
+2. **The `MEASURED` tag on this table is unsupported as shipped** — the package contains no source
+   for it, and the app's own comment contradicts it (*"flatter than folklore: scratch–4.9 hit 50%"*
+   against the 62% the table claims). Choosing the numbers is Makel's call; the provenance tag is a
+   separate claim. **→ Luke must supply the source, or the tag is downgraded from MEASURED.**
+
+### 22 · Gender → **DON'T ASK FOR GENDER. ASK FOR THE CARRY REFERENCE DIRECTLY.**
+
+Neither recommendation — Makel took the third option, and it is the better answer, because it is
+honest about what the field actually does. The field never meant "who are you"; it meant "which
+statistical reference class should we compare you against".
+
+**So the column is not `gender`.** It is `golf.player_profile.carry_reference`, text, **nullable with
+no default**, holding which scale to score driving against. The UI asks it by name — *"PGA
+Tour–Scratch scale"* / *"LPGA–Division III scale"* — rather than asking a personal question to
+derive it.
+
+⚠️ **This dissolves T-125's silent fall-through by construction, and that is the main win.** The
+failure was `CAL.carry[gender] || CAL.carry.m` — `'female'` yielding `undefined` and landing on the
+men's table with no error. With a reference column there is no vocabulary to mismatch: a mapping
+layer translates `carry_reference` to the module's key explicitly, and **null means no driving index
+is computed at all**, which is the same rule every other unfitted number here follows.
+
+⚠️ Asks a golfer to self-classify against a table they have never seen, so the UI copy has to carry
+its weight — name the scale *and* show its range.
+
+### 23 · The 30-minute block → **PERMANENT. STAYS UNSTORED.**
+
+The spec says it twice and calls it "not configurable". A fixed unit is what makes *blocks per week*
+comparable between two players; the moment one player's block is 45 minutes, the number stops
+meaning anything shared. Leaving it unstored is the honest encoding of "this is not a variable".
+
+If it ever changes, that is a migration — and it should be, because it reprices every historical
+streak.
+
+### 24 · The putting ladder → **MAKEABLES PROMOTES. PUTT 18 MEASURES.**
+
+Three spec sections disagreed. §2.4 defines four levels for Makeables and the spec gives Putt 18
+**none**, so Makeables is the only putting drill a ladder can run on.
+
+The two jobs stay separate and that separation is the answer: **Putt 18 produces the Putting Index
+for the composite; Makeables carries the rungs.** One number does not have to do both.
+
+---
+
+# Where this leaves it
+
+**24 of 34 answered.** Four were closed without asking (already decided elsewhere), and six are
+genuinely Luke's — collected in `ASK-LUKE-forge-port.md`.
+
+**Three answers overruled a recommendation** and are recorded as overrules, not rewritten: `auto`
+ships, the calendar shows two rows, and `CAL.benchmarks` stays. **One answer was better than either
+recommendation** — asking for the carry reference instead of gender, which dissolves T-125 rather
+than patching it.
