@@ -213,3 +213,48 @@ not after.
 
 ⚠️ Numbers will no longer match what Luke has been looking at in his prototype. That is the point,
 and he should be told rather than left to notice.
+
+## Batch 5 — the spec amendment, and three deferrals
+
+### 17 · `baselineHandicap` → **INTERPOLATION. AMEND BUILD SPEC §2.3.**
+
+🔴 **This is a spec amendment carrying Makel's signature, not a bugfix.** The Build Spec declares
+itself the contract; this overrides it in one named place.
+
+The three answers were: Spec step table **15**, `forge-math.js` linear interpolation **12.5**, test
+fixture **7.5**. The module's own argument decides it and it checks out numerically — under the
+spec's step model **234 yd → 15 and 236 yd → 10**. Two yards of carry, five handicap strokes. That
+is indefensible to a player who gains a yard.
+
+**Three things now change so that all three agree:**
+1. Build Spec §2.3 — step table → linear interpolation. Record the amendment in
+   `FORGE-ON-RYP-CORE.md`'s supersession table.
+2. `forge-math.js` — **no change**. It was already right.
+3. `forge-math.test.js:33` — the fixture's **input** is wrong, not its expectation: 245 yd is the
+   midpoint of 10→5, not 225. Fix the input and the suite goes 57/57.
+
+### 18 · Teams and leaderboards → **NOT IN v1**
+
+They are already §6.4 toasts on no milestone. The roster-scoped option would require inventing a
+**player-to-player access class** that nothing else in the ecosystem needs, and would make a
+15-year-old's numbers visible to their peers — which drags parental consent into it too.
+
+Deferring costs nothing. Building it wrong costs a privacy incident between students.
+
+### 19 · Forge notes player-invisible → **A v1 DEFAULT, EXPECT TO RELAX**
+
+The visibility column is built into Forge's insert path now; every Forge note stays coach-only.
+Atlas's three tiers already exist, so relaxing later is **one grant line plus a UI control**, not a
+migration. This is the cheap option taken deliberately: the mechanism goes in while it is free.
+
+### 20 · Display name → **ATLAS OWNS IT. Forge reads, never writes.**
+
+`forge_app` gets no write grant on `public.users`. That table stays writable by as few roles as
+possible, which is the entire point of Atlas-as-identity-nucleus and the reason `atlas_app` was
+narrowed to five columns in September. Forge's onboarding displays the name it already has.
+
+### Closed without asking — follows from Batch 2
+
+**Is Forge practice data plan-gated?** **No plan predicate in v1.** The `forge` role row (Batch 2 #5)
+*is* the gate, and no `golf` table carries `plan_at_least()` today. Adding one later is a policy
+change. Pricing stays frozen until Luke approves.
