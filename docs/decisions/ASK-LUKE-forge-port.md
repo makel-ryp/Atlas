@@ -1,0 +1,140 @@
+# For Luke — FORGE on ryp-core
+
+**2026-10-07.** FORGE is being built against RYP's shared database (`ryp-core`) with Firebase
+identity, not Supabase. Build Spec §1 and §6.2 are superseded — the replacement is
+[`FORGE-ON-RYP-CORE.md`](../FORGE-ON-RYP-CORE.md). **Your §2, §3, §4, §5 and §7 are untouched.**
+
+Makel has answered 24 of the 34 open questions the port raised. **Six need you.** Two further items
+are notifications, not questions — numbers in your prototype will move, and you should hear it from
+us rather than notice it.
+
+---
+
+## Six questions
+
+### 1 · Putt 18 calibration — `putting_base` and `k` 🔴 blocks showing a putting index
+
+Your own spec is emphatic, twice: §7.2 *"Neither `putting_base` nor `k` is derivable from the
+prototype — they must be set against known reference rounds"*, and §7.4 *"Needs reference rounds, not
+a guess."* They currently ship as `base 8, k 1.2`, tagged **PROVISIONAL**.
+
+We are honouring that: **no `practice_index` is written for a (putting, Putt 18) row until these are
+fitted.** A provisional constant stamped into stored history cannot be distinguished later from a
+real one.
+
+**What we need:** two reference rounds — a scratch player's Putt 18 and a 20-handicap's — or your
+numbers plus where they came from.
+
+### 2 · Which "behind" is the coach's flag? — two metrics with one name
+
+§5.4 says `blocks_per_week` *"drives the streak, the nag, and the coach's 'behind' flag"* — i.e. a
+**cadence** miss: they aren't practising as often as they committed to.
+
+**Both of your prototypes compute something else entirely** — an **assignment-completion** miss:
+they aren't doing the work I set. Those are different facts about a player and they disagree
+regularly: someone can practise five times a week and ignore every prescription.
+
+Neither the streak nor the nag has a formula anywhere in the package.
+
+**What we need:** which one is the flag, and the formula for the streak and the nag.
+
+### 3 · Does a mid-week `blocks_per_week` change apply to this week or next?
+
+It is your cadence rule, but it decides whether the table needs a history sibling — so it decides a
+**migration**, not just behaviour.
+
+We are building the history sibling regardless, because it is additive and free now and impossible to
+backfill later. Default is **next week**.
+
+Why it matters: current-week-only is gameable. A player sitting at 1 of 5 blocks drops their target
+to 1/week and is instantly "on track" — and the coach's "behind" flag silently clears.
+
+### 4 · The Coach Console note panel prefills and overwrites
+
+Your spec says `coach_notes` is **append-only, never edited in place**. Your Coach Console
+(`:660`, `:825-828`) prefills the textarea with the existing note and overwrites it on save.
+
+Under append-only storage — which is what we have built, and Makel has extended it to Atlas-authored
+notes too, enforced by privilege rather than convention — **keeping the prefill means every save
+silently duplicates the previous note.**
+
+**What we need:** confirm the panel becomes an empty box that appends, and that the history displays
+above it.
+
+### 5 · The prototype lets a player set their own rung
+
+§4 is unambiguous: *"The ladder is the only thing that sets level"*, and §5.5 *"No API accepts a
+coach-supplied level."* But `FORGE.dc.html:3490` and `:4821` both `persist({ rungs: n })` straight
+from a tap.
+
+We have built your spec, not your prototype: **a rung is writable only by the service principal that
+evaluates the ladder.** A player tapping a level will get a refusal.
+
+**What we need:** confirm that is right, and tell us what the tap was for — if it is a debug affordance
+it just goes; if players are meant to choose a difficulty, that is a different feature and it needs a
+name that is not "level".
+
+### 6 · `CAL.benchmarks` — where did it come from?
+
+Makel has chosen to ship `CAL.benchmarks` over the Arccos-cited table, so the numbers are settled.
+**The provenance tag is a separate question.**
+
+It is tagged **MEASURED**, which is the strongest tag in your own scheme, but the package carries no
+source for it — and the app's own comment contradicts it: *"flatter than folklore: scratch–4.9 hit
+50%"*, against the 62% the table claims.
+
+**What we need:** the source. Without one the tag is downgraded from MEASURED, because a provenance
+tag that is not true is worse than no tag — everything downstream trusts it.
+
+---
+
+## Two notifications — numbers in your prototype will move
+
+### `baselineHandicap` — Build Spec §2.3 is amended, step table → interpolation
+
+**Makel has signed this off.** Three sources disagreed on `baselineHandicap(225)`: your §2.3 step
+table says **15**, `forge-math.js` interpolates to **12.5**, and `forge-math.test.js:33` expects
+**7.5**.
+
+The module is right and the spec is being amended to match it, because the step model has a cliff:
+**234 yd → 15 and 236 yd → 10.** Two yards of carry, five handicap strokes. Your own code comment
+makes exactly this argument — *"a step table would put 234 and 236 yards a full stroke apart"* — and
+it checks out numerically.
+
+- Build Spec §2.3: step table → linear interpolation ✍️
+- `forge-math.js`: **no change**, it was already correct
+- `forge-math.test.js:33`: the **input** is wrong, not the expectation — 245 yd is the midpoint of
+  10→5, not 225. Fix that one number and your suite goes **57/57**
+
+### Driving asymmetry is being fixed to symmetric — as you flagged
+
+Your spec calls it out: *"Asymmetry — prototype bug, decide before building. The formula above
+reproduces the prototype exactly: only column 0 (bad left) counts as a bad miss… the intended
+behaviour is symmetric."*
+
+We are building **symmetric**. A miss is a miss. Storage is unaffected, so this is a formula change
+rather than a migration — but **it moves every driving index**, so the numbers you have been looking
+at will shift.
+
+---
+
+## One pre-existing item, still open from before this port
+
+**Competitive Phase 3 is called "Transfer Introduced" and names Transfer on zero of its seven day
+labels.** Raised before FORGE arrived; nothing in the package resolves it.
+
+---
+
+## What is NOT open, so you don't need to argue it
+
+| Settled | By |
+| --- | --- |
+| One backend — ryp-core, Firebase identity. Supabase is off. | Makel, 2026-10-06 |
+| Atlas is the only coach surface. The Coach Console's features are absorbed into it. | Makel, 2026-08-24 |
+| A FORGE rep is **not** coach-verified. The scored session is the evidence. | Makel, 2026-10-06 |
+| `forge_svc` lives inside Atlas's server. FORGE's client calls our API; no DB credential leaves it. | Makel, 2026-10-07 |
+| `source='auto'` ships in v1, with a generic note so `primaryLeak` stays private. | Makel, 2026-10-07 |
+| Makeables carries the putting rungs; Putt 18 produces the index. | Makel, 2026-10-07 |
+| The 30-minute block is permanent and unstored. | Makel, 2026-10-07 |
+| Teams and leaderboards are out of v1. | Makel, 2026-10-07 |
+| We ask for a **carry reference scale**, not gender. | Makel, 2026-10-07 |
