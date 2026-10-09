@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-10-06 15:47 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-10-09 11:27 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **4 file(s)** | **2 ahead** |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **2 file(s)** | **13 ahead** |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | forge-port-design | clean | **— ahead** |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-10-06 15:47 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.27.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.27.0.tgz`
-- **Atlas HEAD:** `400bdd6 Gap assessment: FORGE + Atlas -> testable. 65 gaps, 8 real groups, 2 unfixable by the port.`
+- **Atlas HEAD:** `06e3951 The fix checklist, from the reviewer's list rather than my summary of it`
 <!-- AUTO:END -->
 
 Regenerate the block above with:

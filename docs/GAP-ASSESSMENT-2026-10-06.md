@@ -65,8 +65,15 @@ it costs **if it goes wrong**. Assembled:
 > A tester corrupts data Saturday morning. You notice Monday. It is gone. There is no undo, at any
 > privilege level, by any route.
 
-A bad migration here does not degrade the alpha — it degrades RYP Stick, you hear about it from
-customers, and the restore window closed hours ago.
+> ⚠️ **CORRECTED 2026-10-09, and it lowers this item's priority.** The original text here said a bad
+> migration *"degrades RYP Stick, you hear about it from customers, and the restore window closed
+> hours ago."* **That was wrong.** Verified by query: `ryp-core` has five schemas and **no `ryp_red`
+> schema**; `user_app_roles` holds **0** rows for `ryp_red` and **0** for `locker_room` against **10**
+> for `atlas`. RYP Stick runs on the old `ryp-red` Neon project — a different database — and roadmap
+> M2/M3 are unstarted. `red_app` and `lr_app` hold grants here but **nothing connects as them.** The
+> real blast radius is **Atlas and its 12 accounts.** Rehearsing on a branch is still right (one of
+> seven free slots, and it is how T-107 was proven), and the 6-hour PITR, absent DELETE grant and
+> unprotected `main` are all still true — they just guard 12 Atlas accounts, not a live iOS product.
 
 **[V] And the excuse for not rehearsing was false.** `branches_limit: 10`, three exist, **seven
 free**. Four lanes declined to run the server, the e2e suites and the live intake on the grounds
