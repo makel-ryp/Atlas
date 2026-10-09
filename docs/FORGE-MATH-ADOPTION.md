@@ -1,6 +1,11 @@
 # FORGE scoring module — adoption plan
 
-**Status:** proposal, awaiting Makel's sign-off on §3 and §4.
+**Status:** proposal, **with three of its questions now decided** (Makel, 2026-10-06 — decisions in
+`decisions/FORGE-PORT-ANSWERS-2026-10-06.md`, consequences in `decisions/FORGE-PORT-FIX-CHECKLIST.md`):
+**§3** interpolation is signed (the *tail* below the last row is NOT — see §3); **§4** is **overruled**
+— `CAL.benchmarks` ships, tagged `UNSOURCED` (§4.1); **§2.5a** driving asymmetry is decided symmetric
+and recorded as a formula change that lands before the first row. Text below that still recommends
+the opposite is retained as the argument that was overruled, and says so where it appears.
 **Written:** 2026-10-06. Every number below was verified first-hand by running the code, not read
 off a summary. Where this document contradicts `docs/FORGE-CONTEXT.md`, this one is newer and the
 contradiction is called out in place.
@@ -239,6 +244,25 @@ produced after the fix, which is a second, independent reason `scoring_version` 
 optional. The existing fixtures encode the bug too (they only ever fill `0`), so add a case
 asserting a right big miss costs the same as a left one.
 
+> **DECIDED — SYMMETRIC (Makel, 2026-10-06, answer 16, checklist B14).** A miss is a miss: `bad =
+> count(value === 0 || value === 4)`. Two things follow and both are stated so nobody has to
+> rediscover them:
+>
+> 1. **Storage is unaffected** — `outcome_value` is 0–4 either way and the shots are stored whole.
+>    So this is a **scoring-formula change, not a migration.**
+> 2. **It moves EVERY driving index, so it lands before the first row is written, not after.** Any
+>    driving number anyone has seen in Luke's prototype was computed left-only and is
+>    **non-comparable** to every index this system will ever store. That is the point of the change,
+>    and Luke should be told rather than left to notice. Because no stored row will ever have been
+>    scored by the asymmetric formula, there is no historic population to recompute — which is why
+>    this is cheap now and a refit across live rows later.
+>
+> The code change is `forge-math.js:140` (`z === 0` → `z === 0 || z === 4`), made on the eco port,
+> not in Luke's package. ⚠️ The existing fixtures only ever fill zone `0`, so they encode the bug and
+> **cannot catch its return** — add the case asserting a right big miss costs exactly what a left one
+> does. ⚠️ And any driving expectation in the 57-case suite may move when the formula does; re-derive
+> those by hand, do not adjust them to turn the suite green.
+
 Also from §2.3, worth recording against the `level` column: *"driving has one fixed corridor — no
 levels, no ladder … its `level` is always 0 and no promotion or demotion applies."*
 
@@ -311,6 +335,13 @@ to a user.
 handicap … Interpolated, never stepped."* It is one function sampled at eight handicap values.
 Inverting a sampled function interpolates between samples; stepping asserts that every carry from
 235 to 254 belongs to a 10-handicap, which the data never said.
+
+> **SIGNED 2026-10-06 (answer 17): interpolation, and Build Spec §2.3 is amended** — recorded in
+> `FORGE-ON-RYP-CORE.md` §2 under *"§2.3 — Baseline handicap from average carry"*. **The sign-off
+> says `forge-math.js` needs "no change", and the tail fix proposed below is a change.** So the
+> **tail below the last populated row is NOT decided**: it remains a proposal awaiting Makel, and
+> until it is, the module's behaviour (the `[0, 30]` row treated as an anchor; 100 yd → 27.3) is what
+> the amendment leaves standing. Do not build the extrapolation on the strength of this section alone.
 
 ### But the spec's precedence rule points the other way, so this is an amendment, not a bugfix
 
@@ -397,6 +428,11 @@ check('225 yd is half way 15→10', baselineHandicap(225), 12.5);
 
 ### Verdict: use `BENCH`. `CAL.benchmarks` is **mis-tagged on both columns**, and its yardage is a units error, not a precision disagreement.
 
+> 🔴 **OVERRULED — Makel, 2026-10-06 (answer 21). `CAL.benchmarks` SHIPS.** The verdict above, and
+> Actions 1, 2 and 4 below, are retained as the argument that lost; do not build them. What survives
+> of this section is §4.1, which records the one claim that is a fact rather than a preference.
+> Action 3 (men-only, no gender parameter on `benchmarkAt`) is unaffected and still open.
+
 **The divergence at handicap 12.5, computed:**
 
 | Table | Yards | Fairway % |
@@ -462,6 +498,44 @@ prototype's comment names the disagreement and takes a side:
 4. The existing fixture `check('benchmark at 7.5 interpolates', benchmarkAt(7.5).yards, 233)` must
    change: under `BENCH` the answer is **219**. Update it in the same change, or the suite goes red
    for the right reason and gets "fixed" by reverting the table.
+
+### 4.1 `CAL.benchmarks` ships — and its provenance tag is `UNSOURCED` *(B19 / C6)*
+
+Choosing the numbers is Makel's call and it is made. **The provenance tag is a separate claim**, and
+everything downstream trusts a tag — `PROVENANCE` (§7) decides what the UI may show plainly.
+
+| | |
+| --- | --- |
+| **Tag as shipped** | `MEASURED` (`forge-math.js:56`: *"MEASURED — typical distance and fairway rate by handicap"*) — the **strongest** tag in Luke's own scheme (`:19`: *"taken from published shot data or an established practice"*). |
+| **Source in the package** | **None.** No citation, no dataset name, no method. The table's rows match the *raw* Arccos totals within ~2 yd (above), but the package does not say so and Arccos's fairway column is not what the table carries. |
+| **Does the app contradict it?** | **Yes.** `FORGE.dc.html:2948`: *"Fairway rates are Arccos as published — flatter than folklore: scratch-4.9 hit 50%, 30+ hit 40%."* `CAL.benchmarks` claims **62%** at scratch (`forge-math.js:58`) and 38% at 30. The app's own comment names the 62% number as the folklore one. |
+| **Decision** | Tag it **`UNSOURCED`**. The numbers stay; the claim that they were measured does not. If Luke supplies a source the tag can rise; nothing here requires him to. |
+
+**The consequence, stated plainly so it is not reported as a bug.** Against these tables a
+genuinely good player reads **worse than they are**. Computed from the module as shipped, for a
+scratch-to-4.9 golfer taking the Arccos roll-corrected figures (≈230 yd carry, ≈50% fairways):
+
+```
+baselineHandicap(230)                      → 11.3   (CAL.carry alone, i.e. before any fairway adjustment)
+drivingIndex(10 FW, 2 big, 8 small, 230)   → 13.3   (the same player at a true 50% fairways)
+drivingIndex(12 FW, 2 big, 6 small, 230)   → 11.3   (at 60%: 12 FW − 2×2 big = 8, so the fairway term is 0)
+fairway 50% read against CAL.benchmarks    → 12.5   (the table puts 52% at 10, 48% at 15)
+carry 230 read against CAL.benchmarks      →  8.6   (the table puts 226 yd at 10, 240 at 5)
+```
+
+**So a genuinely scratch player reads as roughly an 11-handicap driver** — the 11.3 is the driving
+index itself; the benchmark comparison lands between 8.6 and 12.5 depending on which column is
+read. The mechanism is that scratch is **250–280 yd / 62%** in these tables and **~230 yd / ~50%** in
+the published data the app's own comment cites. **This is a known, chosen characteristic of the
+shipped calibration, not a defect to be re-reported.** The place it would be reported is the first
+number a good player sees — which is why it is written down here, in the same breath as the choice
+that causes it.
+
+⚠️ **Scope note.** The 11.3 comes from `CAL.carry`, not `CAL.benchmarks`, and `CAL.carry` carries the
+same `MEASURED` tag with no source either (§4, final subsection). B19 re-tags the *benchmarks*
+table only. Whether `CAL.carry` follows is **not decided here**.
+
+---
 
 ### 🔴 A larger contradiction this exposed, which needs a citation before any driving index ships
 
@@ -703,7 +777,9 @@ Under that rule the reclassification falls out mechanically:
    assertion.
 4. **§3 amendment signed**, recorded as a decision under `docs/decisions/`, and §2.3 of the Build
    Spec edited to match. Not a silent code change.
-5. **§4 benchmark swap**, with the `benchmarkAt(7.5)` fixture updated in the same change.
+5. ~~**§4 benchmark swap**, with the `benchmarkAt(7.5)` fixture updated in the same change.~~
+   **Overruled 2026-10-06** — `CAL.benchmarks` ships; the table is **re-tagged `UNSOURCED`** (§4.1) and
+   the `benchmarkAt(7.5)` fixture is left alone.
 6. **Cite or refute `CAL.carry`** (§4, final subsection) before any driving index is shown to a
    user.
 7. **Fitting exercise** once enough sessions with stored shots exist.

@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="./doc-page.js"></script>
+<style>
+  doc-page:not(:defined) { visibility:hidden; }
+  html, body { margin:0; padding:0; }
+  h1, h2, h3, h4, p, ul, ol, table { margin:0; }
+  table { border-collapse:collapse; width:100%; }
+  th, td { text-align:left; vertical-align:top; }
+  code { font-family:'IBM Plex Mono',ui-monospace,monospace; }
+  .kt { break-inside:avoid; }
+</style>
+</helmet>
+
+<doc-page margin="0.7in">
+
+<div slot="header" style="display:flex;align-items:baseline;justify-content:space-between;padding-bottom:7px;border-bottom:1px solid #d4d4d4;font-family:'Work Sans',system-ui,sans-serif">
+  <span style="font-size:9pt;font-weight:900;letter-spacing:0.1em;color:#00803b">FORGE</span>
+  <span style="font-size:8pt;font-weight:600;letter-spacing:0.1em;color:#7a7a7a">BUILD SPECIFICATION · v1 · AUGUST 2026</span>
+</div>
+
+<div slot="footer" style="display:flex;align-items:baseline;justify-content:space-between;padding-top:7px;border-top:1px solid #d4d4d4;font-family:'Work Sans',system-ui,sans-serif">
+  <span style="font-size:8pt;color:#7a7a7a">Source of truth for behaviour and numbers. Layout lives in <code style="font-size:7.5pt">FORGE.dc.html</code>.</span>
+  <span style="font-size:8pt;font-weight:600;color:#7a7a7a">RYP Golf</span>
+</div>
+
+<div style="font-family:'Work Sans',system-ui,sans-serif;color:#1a1a1a;font-size:10.5pt;line-height:1.5">
+
+  <div style="border-bottom:3px solid #1a1a1a;padding-bottom:16px;margin-bottom:22px">
+    <div style="font-size:8.5pt;font-weight:600;letter-spacing:0.18em;color:#00803b">RYP GOLF · ENGINEERING HANDOFF</div>
+    <h1 style="font-size:31pt;font-weight:900;letter-spacing:-0.025em;line-height:1.02;margin-top:9px">FORGE Build Specification</h1>
+    <p style="font-size:12pt;line-height:1.45;color:#3d3d3d;margin-top:11px;max-width:44em">Every constant, rule, and state transition needed to rebuild FORGE against a real backend. The HTML prototype is the visual reference; this document is the contract. Where the two disagree, this document wins.</p>
+  </div>
+
+  <div style="background:#f4f4f2;border-left:3px solid #00803b;padding:15px 18px;margin-bottom:26px" class="kt">
+    <div style="font-size:8.5pt;font-weight:700;letter-spacing:0.14em;color:#00803b">READ THIS FIRST</div>
+    <p style="font-size:10pt;line-height:1.5;margin-top:7px">Four rules that are load-bearing and easy to violate by accident:</p>
+    <ol style="font-size:10pt;line-height:1.55;margin-top:8px;padding-left:20px">
+      <li><strong>The composite index is derived, never stored.</strong> Persist facet indices only; recompute the composite on read. Two copies will drift.</li>
+      <li><strong>An incomplete drill never becomes a headline number.</strong> Completeness is defined <em>per drill</em> (§3.4) — 20 shots for the shot-count drills, 18 holes played for Putt 18. Never hard-code 20. Incomplete results are stored, flagged provisional, and excluded from the current picture.</li>
+      <li><strong>Lower is better, everywhere.</strong> Indices are handicap-scaled. Negative values print with a leading <code>+</code> (golf convention) — <code>-2.4</code> displays as <code>+2.4</code>.</li>
+      <li><strong>Every assignment carries a <code>source</code>.</strong> <code>coach</code> beats <code>player</code> beats <code>auto</code>. This one field drives inert stations, coach visibility, and what the app may reshuffle.</li>
+    </ol>
+  </div>
+
+  <h2 style="font-size:17pt;font-weight:900;letter-spacing:-0.01em;border-bottom:2px solid #1a1a1a;padding-bottom:6px;margin-bottom:14px">1 · Data model</h2>
+
+  <p style="margin-bottom:14px">Postgres. Every table is row-level-security scoped: a player reads only their own rows; a coach reads rows for players in a coaching relationship with them. No table is world-readable.</p>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">players</h3>
+  <table style="font-size:9.5pt;margin-bottom:16px" class="kt">
+    <thead><tr style="border-bottom:1.5px solid #1a1a1a"><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">FIELD</th><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">TYPE</th><th style="padding:6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">NOTES</th></tr></thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>id</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">uuid</td><td style="padding:6px 0">Matches auth user id.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>name</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">text</td><td style="padding:6px 0">Display name. Initials derived, not stored.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>gender</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">enum m·f</td><td style="padding:6px 0">Selects the carry→handicap table and the slider floor.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>usga_handicap</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">numeric</td><td style="padding:6px 0">Self-reported. Re-asked weekly; see §3.6.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>usga_updated_at</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">timestamptz</td><td style="padding:6px 0">Drives the check-in prompt. Snooze writes <code>now − 5 days</code>.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>avg_carry_yds</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">int</td><td style="padding:6px 0">Honest average driver carry. Feeds the driving baseline.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>target_handicap</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">numeric</td><td style="padding:6px 0">The goal, not the current state. Range per §2.6.</td></tr>
+      <tr><td style="padding:6px 10px 6px 0"><code>rungs</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">jsonb</td><td style="padding:6px 0">Current level per facet, 0-indexed: <code>{driving:1, approach:1, chipping:1, putting:0}</code>. Displayed as L1–L4.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">sessions</h3>
+  <p style="font-size:10pt;margin-bottom:8px">One row per range visit. A session may score any subset of the four facets.</p>
+  <table style="font-size:9.5pt;margin-bottom:16px" class="kt">
+    <thead><tr style="border-bottom:1.5px solid #1a1a1a"><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">FIELD</th><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">TYPE</th><th style="padding:6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">NOTES</th></tr></thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>id</code> · <code>player_id</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">uuid</td><td style="padding:6px 0"></td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>played_on</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">date</td><td style="padding:6px 0">Local date at the range, not UTC. Sorted descending everywhere.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>started_at</code> · <code>completed_at</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">timestamptz</td><td style="padding:6px 0"><code>completed_at</code> null = live session, eligible for resume.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>seed</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">int</td><td style="padding:6px 0">Drives all generated content (Putt 18 holes, lag distances, called shapes). Must persist — regenerating with a new seed changes the test mid-session.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>assignment_id</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">uuid null</td><td style="padding:6px 0">Set when the session was started from assigned work.</td></tr>
+      <tr><td style="padding:6px 10px 6px 0"><code>notes</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">text</td><td style="padding:6px 0">Player's own note. Distinct from <code>coach_notes</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">session_facets</h3>
+  <p style="font-size:10pt;margin-bottom:8px">One row per facet scored in a session. This is the layer the trends and the ladder read.</p>
+  <table style="font-size:9.5pt;margin-bottom:16px" class="kt">
+    <thead><tr style="border-bottom:1.5px solid #1a1a1a"><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">FIELD</th><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">TYPE</th><th style="padding:6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">NOTES</th></tr></thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>session_id</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">uuid</td><td style="padding:6px 0"></td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>facet</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">enum</td><td style="padding:6px 0"><code>driving · approach · chipping · putting</code>. Note <code>chipping</code> is the stored key; <strong>ATG</strong> is the display name.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>mode</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">text null</td><td style="padding:6px 0">Per §2.5. Null for driving.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>level</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">int 0–3</td><td style="padding:6px 0"><strong>The level as played.</strong> Never restated when the player promotes — historic sessions keep the level they were scored at, or every trend lies.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>index_value</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">numeric</td><td style="padding:6px 0">Handicap-scaled result. Clamped −6…40, one decimal.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>shot_count</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">int</td><td style="padding:6px 0">Shots actually logged. The completeness test is <strong>per drill</strong> — see §3.4. Do not hard-code 20.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>holes_played</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">int null</td><td style="padding:6px 0">Putt 18 only, 0–18. This — not <code>shot_count</code> — is Putt 18's completeness test.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>is_complete</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">bool</td><td style="padding:6px 0">Computed on write per §3.4. Every consumer reads this flag rather than re-deriving a threshold.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>raw_total</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">int</td><td style="padding:6px 0">Sum of shot values before scaling. Kept for audit.</td></tr>
+      <tr><td style="padding:6px 10px 6px 0"><code>meta</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">jsonb</td><td style="padding:6px 0">Facet-specific: ATG target distances, driving fairway/bad counts, Putt 18 completion, stroke-test tallies.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">shots <span style="font-size:9pt;font-weight:600;color:#00803b">— new; does not exist in the prototype</span></h3>
+  <p style="font-size:10pt;margin-bottom:8px">One row per ball struck, for the <strong>20-shot drills</strong> — driving, approach, ATG, makeables, lag, stroke test. Putt 18 stores per <em>hole</em> instead; see <code>putt18_holes</code> below. The prototype discards all of this at save, which blocks every analytics feature. Store it from day one — the volume is trivial and backfill is impossible.</p>
+  <table style="font-size:9.5pt;margin-bottom:16px" class="kt">
+    <thead><tr style="border-bottom:1.5px solid #1a1a1a"><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">FIELD</th><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">TYPE</th><th style="padding:6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">NOTES</th></tr></thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>session_facet_id</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">uuid</td><td style="padding:6px 0"></td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>shot_index</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">int 0–19</td><td style="padding:6px 0">Order struck. Unique per facet row.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>outcome_value</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">int</td><td style="padding:6px 0">The scoring value: −2…+3 for scored facets, 0–4 for driving columns.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>shape_call</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">enum null</td><td style="padding:6px 0"><code>D</code> draw · <code>F</code> fade · <code>W</code> wind. Set when the shot was called; null otherwise.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>target_yds</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">int null</td><td style="padding:6px 0">Approach/ATG target distance for this shot, when known.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>proximity</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">numeric null</td><td style="padding:6px 0">Feet or % of distance. Null when head-scored.</td></tr>
+      <tr><td style="padding:6px 10px 6px 0"><code>entry_method</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">enum</td><td style="padding:6px 0"><code>shot_by_shot · tally · abacus · photo · monitor</code>. A tallied facet writes 20 synthetic rows with this set to <code>tally</code> — analytics must be able to exclude them.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">putt18_holes <span style="font-size:9pt;font-weight:600;color:#00803b">— new; Putt 18 is the Putting Index (§7.2)</span></h3>
+  <p style="font-size:10pt;margin-bottom:8px">One row per hole of a Putt 18 round. Putt 18 does not fit the <code>shots</code> shape: it is 18 holes of variable putt count, distances are in <strong>feet</strong> not yards, and each hole carries an expected-putts figure. The per-hole grain is also what §7.4's correlation work reads, so the aggregate in <code>outcomes</code> is not sufficient on its own.</p>
+  <table style="font-size:9.5pt;margin-bottom:16px" class="kt">
+    <thead><tr style="border-bottom:1.5px solid #1a1a1a"><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">FIELD</th><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">TYPE</th><th style="padding:6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">NOTES</th></tr></thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>session_facet_id</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">uuid</td><td style="padding:6px 0">The putting facet row for this session.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>hole_index</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">int 0–17</td><td style="padding:6px 0">Unique per facet row. 18 rows = complete (§3.4).</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>distance_ft</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">numeric</td><td style="padding:6px 0"><strong>Feet</strong>, 3–50, generated from the session seed across the five bands in §2.5.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>putts</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">int</td><td style="padding:6px 0">Actual putts holed out on this hole.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>expected_putts</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">numeric</td><td style="padding:6px 0">Stored, not recomputed on read — <code>0.60 + 0.46 × ln(max(d,2))</code> at the time of play, so a future change to the curve cannot silently rewrite history.</td></tr>
+      <tr><td style="padding:6px 10px 6px 0"><code>sg</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">numeric</td><td style="padding:6px 0"><code>expected_putts − putts</code>. The round total feeds the Putting Index via §7.2's calibration.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">assignments</h3>
+  <table style="font-size:9.5pt;margin-bottom:16px" class="kt">
+    <thead><tr style="border-bottom:1.5px solid #1a1a1a"><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">FIELD</th><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">TYPE</th><th style="padding:6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">NOTES</th></tr></thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>source</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">enum</td><td style="padding:6px 0"><strong><code>coach</code> · <code>player</code> · <code>auto</code>.</strong> Precedence in that order. See §5.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>created_by</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">uuid null</td><td style="padding:6px 0">Coach id when <code>source = coach</code>. Null for auto.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>facet</code> · <code>mode</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">—</td><td style="padding:6px 0">What to run. <strong>There is no <code>level</code> field</strong> — level is owned by the ladder, never by the assignment. See §5.5.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>cadence</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">enum</td><td style="padding:6px 0"><code>day</code> every block · <code>week</code> once this week · <code>once</code> single occurrence.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>note</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">text</td><td style="padding:6px 0">Shown verbatim to the player.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>expires_on</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">date null</td><td style="padding:6px 0">Per §5.3. Never delete on completion — expire, so history survives.</td></tr>
+      <tr><td style="padding:6px 10px 6px 0"><code>completed_at</code></td><td style="padding:6px 10px 6px 0;color:#5a5a5a">timestamptz null</td><td style="padding:6px 0">Set when a qualifying session lands, not when the player taps something.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">schedules · coach_notes · coach_players</h3>
+  <ul style="font-size:10pt;line-height:1.55;padding-left:20px;margin-bottom:8px">
+    <li><code>schedules</code> — one row per player. <code>blocks_per_week</code> int 1–7, <code>pinned_facet</code> enum null, <code>pinned_until</code> date null. Session length is <strong>always 30 minutes</strong> and is not stored.</li>
+    <li><code>coach_notes</code> — <code>player_id</code>, <code>coach_id</code>, <code>body</code>, <code>created_at</code>. Append-only; never edit in place. Not visible to the player in v1.</li>
+    <li><code>coach_players</code> — the relationship table RLS reads. <code>coach_id</code>, <code>player_id</code>, <code>status</code>, <code>invited_at</code>, <code>accepted_at</code>.</li>
+  </ul>
+
+  <h2 style="font-size:17pt;font-weight:900;letter-spacing:-0.01em;border-bottom:2px solid #1a1a1a;padding-bottom:6px;margin:26px 0 14px;break-before:page">2 · Scoring engine</h2>
+
+  <p style="margin-bottom:14px">This section is exhaustive by design. A wrong slope produces plausible-but-wrong indices, which is the worst available failure mode — it is not visible in QA and it silently misdirects a player's practice for months. Copy the numbers; do not re-derive them.</p>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">2.1 Facet weights</h3>
+  <p style="font-size:10pt;margin-bottom:8px">Used for the composite. Weights of <em>scored</em> facets are renormalised — a session that skipped putting is not penalised for it.</p>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:16px" class="kt">
+    <div style="border:1px solid #d4d4d4;padding:11px 13px"><div style="font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">DRIVING</div><div style="font-size:19pt;font-weight:900;margin-top:3px">0.30</div></div>
+    <div style="border:1px solid #d4d4d4;padding:11px 13px"><div style="font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">APPROACH</div><div style="font-size:19pt;font-weight:900;margin-top:3px">0.35</div></div>
+    <div style="border:1px solid #d4d4d4;padding:11px 13px"><div style="font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">ATG</div><div style="font-size:19pt;font-weight:900;margin-top:3px">0.15</div></div>
+    <div style="border:1px solid #d4d4d4;padding:11px 13px"><div style="font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">PUTTING</div><div style="font-size:19pt;font-weight:900;margin-top:3px">0.20</div></div>
+  </div>
+
+  <div style="background:#1a1a1a;color:#f4f4f2;padding:15px 18px;font-family:'IBM Plex Mono',monospace;font-size:9pt;line-height:1.65;margin-bottom:16px" class="kt">
+    composite(facets) =<br />
+    &nbsp;&nbsp;W = Σ weight[f] for each f with a non-null index<br />
+    &nbsp;&nbsp;T = Σ weight[f] × index[f]<br />
+    &nbsp;&nbsp;return W &gt; 0 ? round(T / W, 1) : null
+  </div>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">2.2 Scored drills — approach, ATG, makeables</h3>
+  <p style="font-size:10pt;margin-bottom:8px">All three share one formula. Each shot yields a value from its level's option set; the values are summed, scaled to a full 20 shots, and mapped onto the handicap scale by the facet's base and slope.</p>
+  <div style="background:#1a1a1a;color:#f4f4f2;padding:15px 18px;font-family:'IBM Plex Mono',monospace;font-size:9pt;line-height:1.65;margin-bottom:14px" class="kt">
+    total = Σ shot_values × (20 / shots_logged)<br />
+    index = clamp(base[level] + total × slope, −6, 40) rounded to 1 dp<br />
+    <span style="color:#8fd6ac">// fewer than 5 shots logged ⇒ index is null, not 0</span>
+  </div>
+  <table style="font-size:9.5pt;margin-bottom:16px" class="kt">
+    <thead><tr style="border-bottom:1.5px solid #1a1a1a"><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">FACET</th><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">BASE · L1–L4</th><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">SLOPE</th><th style="padding:6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">SHOTS</th></tr></thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><strong>Approach</strong></td><td style="padding:6px 10px 6px 0"><code>[20, 12, 5, 0]</code></td><td style="padding:6px 10px 6px 0"><code>0.6</code></td><td style="padding:6px 0">20</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><strong>ATG</strong> <span style="color:#7a7a7a">(chipping)</span></td><td style="padding:6px 10px 6px 0"><code>[20, 12, 5, 0]</code></td><td style="padding:6px 10px 6px 0"><code>0.6</code></td><td style="padding:6px 0">20</td></tr>
+      <tr><td style="padding:6px 10px 6px 0"><strong>Makeables</strong> <span style="color:#7a7a7a">(putting predictor)</span></td><td style="padding:6px 10px 6px 0"><code>[8, 4, 1, −1]</code></td><td style="padding:6px 10px 6px 0"><code>0.9</code></td><td style="padding:6px 0">20</td></tr>
+    </tbody>
+  </table>
+  <div style="background:#f4f4f2;border-left:3px solid #00803b;padding:12px 15px;font-size:10pt;line-height:1.5;margin-bottom:16px" class="kt"><strong>Putting is different — the Putting Index is Putt 18, not Makeables.</strong> The formula above produces the <em>Makeables</em> score, which is a predictor, not the Index. See §7 for the outcome/predictor split and how the Putting Index is computed.</div>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">2.3 Driving</h3>
+  <p style="font-size:10pt;margin-bottom:8px">Driving does not use base/slope. It anchors on a distance-derived baseline handicap and adjusts by fairways hit against bad misses, where a bad miss costs double a fairway.</p>
+  <div style="background:#1a1a1a;color:#f4f4f2;padding:15px 18px;font-family:'IBM Plex Mono',monospace;font-size:9pt;line-height:1.65;margin-bottom:14px" class="kt">
+    fairways = count(value == 2)&nbsp;&nbsp;<span style="color:#8fd6ac">// centre column</span><br />
+    bad&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= count(value == 0)&nbsp;&nbsp;<span style="color:#8fd6ac">// see the asymmetry note below</span><br />
+    scale&nbsp;&nbsp;&nbsp;= 20 / shots_logged<br />
+    adj&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= (fairways − bad × 2) × scale<br />
+    index&nbsp;&nbsp;&nbsp;= clamp(baseline_hcp + (8 − adj), −6, 40)
+  </div>
+  <div style="background:#fdf3f3;border-left:3px solid #a51d1d;padding:12px 15px;font-size:10pt;line-height:1.5;margin-bottom:12px" class="kt"><strong>Asymmetry — prototype bug, decide before building.</strong> The formula above reproduces the prototype exactly: only column <code>0</code> (bad left) counts as a bad miss. Column <code>4</code> (bad right) is scored as neutral, so a right-side blow-up costs nothing. The <code>0 or 4</code> form <em>does</em> appear in the driving summary tiles, which is why the displayed "bad misses" count disagrees with the index. This is almost certainly unintended: <strong>the intended behaviour is symmetric</strong> — <code>bad = count(value == 0 or value == 4)</code>. Build it symmetric, and treat any prototype driving index as non-comparable.</div>
+  <p style="font-size:10pt;margin-bottom:8px">Columns are 0–4 left to right: <code>0</code> big miss left, <code>1</code> small miss left, <code>2</code> fairway, <code>3</code> small miss right, <code>4</code> big miss right. Small misses are <strong>neutral by design</strong> — they neither help nor hurt.</p>
+  <div style="background:#f4f4f2;border-left:3px solid #00803b;padding:12px 15px;margin-bottom:14px" class="kt">
+    <div style="font-size:8.5pt;font-weight:700;letter-spacing:0.14em;color:#00803b">DRIVING HAS ONE FIXED CORRIDOR — NO LEVELS, NO LADDER</div>
+    <p style="font-size:10pt;line-height:1.5;margin-top:7px">The corridor is the same for every player at every standard, so driving indices are directly comparable and driving is exempt from §4 entirely. Its <code>level</code> is always 0 and no promotion or demotion applies.</p>
+    <table style="font-size:9.5pt;margin-top:9px">
+      <tbody>
+        <tr style="border-bottom:1px solid #dcdcd8"><td style="padding:6px 12px 6px 0;width:130px"><strong>Fairway</strong></td><td style="padding:6px 0">30 yards wide — 15 yards either side of the target line.</td></tr>
+        <tr style="border-bottom:1px solid #dcdcd8"><td style="padding:6px 12px 6px 0"><strong>Small miss</strong></td><td style="padding:6px 0">Outside the fairway but within 15 yards of its edge — so 15 to 30 yards off line.</td></tr>
+        <tr><td style="padding:6px 12px 6px 0"><strong>Big miss</strong></td><td style="padding:6px 0">More than 15 yards outside the fairway edge — beyond 30 yards off line.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:10pt;margin-bottom:8px"><strong>Baseline handicap from average carry.</strong> First row where <code>carry ≥ threshold</code> wins; below the last threshold the baseline is 30.</p>
+  <table style="font-size:9.5pt;margin-bottom:16px" class="kt">
+    <thead><tr style="border-bottom:1.5px solid #1a1a1a"><th style="padding:6px 8px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">BASELINE HCP</th><th style="padding:6px 8px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">+5</th><th style="padding:6px 8px;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">0</th><th style="padding:6px 8px;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">5</th><th style="padding:6px 8px;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">10</th><th style="padding:6px 8px;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">15</th><th style="padding:6px 8px;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">20</th><th style="padding:6px 8px;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">25</th><th style="padding:6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">30</th></tr></thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 8px 6px 0"><strong>Men</strong> · carry ≥</td><td style="padding:6px 8px 6px 0">310</td><td style="padding:6px 8px">280</td><td style="padding:6px 8px">255</td><td style="padding:6px 8px">235</td><td style="padding:6px 8px">215</td><td style="padding:6px 8px">200</td><td style="padding:6px 8px">185</td><td style="padding:6px 0">below</td></tr>
+      <tr><td style="padding:6px 8px 6px 0"><strong>Women</strong> · carry ≥</td><td style="padding:6px 8px 6px 0">270</td><td style="padding:6px 8px">245</td><td style="padding:6px 8px">225</td><td style="padding:6px 8px">205</td><td style="padding:6px 8px">190</td><td style="padding:6px 8px">175</td><td style="padding:6px 8px">160</td><td style="padding:6px 0">below</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">2.4 Shot option sets</h3>
+  <p style="font-size:10pt;margin-bottom:10px">The complete value tables. <code>v</code> is what enters the sum. These four rows per facet are the level definitions — they are the product.</p>
+
+  <div style="border:1px solid #d4d4d4;margin-bottom:12px" class="kt">
+    <div style="background:#f4f4f2;border-bottom:1px solid #d4d4d4;padding:8px 13px;font-size:9pt;font-weight:700;letter-spacing:0.1em">APPROACH · proximity as % of shot distance</div>
+    <table style="font-size:9pt">
+      <tbody>
+        <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:7px 10px 7px 13px;width:34px"><strong>L1</strong></td><td style="padding:7px 10px 7px 0">Inside 10% <span style="color:#00803b;font-weight:600">birdie −1</span> · Inside 20% <span style="color:#5a5a5a;font-weight:600">par 0</span> · Beyond 20% <span style="color:#a51d1d;font-weight:600">bogey +1</span> · Mishit <span style="color:#a51d1d;font-weight:600">+1</span></td></tr>
+        <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:7px 10px 7px 13px"><strong>L2</strong></td><td style="padding:7px 10px 7px 0">Inside 5% <span style="color:#00803b;font-weight:600">eagle −2</span> · Inside 10% <span style="color:#5a5a5a;font-weight:600">par 0</span> · Beyond 10% <span style="color:#a51d1d;font-weight:600">bogey +1</span> · Mishit <span style="color:#a51d1d;font-weight:600">double +2</span></td></tr>
+        <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:7px 10px 7px 13px"><strong>L3</strong></td><td style="padding:7px 10px 7px 0">Inside 5% <span style="color:#00803b;font-weight:600">birdie −1</span> · Inside 10% <span style="color:#5a5a5a;font-weight:600">par 0</span> · Beyond 10% <span style="color:#a51d1d;font-weight:600">double +2</span> · Mishit <span style="color:#a51d1d;font-weight:600">+2</span></td></tr>
+        <tr><td style="padding:7px 10px 7px 13px"><strong>L4</strong></td><td style="padding:7px 10px 7px 0">Inside 5% <span style="color:#00803b;font-weight:600">birdie −1</span> · Inside 10% <span style="color:#5a5a5a;font-weight:600">par 0</span> · Beyond 10% <span style="color:#a51d1d;font-weight:600">triple +3</span> · Mishit <span style="color:#a51d1d;font-weight:600">+3</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="border:1px solid #d4d4d4;margin-bottom:12px" class="kt">
+    <div style="background:#f4f4f2;border-bottom:1px solid #d4d4d4;padding:8px 13px;font-size:9pt;font-weight:700;letter-spacing:0.1em">ATG · proximity in feet</div>
+    <table style="font-size:9pt">
+      <tbody>
+        <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:7px 10px 7px 13px;width:34px"><strong>L1</strong></td><td style="padding:7px 10px 7px 0">Inside 7 ft <span style="color:#00803b;font-weight:600">−1</span> · Inside 15 ft <span style="color:#5a5a5a;font-weight:600">0</span> · Beyond 15 ft <span style="color:#a51d1d;font-weight:600">+1</span> · Miss green or mishit <span style="color:#a51d1d;font-weight:600">+2</span></td></tr>
+        <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:7px 10px 7px 13px"><strong>L2</strong></td><td style="padding:7px 10px 7px 0">Inside 4 ft <span style="color:#00803b;font-weight:600">−1</span> · Inside 7 ft <span style="color:#5a5a5a;font-weight:600">0</span> · Beyond 7 ft <span style="color:#a51d1d;font-weight:600">+1</span> · Miss green or mishit <span style="color:#a51d1d;font-weight:600">+2</span></td></tr>
+        <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:7px 10px 7px 13px"><strong>L3</strong></td><td style="padding:7px 10px 7px 0">Inside 3 ft <span style="color:#00803b;font-weight:600">−1</span> · Inside 6 ft <span style="color:#5a5a5a;font-weight:600">0</span> · Beyond 6 ft <span style="color:#a51d1d;font-weight:600">+1</span> · Miss green or mishit <span style="color:#a51d1d;font-weight:600">+2</span></td></tr>
+        <tr><td style="padding:7px 10px 7px 13px"><strong>L4</strong></td><td style="padding:7px 10px 7px 0">Inside 2 ft <span style="color:#00803b;font-weight:600">−1</span> · Inside 4 ft <span style="color:#5a5a5a;font-weight:600">0</span> · Beyond 4 ft <span style="color:#a51d1d;font-weight:600">+2</span> · Miss green or mishit <span style="color:#a51d1d;font-weight:600">penalty +3</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="border:1px solid #d4d4d4;margin-bottom:16px" class="kt">
+    <div style="background:#f4f4f2;border-bottom:1px solid #d4d4d4;padding:8px 13px;font-size:9pt;font-weight:700;letter-spacing:0.1em">MAKEABLES · one option set, all four levels · <span style="color:#00803b">PREDICTOR, NOT THE PUTTING INDEX</span></div>
+    <table style="font-size:9pt">
+      <tbody>
+        <tr><td style="padding:7px 13px">Made <span style="color:#00803b;font-weight:600">birdie −1</span> · Good speed miss, within a putter past <span style="color:#5a5a5a;font-weight:600">par 0</span> · Short, or long <span style="color:#a51d1d;font-weight:600">bogey +1</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:10pt;margin-bottom:16px">Makeables' levels change the <em>setup</em>, not the values: L1 100° rotation at mixed distance · L2 tighter spread · L3 longer spread · L4 pressure set. The differentiation arrives through <code>base = [8, 4, 1, −1]</code>. This produces the <strong>Makeables score</strong> — a putting predictor (§7.2). The Putting Index comes from Putt 18.</p>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">2.5 Modes</h3>
+  <table style="font-size:9.5pt;margin-bottom:14px" class="kt">
+    <tbody>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0;width:82px"><strong>Driving</strong></td><td style="padding:6px 0"><code>stock</code> · <code>variable</code> — stock is twenty of the player's own shot with no calls; variable calls two draws and two fades at random across the 20. Same scoring either way.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><strong>Approach</strong></td><td style="padding:6px 0"><code>stock</code> · <code>variable</code> — variable adds a D/F/W shape call to each shot.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><strong>ATG</strong></td><td style="padding:6px 0"><code>fairway</code> · <code>rough</code> · <code>bunker</code> — same option set, different lie. Levels track independently per lie.</td></tr>
+      <tr><td style="padding:6px 10px 6px 0"><strong>Putting</strong></td><td style="padding:6px 0"><code>course</code> <strong>Putt 18 — this IS the Putting Index</strong> · <code>makeables</code> (formerly <code>rotation</code>), <code>lag</code>, and <code>stroke</code> are <strong>predictors</strong>: each carries its own score and none of them enters the Index directly. See §7.</td></tr>
+    </tbody>
+  </table>
+  <div style="background:#f4f4f2;border-left:3px solid #00803b;padding:12px 15px;font-size:10pt;line-height:1.5;margin-bottom:16px" class="kt"><strong>Putt 18 and expected putts.</strong> Eighteen holes are generated from the session seed across five distance bands — 3–6, 6–12, 12–20, 20–30, 30–50 ft — with selection weights <code>[5, 5, 4, 3, 3]</code>. Par for the round is the sum of <code>expected_putts(d) = 0.60 + 0.46 × ln(max(d, 2))</code>. Strokes gained per hole is expected minus actual.</div>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">2.6 Handicap scale and display</h3>
+  <ul style="font-size:10pt;line-height:1.6;padding-left:20px;margin-bottom:14px">
+    <li><strong>Range.</strong> Target runs from the gender floor to <strong>30</strong>. The floor is the first entry of the gender's named-level table: <strong>men −5</strong> (PGA Tour), <strong>women −4</strong> (LPGA Tour). It is a continuous scale, not discrete steps. Note the floor comes from the named-level table, <em>not</em> from the carry tables in §2.3 — those map carry to a driving baseline only.</li>
+    <li><strong>Named levels.</strong> Exact handicap values get a label instead of a number. Men: −5 PGA Tour · −4 Korn Ferry · −3 Division I · −2 Division II · −1 Division III · 0 Scratch. Women: −4 LPGA Tour · −3 Epson Tour · −2 Division I · 0 Scratch · 2 Division II · 3 Division III. Any other value renders as "<em>n</em> Handicap".</li>
+    <li><strong>Clamp.</strong> Every index is clamped to −6…40 and rounded to one decimal, on write and on read.</li>
+    <li><strong>Position on the bar.</strong> <code>pos% = clamp((x + 6) / 36 × 100, 0, 100)</code>.</li>
+    <li><strong>Zones.</strong> ELITE floor…0 · LOW 0…5 · MID 5…15 · HIGH 15…30. Upper bound exclusive except the last.</li>
+    <li><strong>Sign.</strong> Negative prints as <code>+</code>: <code>−2.4 → "+2.4"</code>. Values within 0.05 of zero print as <code>0.0</code>, never <code>+0.0</code>.</li>
+    <li><strong>Colour, against target T.</strong> <code>index ≤ T + 0.4</code> green · <code>index ≥ T + 3</code> crimson · otherwise silver. Crimson is reserved for numbers and the primary-leak label; it is never decorative.</li>
+  </ul>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">2.7 The current picture</h3>
+  <p style="font-size:10pt;margin-bottom:8px">"Current" is not "most recent session." Sessions score arbitrary subsets, so each facet independently carries forward its last complete value:</p>
+  <div style="background:#1a1a1a;color:#f4f4f2;padding:15px 18px;font-family:'IBM Plex Mono',monospace;font-size:9pt;line-height:1.65;margin-bottom:12px" class="kt">
+    for each facet:<br />
+    &nbsp;&nbsp;walk sessions newest → oldest<br />
+    &nbsp;&nbsp;take the first with a non-null index AND is_complete&nbsp;&nbsp;<span style="color:#8fd6ac">// §3.4</span><br />
+    &nbsp;&nbsp;record its value and its age (index in the walk)<br />
+    composite = weighted mean of those values<br />
+    <span style="color:#8fd6ac">// trend: recompute the same way over sessions older than the</span><br />
+    <span style="color:#8fd6ac">// newest contributing session. Both sides must resolve</span><br />
+    <span style="color:#8fd6ac">// identically, or the delta compares a session to itself.</span>
+  </div>
+  <p style="font-size:10pt;margin-bottom:16px">Missing facets are never treated as zero. A player who has not putted in a month still shows their last complete putting index, and the composite is renormalised over what exists.</p>
+
+  <h2 style="font-size:17pt;font-weight:900;letter-spacing:-0.01em;border-bottom:2px solid #1a1a1a;padding-bottom:6px;margin:26px 0 14px;break-before:page">3 · Session state machine</h2>
+
+  <p style="margin-bottom:12px">A session is a container the player moves through station by station. In the prototype this logic is spread across the render function and is only fully knowable by reading it; here it is explicit.</p>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:6px">3.1 Lifecycle</h3>
+  <p style="font-size:10pt;margin-bottom:14px"><code>created</code> → <code>in_progress</code> → <code>complete</code>, or <code>abandoned</code>. Created allocates the seed. Complete is reached by explicit finish, never by scoring the last shot — players routinely re-score. Abandoned is set by the stale-session prompt (§3.5), never automatically.</p>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:6px">3.2 Stations</h3>
+  <p style="font-size:10pt;margin-bottom:14px">Four stations in fixed order: driving, approach, ATG, putting. The player may jump to any of them at any time; order is presentation, not a constraint. Each station is independently <code>untouched</code>, <code>partial</code>, or <code>scored</code>. A station may be skipped entirely.</p>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:6px">3.3 Entry methods</h3>
+  <p style="font-size:10pt;margin-bottom:8px">Head-scoring is the default for approach, ATG, and putting: the player hits all twenty, then tallies outcomes. Shot-by-shot is opt-in. Driving defaults to the abacus.</p>
+  <table style="font-size:9.5pt;margin-bottom:14px" class="kt">
+    <tbody>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0;width:118px"><code>tally</code></td><td style="padding:6px 0">Counts per outcome. Must sum to 20 to be complete; over 20 is an error state, under 20 is provisional.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>shot_by_shot</code></td><td style="padding:6px 0">One tap per ball, ordered. The only method that yields real per-shot analytics.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>abacus</code></td><td style="padding:6px 0">Driving: tap one of five columns per ball.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>column_totals</code></td><td style="padding:6px 0">Driving: enter how many balls finished in each of the five piles. <strong>Preferred over tapping</strong> — five numbers instead of twenty taps, and it writes the same 20 synthetic column rows. Sum must equal 20 to be complete.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>photo</code></td><td style="padding:6px 0"><strong>Cut.</strong> Photographing the tray needs vision work to beat typing five numbers, and does not. Removed from the prototype; do not build.</td></tr>
+      <tr><td style="padding:6px 10px 6px 0"><code>monitor</code></td><td style="padding:6px 0">Import a launch-monitor screenshot. <strong>Stubbed — the filename is ignored and values are fabricated.</strong> See §6.4.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:6px">3.4 Completeness and provisional scores</h3>
+  <div style="background:#f4f4f2;border-left:3px solid #00803b;padding:13px 16px;margin-bottom:12px" class="kt">
+    <div style="font-size:8.5pt;font-weight:700;letter-spacing:0.14em;color:#00803b">CANONICAL COMPLETENESS RULE — REFERENCED EVERYWHERE ELSE</div>
+    <p style="font-size:10pt;line-height:1.5;margin-top:7px">Completeness is defined per drill, computed once on write into <code>session_facets.is_complete</code>, and read from that flag by every consumer. <strong>No consumer re-derives a threshold, and nothing hard-codes 20.</strong></p>
+    <table style="font-size:9.5pt;margin-top:9px">
+      <tbody>
+        <tr style="border-bottom:1px solid #dcdcd8"><td style="padding:6px 12px 6px 0;width:186px"><strong>Driving · Approach · ATG · Makeables</strong></td><td style="padding:6px 0"><code>shot_count &gt;= 20</code></td></tr>
+        <tr style="border-bottom:1px solid #dcdcd8"><td style="padding:6px 12px 6px 0"><strong>Putt 18</strong></td><td style="padding:6px 0"><code>holes_played == 18</code> — never a putt count. A round produces roughly 28–40 putts, so a Putt 18 abandoned after six holes can already exceed 20 logged putts; testing <code>shot_count</code> there would publish a bogus Putting Index and satisfy an assignment.</td></tr>
+        <tr style="border-bottom:1px solid #dcdcd8"><td style="padding:6px 12px 6px 0"><strong>Lag</strong></td><td style="padding:6px 0"><code>shot_count &gt;= 20</code></td></tr>
+        <tr><td style="padding:6px 12px 6px 0"><strong>Stroke Test</strong></td><td style="padding:6px 0"><code>shot_count &gt;= 20</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:10pt;margin-bottom:14px">An incomplete result is stored and is visible in the session detail, but is excluded from the current picture, the composite, the trend, the ladder, and assignment completion. It appears as <em>provisional</em> and never as a headline number. Legacy records with no counts are treated as complete unless explicitly flagged.</p>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:6px">3.5 Resume</h3>
+  <p style="font-size:10pt;margin-bottom:8px">Every shot is written through immediately — a dead battery must lose nothing. Three affordances, none of which exist yet:</p>
+  <ol style="font-size:10pt;line-height:1.55;padding-left:20px;margin-bottom:14px">
+    <li><strong>Resume card on Today</strong> when an incomplete session exists, showing which stations are done.</li>
+    <li><strong>Inert skipped stations</strong> — visibly present, tappable, marked as not counted.</li>
+    <li><strong>Stale-session prompt</strong> when an incomplete session is older than 12 hours: resume, or close it out with what was scored.</li>
+  </ol>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:6px">3.6 Mode switching and the weekly check-in</h3>
+  <p style="font-size:10pt;margin-bottom:14px">Switching mode mid-station <strong>discards that station's shots</strong> and starts it clean — the two modes are different tests and their shots cannot be pooled. The UI must say so before it happens. Separately, when <code>usga_updated_at</code> is more than 7 days old, Today shows the handicap check-in; confirming re-bases the target, snoozing writes <code>now − 5 days</code> so it returns in 2.</p>
+
+  <h2 style="font-size:17pt;font-weight:900;letter-spacing:-0.01em;border-bottom:2px solid #1a1a1a;padding-bottom:6px;margin:26px 0 14px">4 · Challenge ladder</h2>
+  <ul style="font-size:10pt;line-height:1.6;padding-left:20px;margin-bottom:12px">
+    <li><strong>Clear</strong> — a session's facet index at or below the target. One clear promotes.</li>
+    <li><strong>Miss</strong> — above it. Three consecutive misses demote.</li>
+    <li>Counters are per facet, and reset on any level change. Provisional facets count as neither.</li>
+    <li>Levels are bounded L1–L4: no promotion above L4, no demotion below L1.</li>
+    <li>Promotion and demotion are <strong>offered, not automatic</strong> — the player confirms. This is deliberate; a silent level change invalidates the comparison they were making.</li>
+    <li>A level change never rewrites history. Past <code>session_facets</code> keep the level they were played at.</li>
+    <li><strong>The ladder is the only thing that sets level.</strong> No coach action, assignment, or admin path may change a player's rung. See §5.5.</li>
+    <li><strong>Driving is exempt.</strong> It has one fixed corridor (§2.3), so it has no level, no rung, and no promotion or demotion. The ladder screen shows it as FIXED.</li>
+  </ul>
+
+  <h2 style="font-size:17pt;font-weight:900;letter-spacing:-0.01em;border-bottom:2px solid #1a1a1a;padding-bottom:6px;margin:26px 0 14px">5 · Assignments, schedule, and ownership</h2>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:6px">5.1 Precedence</h3>
+  <p style="font-size:10pt;margin-bottom:12px"><code>coach</code> &gt; <code>player</code> &gt; <code>auto</code>. A coach assignment cannot be dismissed by the player, only completed or expired. A player's pinned focus fills whatever the coach has not claimed. <code>auto</code> is what the app proposes from the current leak, and is replaced freely by either of the others.</p>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:6px">5.2 Inertness</h3>
+  <p style="font-size:10pt;margin-bottom:12px">When any assignment is outstanding, the other drills stay <strong>tappable but marked inert</strong> — they score and store normally, and they do not satisfy the assignment. This is the anti-scope-creep rule: a player who wanders is never blocked, but is never confused about whether the prescribed work is done.</p>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:6px">5.3 Cadence and expiry</h3>
+  <table style="font-size:9.5pt;margin-bottom:12px" class="kt">
+    <tbody>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0;width:74px"><code>day</code></td><td style="padding:6px 0">Appears every block. Never auto-expires; the coach pulls it.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>week</code></td><td style="padding:6px 0">Satisfied by one qualifying session; expires end of the ISO week.</td></tr>
+      <tr><td style="padding:6px 10px 6px 0"><code>once</code></td><td style="padding:6px 0">Expires on completion.</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:10pt;margin-bottom:12px"><strong>Qualifying session</strong> = matching facet, matching mode if the assignment specifies one, played at the player's current ladder level, and <strong>complete per §3.4</strong>. A provisional score never completes an assignment. Completion is computed from the arriving session, never from a player tapping "done."</p>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:6px">5.5 Level is owned by the ladder, not the coach</h3>
+  <div style="background:#f4f4f2;border-left:3px solid #00803b;padding:12px 15px;font-size:10pt;line-height:1.5;margin-bottom:12px" class="kt"><strong>A coach assigns the drill, never the level.</strong> The coach picks facet, mode, cadence, and note. The level the player runs it at is whatever their ladder has them on for that facet — earned by clearing (§4), lost after three straight misses. The coach console shows each selected player's current level as read-only context so the coach knows what standard they are asking for, and it may differ per player in the same multi-player assignment.</div>
+  <p style="font-size:10pt;margin-bottom:12px">Consequences to build for: an assignment created today may be satisfied at a different level tomorrow if the player promotes in between — that is correct and must not invalidate the assignment. A coach who wants a player working at an easier standard does not lower the assignment; the ladder does that on its own after three misses. No API accepts a coach-supplied level.</p>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:6px">5.4 Player schedule</h3>
+  <p style="font-size:10pt;margin-bottom:12px">A session is <strong>always 30 minutes</strong> — that is the product's fixed unit and is not configurable. The player sets <strong>blocks per week</strong> (1–7), which drives the streak, the nag, and the coach's "behind" flag. They may also pin one facet as a focus for up to two weeks, after which it expires back to <code>auto</code>. The player owns cadence; a coach adds work on top of it but never overrides how often the player has committed to train.</p>
+
+  <h2 style="font-size:17pt;font-weight:900;letter-spacing:-0.01em;border-bottom:2px solid #1a1a1a;padding-bottom:6px;margin:26px 0 14px">6 · API surface and architecture</h2>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:6px">6.1 Endpoints</h3>
+  <table style="font-size:9.5pt;margin-bottom:14px" class="kt">
+    <thead><tr style="border-bottom:1.5px solid #1a1a1a"><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">OPERATION</th><th style="padding:6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">NOTES</th></tr></thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>POST /sessions</code></td><td style="padding:6px 0">Allocates the seed server-side. Returns the full session.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>PATCH /sessions/:id</code></td><td style="padding:6px 0">Upserts facets and shots together, idempotent on <code>(facet, shot_index)</code>. Must tolerate replay from the offline queue.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>POST /sessions/:id/complete</code></td><td style="padding:6px 0">Computes indices server-side, evaluates ladder transitions and assignment completion, returns what changed.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>GET /me/dashboard</code></td><td style="padding:6px 0">Current picture, trend, leak, assignments, schedule, resume state. One call — Today must not fan out.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>PUT /me/schedule</code> · <code>PUT /me/profile</code></td><td style="padding:6px 0">Blocks per week, pinned focus; handicap, carry, target, gender.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>GET /coach/roster</code></td><td style="padding:6px 0">Per player: index, 30-day delta, days since last session, assigned/done, leak, levels. <strong>Server-computed</strong> — the prototype hardcodes these.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><code>GET /coach/players/:id</code></td><td style="padding:6px 0">History, per-facet trends, queue, notes.</td></tr>
+      <tr><td style="padding:6px 10px 6px 0"><code>POST /assignments</code> · <code>DELETE /assignments/:id</code></td><td style="padding:6px 0">Accepts multiple player ids. Delete expires rather than removes.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:6px">6.2 Auth and RLS</h3>
+  <p style="font-size:10pt;margin-bottom:12px">Supabase auth. A player reads and writes only rows where <code>player_id = auth.uid()</code>. A coach reads rows for players joined through an accepted <code>coach_players</code> row, and writes only <code>assignments</code> and <code>coach_notes</code> — <strong>never a player's sessions or shots</strong>. Coaches use a separate web app; the two clients share the API and nothing else.</p>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:6px">6.3 Connectivity — deferred submit, not a sync queue</h3>
+  <div style="background:#f4f4f2;border-left:3px solid #00803b;padding:12px 15px;font-size:10pt;line-height:1.5;margin-bottom:12px" class="kt"><strong>Do not build an offline sync queue.</strong> A scored session is roughly 20 integers per drill — under 2 KB. That transmits on one bar of signal. Offline-first architecture (queued mutations, replay ordering, per-field conflict resolution) is a multi-week build that buys nothing here, and the real failure mode is flaky signal rather than no signal — which a retry handles as well as a queue does.</div>
+  <p style="font-size:10pt;margin-bottom:8px">The required behaviour, in full:</p>
+  <ol style="font-size:10pt;line-height:1.55;padding-left:20px;margin-bottom:12px">
+    <li><strong>Local write-through on every tap.</strong> The live session is written to local storage as it is scored. This — not the network layer — is what protects a player against a dead battery or a closed tab.</li>
+    <li><strong>One submit at completion,</strong> carrying a client-generated idempotency key so a repeated send can never duplicate a session.</li>
+    <li><strong>On failure, keep it local and marked unsent.</strong> Retry quietly on next app open and on network return. The player is never blocked from continuing.</li>
+    <li><strong>One unobtrusive "not saved yet" indicator.</strong> No modal, no spinner, no retry button.</li>
+  </ol>
+  <p style="font-size:10pt;margin-bottom:12px">No queue, no replay ordering, no conflict resolution: a single player scoring a single session on a single device cannot conflict with itself. Revisit only if two devices, or a coach scoring alongside a player, ever write to the same session. Independently of all of the above, the client keeps a <strong>schema version and migrates on read</strong> — the prototype's unversioned <code>localStorage</code> key silently wipes returning users on any shape change.</p>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:6px">6.4 Known stubs to replace</h3>
+  <ul style="font-size:10pt;line-height:1.55;padding-left:20px;margin-bottom:14px">
+    <li><strong>Launch-monitor import</strong> — fabricates values, ignores the file. Needs real parsing per vendor export.</li>
+    <li><strong>Photo tally</strong> — <em>cut, not deferred.</em> Replaced by direct per-column total entry, which is faster and needs no parsing.</li>
+    <li><strong>Coach roster stats</strong> — hardcoded to four seeded player ids; any real player renders as zeros.</li>
+    <li><strong>Teams and leaderboards</strong> — data shapes with no server. Invite, join, and challenge are toasts.</li>
+    <li><strong>Export my data</strong> and <strong>install to home screen</strong> — toasts.</li>
+    <li><strong>Demo seed</strong> — eight fabricated sessions ship as the default state, so a genuinely new user starts with fake history and a fake leak. Must be behind a flag.</li>
+  </ul>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:6px">6.5 Screen map</h3>
+  <table style="font-size:9.5pt;margin-bottom:14px" class="kt">
+    <thead><tr style="border-bottom:1.5px solid #1a1a1a"><th style="padding:6px 10px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">SCREEN</th><th style="padding:6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">READS</th></tr></thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><strong>Today</strong></td><td style="padding:6px 0">Composite + trend, per-facet rows against target, primary leak, assignments, resume state, weekly check-in.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><strong>Ladder</strong></td><td style="padding:6px 0">Per facet: level, spec, last six results as pips, streak state, promote/demote offer.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><strong>Drills</strong></td><td style="padding:6px 0">Six drills across four facets, current level each, inert flags from outstanding assignments.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><strong>Session wizard</strong></td><td style="padding:6px 0">Station state, mode, level spec, option set, pips, tally, seed-generated content.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><strong>Stats</strong></td><td style="padding:6px 0">Facet trend lines, dispersion, distributions vs target, per-mode and per-distance splits.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:6px 10px 6px 0"><strong>Team</strong></td><td style="padding:6px 0">Leaderboards. Stubbed.</td></tr>
+      <tr><td style="padding:6px 10px 6px 0"><strong>You</strong> · <strong>Coach</strong></td><td style="padding:6px 0">Profile, target slider, schedule; roster board and assignment builder.</td></tr>
+    </tbody>
+  </table>
+
+  <h2 style="font-size:17pt;font-weight:900;letter-spacing:-0.01em;border-bottom:2px solid #1a1a1a;padding-bottom:6px;margin:26px 0 14px;break-before:page">7 · Outcomes, predictors, and learning readiness</h2>
+
+  <p style="margin-bottom:14px">This section is what lets the product eventually answer <em>does this drill actually improve your scoring?</em> — without building any machine learning in v1. It requires a structural distinction the prototype does not currently make.</p>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">7.1 The distinction</h3>
+  <table style="font-size:9.5pt;margin-bottom:14px" class="kt">
+    <tbody>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:7px 12px 7px 0;width:92px"><strong>Outcome</strong></td><td style="padding:7px 0">A drill that measures performance worth caring about for its own sake, under conditions resembling play. It <strong>is</strong> the facet's Index. One per facet.</td></tr>
+      <tr><td style="padding:7px 12px 7px 0"><strong>Predictor</strong></td><td style="padding:7px 0">A drill that measures a <em>mechanism</em> believed to move the outcome. Carries its own score. Never enters the Index. Its claim to matter is testable, and the point of the data model is to test it.</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:10pt;margin-bottom:14px">Putting is the first facet built this way. The same pattern is intended for the other three over time — each gains one outcome drill and a set of predictors — but <strong>do not restructure driving, approach, or ATG in v1</strong>. They keep their current single-index behaviour until there is a designed outcome drill for each.</p>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">7.2 Putting, restructured</h3>
+  <p style="font-size:10pt;margin-bottom:10px"><strong>Putting Index = Putt 18.</strong> Eighteen generated holes, scored against expected putts (§2.5). This is the outcome: a simulated round, which is the thing a player is actually trying to improve. It replaces Makeables as the Index.</p>
+  <p style="font-size:10pt;margin-bottom:10px">The three predictors, with their <strong>population weights</strong> — hand-set from coaching judgment, used from day one, requiring no data:</p>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px" class="kt">
+    <div style="border:1px solid #d4d4d4;padding:12px 14px">
+      <div style="font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">MAKEABLES</div>
+      <div style="font-size:23pt;font-weight:900;margin-top:2px;color:#00803b">50%</div>
+      <div style="font-size:9pt;line-height:1.4;color:#3d3d3d;margin-top:5px">Make rate at scoring distance. The 100° rotation drill, renamed.</div>
+    </div>
+    <div style="border:1px solid #d4d4d4;padding:12px 14px">
+      <div style="font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">LAG</div>
+      <div style="font-size:23pt;font-weight:900;margin-top:2px;color:#00803b">30%</div>
+      <div style="font-size:9pt;line-height:1.4;color:#3d3d3d;margin-top:5px">Distance control from long range. Three-putt avoidance.</div>
+    </div>
+    <div style="border:1px solid #d4d4d4;padding:12px 14px">
+      <div style="font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">STROKE TEST</div>
+      <div style="font-size:23pt;font-weight:900;margin-top:2px;color:#00803b">20%</div>
+      <div style="font-size:9pt;line-height:1.4;color:#3d3d3d;margin-top:5px">Start-line quality through the gate. The most mechanical, least predictive.</div>
+    </div>
+  </div>
+  <p style="font-size:10pt;margin-bottom:14px">These weights drive <strong>assignment suggestion</strong>: the predictor with the worst standardised score, weighted, is what the app proposes working on. They are a prior, not a truth — §7.4 replaces them per player once there is evidence. Note these are a <em>different</em> weight system from the composite facet weights in §2.1 and must not be conflated: §2.1 weights combine facets into one index; §7.2 weights rank predictors within one facet.</p>
+  <div style="background:#fdf3f3;border-left:3px solid #a51d1d;padding:12px 15px;font-size:10pt;line-height:1.5;margin-bottom:14px" class="kt"><strong>Needs calibration before build.</strong> Putt 18 produces strokes gained against expected putts for a round; the Putting Index must be on the −6…40 handicap scale like every other facet. The mapping is <code>index = putting_base − sg_total × k</code>. Neither <code>putting_base</code> nor <code>k</code> is derivable from the prototype — they must be set against known reference rounds (a scratch player's Putt 18, a 20-handicap's) before any index is published. Do not ship a guessed constant.</div>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">7.3 What must be logged — the only expensive mistake</h3>
+  <p style="font-size:10pt;margin-bottom:8px">Learning later needs exactly three things, and all three are cheap now and unrecoverable in hindsight:</p>
+  <ol style="font-size:10pt;line-height:1.55;padding-left:20px;margin-bottom:12px">
+    <li><strong>Exposure</strong> — which drill was run, when, and how much. Every predictor must be a first-class <code>session_facets</code> row with its own timestamp. Lag and Stroke Test are currently stored as loose <code>extras</code> blobs; that ends.</li>
+    <li><strong>Outcome</strong> — Putt 18 scores, repeated over time, in their own <code>outcomes</code> rows: <code>player_id</code>, <code>measured_on</code>, <code>kind</code> (<code>putt18</code> · later <code>round_score</code> · <code>usga_handicap</code>), <code>value</code>, <code>session_id</code> null.</li>
+    <li><strong>Time alignment</strong> — nothing more than honest timestamps on both, so the question "did work in the last N weeks move this week's number" is answerable by a query.</li>
+  </ol>
+  <div style="background:#f4f4f2;border-left:3px solid #00803b;padding:12px 15px;font-size:10pt;line-height:1.5;margin-bottom:14px" class="kt"><strong>Store predictor results as numbers, never as display strings.</strong> Stroke test writes <code>on_line_pct 0.87</code>, not <code>"13 of 20 on line"</code>. Lag writes <code>avg_proximity_ft 3.4</code>. Makeables writes make rate per distance band. The prototype renders these to text and discards the value — every one of them is a model feature and belongs in a typed column.</div>
+
+  <h3 style="font-size:12pt;font-weight:700;margin-bottom:7px">7.4 What v1 ships, and what v2 earns</h3>
+  <table style="font-size:9.5pt;margin-bottom:14px" class="kt">
+    <thead><tr style="border-bottom:1.5px solid #1a1a1a"><th style="padding:6px 12px 6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">V1 — NO ML</th><th style="padding:6px 0;font-size:8pt;font-weight:700;letter-spacing:0.1em;color:#5a5a5a">V2 — ONCE DATA EXISTS</th></tr></thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:7px 12px 7px 0">Population weights above drive suggestions.</td><td style="padding:7px 0">Per-player weights fitted from that player's own history.</td></tr>
+      <tr style="border-bottom:1px solid #e4e4e4"><td style="padding:7px 12px 7px 0">A correlation readout per predictor against Putt 18, shown only at <strong>n ≥ 6</strong> outcomes, with the sample size and an explicit "this is a correlation, not proof" caveat. Plain Pearson — roughly fifty lines.</td><td style="padding:7px 0">Lagged effects — practice in week N against outcome in week N+1, N+2 — and partial correlations that separate overlapping predictors.</td></tr>
+      <tr><td style="padding:7px 12px 7px 0">Every suggestion written to a <code>suggestions</code> row with the reason it was made and whether the player acted on it.</td><td style="padding:7px 0">Did following the suggestion actually help? Answerable only because v1 logged the suggestion and the compliance.</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:10pt;margin-bottom:14px">The sentence this architecture eventually earns — <em>"your start line is fine, stop drilling it; your lag is what is costing you on the greens"</em> — currently exists in the prototype as a hardcoded string. With this structure it becomes a true statement about that player.</p>
+
+  <div style="border-top:3px solid #1a1a1a;margin-top:24px;padding-top:14px" class="kt">
+    <div style="font-size:8.5pt;font-weight:700;letter-spacing:0.14em;color:#5a5a5a">SETTLED SCOPE DECISIONS</div>
+    <div style="margin-top:10px;padding:12px 15px;background:#f4f4f2;border-left:3px solid #00803b;font-size:10pt;line-height:1.55">
+      <div style="font-weight:700;margin-bottom:5px">Launch-monitor import — out of v1. Manual entry only.</div>
+      <p style="margin-bottom:8px">Driving and approach shots are entered by hand: carry and offline for driving, pin distance and proximity for approach. No screenshot OCR, no vendor CSV parsers.</p>
+      <p style="margin-bottom:8px"><strong>Why not OCR:</strong> every monitor app has its own layout that changes with app updates, so each device is a separately-maintained template that breaks silently. Monitor summary screens show averages, not per-shot rows — and the index depends on shot-level dispersion, so averages cannot produce an honest number. A misread digit corrupts a handicap, which forces a confirm-every-value review screen and erases most of the time saved.</p>
+      <p style="margin-bottom:8px"><strong>Why not CSV yet:</strong> the parser work is small (2–3 days per small set of vendors) but each one needs a real sample export to test against, and approach still requires a hand-entered pin distance regardless — carry alone never yields proximity.</p>
+      <p style="margin:0"><strong>Consequence:</strong> the shot schema stays the single source of truth for all four facets. CSV import, if it is ever earned, writes into that same schema and touches no scoring code.</p>
+    </div>
+  </div>
+
+  <div style="border-top:3px solid #1a1a1a;margin-top:20px;padding-top:14px" class="kt">
+    <div style="font-size:8.5pt;font-weight:700;letter-spacing:0.14em;color:#5a5a5a">OPEN DECISIONS</div>
+    <ol style="font-size:10pt;line-height:1.55;margin-top:8px;padding-left:20px">
+      <li>Do provisional sessions count toward the streak and blocks-per-week, or only complete ones?</li>
+      <li>Can a coach see a player's self-set assignments and pinned focus? Assumed yes, read-only.</li>
+      <li>Does ATG track levels per lie independently, or one level across all three? Assumed per lie.</li>
+      <li>Team leaderboards: scoped to a coach's roster, a club, or open field?</li>
+      <li><strong>Putt 18 calibration</strong> — <code>putting_base</code> and <code>k</code> per §7.2. Needs reference rounds, not a guess.</li>
+      <li>Does a predictor score have levels and a ladder of its own, or only the outcome drill?</li>
+    </ol>
+  </div>
+
+</div>
+</doc-page>
+
+</x-dc>
+</body>
+</html>

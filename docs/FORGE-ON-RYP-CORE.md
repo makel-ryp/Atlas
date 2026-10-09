@@ -69,7 +69,7 @@ the rule. See §3.
 | `session_facets` | One row per facet scored, `index_value` clamped −6…40, `is_complete` computed on write | **New `golf.facet_scores`.** `index_value` → `practice_index` (`golf` already owns "index" for handicaps). |
 | `shots` | One row per ball struck. *"Store it from day one — the volume is trivial and backfill is impossible."* | **New `golf.range_shots`.** The bare name `golf.shots` is reserved for RYP-RED's on-course ball flight (`golf.ts:9`). |
 | `putt18_holes` | One row per hole, `expected_putts` **stored, not recomputed** | **New `golf.putt18_holes`** — the one Forge table name that survives unchanged. |
-| `assignments` | One per prescription, `source` enum `coach · player · auto`, **no `level` field** | **New `atlas.prescriptions`** — a name three eco files already reserve and none defines. Forge's design is the table Atlas has been missing. Plus an append-only child, `atlas.prescription_completions`. |
+| `assignments` | One per prescription, `source` enum `coach · player · auto`, **no `level` field** | **New `atlas.assignments`** — Luke's name, adopted (Makel, 2026-10-06). Three eco files had reserved `prescriptions` for this table and none defined it; they are repointed in the same change. Forge's design is the table Atlas has been missing. Plus an append-only child, `atlas.assignment_completions`. ⚠️ The table name is not UI copy: the player-facing string stays *"PRESCRIBED BY YOUR COACH"* and the coach UI stays *"ASSIGN WORK"*. |
 | `schedules` | One per player, `blocks_per_week` 1–7, session length always 30 min and not stored | **New `golf.practice_commitment`.** Not `golf.schedules` — a bare "schedules" in a schema Locker Room reads means lesson bookings. |
 | `coach_notes` | `player_id`, `coach_id`, `body`, `created_at`. Append-only; *"not visible to the player in v1"* | **Collapses into `atlas.coaching_notes`**, with `source_app = 'forge'`. Append-only is enforced by a withheld UPDATE grant; player-invisibility by a withheld `visibility` column grant. |
 | `coach_players` | *"the relationship table RLS reads"* | **NOT BUILT.** `public.user_relationships` is it, read only through `app_private.coaches()`. |
@@ -82,6 +82,44 @@ the rule. See §3.
 > it, and settle whether a Putt 18 score lives in `facet_scores`, in `outcomes`, or in one with the
 > other derived. **Two copies will drift** — §1's own first rule.
 
+### §2.3 — Baseline handicap from average carry *(amended, Makel, 2026-10-06)*
+
+🔴 **This is a spec amendment carrying Makel's sign-off, not a bugfix.** The Build Spec declares
+itself the contract; this overrides it in one named place and leaves every number in §2.3 alone.
+
+| §2.3 clause | Replacement |
+| --- | --- |
+| *"First row where `carry ≥ threshold` wins; below the last threshold the baseline is 30."* — a **step table**. | **Linear interpolation between adjacent rows**, which is what `forge-math.js` (`baselineHandicap`) and the prototype's `baseHcp()` (`FORGE.dc.html:2692`) already do. Above the top row the value clamps (−5 men, −5 women). **The eight anchor pairs for each gender are unchanged** — *"copy the numbers, do not re-derive them"* still holds; only the lookup rule moves. |
+
+**The argument that decided it, and it was checked against the Spec's own table:** under the step
+model **234 yd → 15 and 236 yd → 10**. Two yards of carry, **five handicap strokes**. Every threshold
+in the table is a five-stroke cliff, because the rows are five strokes apart. `drivingIndex` adds
+`baselineHandicap` straight into its result, so a player who corrects a self-reported carry from 234
+to 236 would watch their driving index move five strokes for a difference well inside the honest
+error of *"average driver carry"*. Interpolated, the same two yards read **10.3 and 9.8**.
+
+**Luke's own code comment makes exactly this case** — `forge-math.js`, `baselineHandicap`:
+*"A step table would put 234 and 236 yards a full stroke apart."* It understates its own argument
+fivefold; the table puts them **five** strokes apart.
+
+**Three things change so the three artefacts agree:**
+
+1. **Build Spec §2.3** — step table → linear interpolation (this row).
+2. **`forge-math.js`** — **no change**. It was already right.
+3. **`forge-math.test.js:33`** — the fixture's **input** was wrong, not its expectation. Midway
+   between the 10 anchor (235 yd) and the 5 anchor (255 yd) is **245 yd**, not 225. The input was
+   corrected 225 → 245 and the label with it. Run against `build/forge-math.js`: **57 passed, 0
+   failed** (it was 56 passed, 1 failed).
+
+⚠️ **What this amendment does NOT decide:** the behaviour *below the last populated row*. The module
+treats the table's final `[0, 30]` row as a genuine anchor and interpolates across a 185-yard
+segment (100 yd → 27.3; 184 yd → 25.0), while the Spec's flat 30 starts at 184 yd. Neither is
+defended by the sign-off, which says only *"`forge-math.js` — no change"*. `FORGE-MATH-ADOPTION.md`
+§3 argues for extrapolating the last real segment (reaching 30 at 170 yd men / 145 yd women); that
+remains a **proposal awaiting Makel**, not part of this amendment.
+
+---
+
 ### §6.1 — API surface
 
 The endpoints survive. What changes is the runtime around them and the ownership of two.
@@ -90,12 +128,12 @@ The endpoints survive. What changes is the runtime around them and the ownership
 | --- | --- | --- |
 | `POST /sessions` | *"Allocates the seed server-side. Returns the full session."* | Stands. The row is **inserted here**, not at submit — the seed must be the one the holes were played with. Seed is a column default and is **withheld from the INSERT grant**, so "server-side" is a privilege, not route code. |
 | `PATCH /sessions/:id` | *"Upserts facets and shots together, idempotent on `(facet, shot_index)`. Must tolerate replay from the offline queue."* | Stands. ⚠️ Every write here must be **raw SQL naming only the granted columns** — see §7.1. |
-| `POST /sessions/:id/complete` | *"Computes indices server-side, evaluates ladder transitions and assignment completion, returns what changed."* | Stands, and is the **only** path that may write a rung, a completion or an `auto` prescription — so it is the only path that touches **`forge_svc`**, never `forge_app`. ⚠️ It is also a player-facing handler, which bounds what the role split buys: see §7.1. Replay protection moves here: if the session is already complete and the idempotency key matches, return the stored result and write nothing. |
+| `POST /sessions/:id/complete` | *"Computes indices server-side, evaluates ladder transitions and assignment completion, returns what changed."* | Stands, and is the **only** path that may write a rung, a completion or an `auto` assignment — so it is the only path that touches **`forge_svc`**, never `forge_app`. ⚠️ It is also a player-facing handler, which bounds what the role split buys: see §7.1. Replay protection moves here: if the session is already complete and the idempotency key matches, return the stored result and write nothing. |
 | `GET /me/dashboard` | *"One call — Today must not fan out."* | Stands unchanged. |
 | `PUT /me/schedule` · `PUT /me/profile` | *"Blocks per week, pinned focus; handicap, carry, target, gender."* | Stands. `/me/profile` now writes a row **two apps share** (`golf.player_profile`), so every handicap write must append `golf.handicap_history` in the same transaction. |
 | `GET /coach/roster` | *"Per player: index, 30-day delta, days since last session, assigned/done, leak, levels. Server-computed."* | **No longer a Forge endpoint.** Atlas's coach dashboard owns it (2026-08-24). The roster is `app_private.coaches(u.id)` as the filter — never a `user_relationships` query, which misses the academy path. "Days since last session" is `greatest(max(practice_sessions.session_date), max(range_sessions.played_on))`. |
 | `GET /coach/players/:id` | *"History, per-facet trends, queue, notes."* | **No longer a Forge endpoint**, same reason. "Notes" is a **thread** — `order by created_at desc` — not one string. |
-| `POST /assignments` · `DELETE /assignments/:id` | *"Accepts multiple player ids. Delete expires rather than removes."* | The coach half moves to Atlas. **`DELETE` is not a DELETE**: no role holds a DELETE grant on `atlas.prescriptions`, so the endpoint is an UPDATE setting `revoked_at`. §5.3's *"Never delete on completion — expire, so history survives"* is enforced by privilege. |
+| `POST /assignments` · `DELETE /assignments/:id` | *"Accepts multiple player ids. Delete expires rather than removes."* | The coach half moves to Atlas. **`DELETE` is not a DELETE**: no role holds a DELETE grant on `atlas.assignments`, so the endpoint is an UPDATE setting `revoked_at`. §5.3's *"Never delete on completion — expire, so history survives"* is enforced by privilege. |
 
 **§6.3 (deferred submit) is NOT superseded.** *"Do not build an offline sync queue"*, local
 write-through on every tap, one submit at completion with a client-generated idempotency key, retry
@@ -203,12 +241,14 @@ Four things changed, and each is load-bearing:
 > attribute, so an `rls_bypass() OR …` branch on such a policy means any code on that pool can write
 > any value of the pinned column. Concretely, **these three must not carry it**:
 >
-> - `atlas.prescriptions` INSERT — the branch would let a player write `source='coach'` with any
+> - `atlas.assignments` INSERT — the branch would let a player write `source='coach'` with any
 >   `created_by_user_id` for any subject, which is the exact escalation §7.2 of this document exists
 >   to close.
 > - `atlas.coaching_notes` INSERT **for Forge** — the branch would let a note be filed under another
->   coach's `author_user_id`, or stamped `source_app='atlas'`, which makes it editable by Atlas's
->   PATCH route and defeats append-only.
+>   coach's `author_user_id`, or stamped `source_app='atlas'`. *(Originally also "which makes it
+>   editable by Atlas's PATCH route and defeats append-only" — no longer true: since 2026-10-06 the
+>   whole table is append-only by privilege, for both apps, and the PATCH route refuses with 409.
+>   The author-and-relationship pin still stands on its own.)*
 > - `golf.facet_scores` / `golf.range_shots` INSERT — the branch bypasses the parent-liveness test.
 >
 > Where a privileged write genuinely must happen, it does **not** get a bypass branch on the
@@ -292,9 +332,9 @@ Four things changed, and each is load-bearing:
 | `session_facets` | **NEW** | `golf.facet_scores` | Grain is `(session_id, facet, mode)`. `index_value` → `practice_index`. ⚠️ The launch-monitor import is **stubbed and fabricates values**, so `entry_method = 'monitor'` rows must be refused by CHECK until it is real — do not leave it to every consumer to remember a filter. |
 | `shots` | **NEW** | `golf.range_shots` | Store `option_index` alongside `outcome_value`: the value alone is **lossy** — approach L1 scores both "Beyond 20%" and "Mishit" as `1`, and carry mode pairs every long bucket with its short twin, destroying the long/short bias §7 wants. ⚠️ `outcome_value` carries **two incomparable semantics** — a signed stroke delta for scored facets, a left-to-right **position** (2 = fairway, the best) for driving. Never average it across facets. |
 | `putt18_holes` | **NEW** | `golf.putt18_holes` | `expected_putts` is **withheld from the INSERT grant** and filled by a BEFORE INSERT trigger, with a `curve_version` beside it. Not a GENERATED column: altering a generation expression recomputes every historical row, which is the exact rewrite the Spec forbids. ⚠️ The trigger **will not be emitted by `drizzle-kit generate`**. |
-| `assignments` | **NEW** | `atlas.prescriptions` (+ append-only `atlas.prescription_completions`) | **The escalation trap lives here** — see §7.2. `source='auto'` is **`forge_svc`-only, not "bypass-only"**, and the request-path INSERT policy must **not** carry an `rls_bypass() OR` branch, or a bug on the Forge pool writes any `source` for any subject. `completed_at` is `forge_svc`'s alone, so a player tap gets 42501. |
+| `assignments` | **NEW** | `atlas.assignments` (+ append-only `atlas.assignment_completions`) | **The escalation trap lives here** — see §7.2. `source='auto'` is **`forge_svc`-only, not "bypass-only"**, and the request-path INSERT policy must **not** carry an `rls_bypass() OR` branch, or a bug on the Forge pool writes any `source` for any subject. `completed_at` is `forge_svc`'s alone, so a player tap gets 42501. |
 | `schedules` | **NEW** | `golf.practice_commitment` | ⚠️ `blocks_per_week` drives the streak, the nag and the coach's "behind" flag — all judged over **past** weeks — so a current-only row lets a player clear their own flag retroactively with no trace. Ship the append-only history sibling, or get a written product rule that no past week is ever recomputed. **Do not ship current-only silently.** |
-| `coach_notes` | **COLLAPSE** | `atlas.coaching_notes` (`source_app='forge'`) | Append-only is a **withheld UPDATE grant**; player-invisibility is a **withheld `visibility` column grant**, so every Forge row takes the `'coaching_team'` default and the player branch of the select policy can never match. ⚠️ A grant is per-**role**, and the coach who writes in Forge is the same `author_user_id` in Atlas — so the Atlas-side PATCH route must also be refused, by `source_app <> 'forge'` in the UPDATE `USING`. |
+| `coach_notes` | **COLLAPSE** | `atlas.coaching_notes` (`source_app='forge'`) | **Superseded 2026-10-06 (answer 6): append-only for EVERYONE, by privilege.** `atlas_app` is narrowed to `update (deleted_at, updated_at)`, so `body` and `visibility` can never be rewritten by anyone, Forge-authored or not, and the `source_app <> 'forge'` predicate this row used to require is **dropped entirely**. A correction is a **new note** (`POST …/notes/:noteId/correct`); `PATCH` and a coach's `DELETE` answer **409** (`note_append_only`), and retraction is an audited admin action (answer 7). Player-invisibility is still a **withheld `visibility` column grant** on `forge_app`, so every Forge row takes the `'coaching_team'` default and the player branch of the select policy can never match. |
 | `coach_players` | **NOT BUILT** | `public.user_relationships` | Verbs invert: `invited_at` → `created_at`, `accepted_at` → `approved_at`, and **"accepted" is the conjunction `status='active' AND approved_at is not null`**, never status alone. ⚠️ **The table is not empty** — 9 rows, 7 of them approved edges. An earlier "0 rows" reading was an RLS-filtered count. Any unique index needs a duplicate check first. |
 | *(§7.3)* `outcomes` | **UNMAPPED — OPEN** | — | Mandated by §7.3, defined in §1 nowhere, covered by no mapping. Route it before building it. |
 
@@ -306,6 +346,16 @@ The per-table mappings were written independently and collided. One answer each:
   read time. (An earlier mapping had Forge upserting `source='forge', minutes=30`; Atlas's own
   `practice.ts` `on conflict do update set minutes = …` overwrites it, and two visits in one day
   collapse to 30.)
+- **The calendar shows TWO rows per day, not one merged cell** (Makel, 2026-10-06 — overruling the
+  recommendation to merge on the grain argument). A Forge range visit (`golf.range_sessions`, one row
+  per visit) and a self-logged practice day (`golf.practice_sessions`, one row per day) stay visually
+  separate. **No schema change.** The reason is provenance, and it is the reason a later edit would
+  be wrong to "tidy" this into one cell: a merged cell cannot show the player which half of their day
+  was *measured* (Forge counted the shots) and which half they *typed* (they said so). That
+  distinction is the one the whole port exists to keep legible, and the day cell is the most-used
+  screen it can be shown on. The join is `(user_id, played_on)` ↔ `(user_id, session_date)`, with no
+  foreign key — see `golf.ts:481` for why the two tables stay unlinked. Do not sum the two rows into
+  one minutes figure: the Forge row's minutes are derived, the typed row's are claimed.
 - **Table names.** `golf.range_sessions`, `golf.facet_scores`, `golf.range_shots`,
   `golf.putt18_holes`. One name each, everywhere. `facet_scores` must declare
   `unique (id, user_id)` for its children's composite FKs; `range_sessions` likewise.
@@ -324,7 +374,7 @@ untouched and are not up for discussion as part of porting FORGE to ryp-core:
 
 | Section | Status |
 | --- | --- |
-| **§2 Scoring engine** | **Untouched.** The handicap scale, the benchmark tables, `baselineHandicap`, the driving corridor, the option sets, the ATG allowance, the expected-putts curve, the composite weights and the renormalisation rule are all exactly as specified. `build/forge-math.js` is unaffected by this decision. |
+| **§2 Scoring engine** | **Untouched, with two named amendments — §2.3's baseline lookup (step table → linear interpolation, see §2 below) and the driving big-miss count (left-only → symmetric, `FORGE-MATH-ADOPTION.md` §2.5a).** Everything else: the handicap scale, the benchmark tables, `baselineHandicap`, the driving corridor, the option sets, the ATG allowance, the expected-putts curve, the composite weights and the renormalisation rule are all exactly as specified. `build/forge-math.js` is unaffected by this decision. |
 | **§3 Session state machine** | **Untouched.** `created → in_progress → complete, or abandoned`; complete is reached by explicit finish, never by scoring the last shot; players routinely re-score; the resume card and the 12-hour stale prompt; per-drill completeness. |
 | **§4 Challenge ladder** | **Untouched.** Clear and miss definitions, three consecutive misses demote, counters per facet reset on any level change, driving is exempt, *"a level change never rewrites history"*, promotion is offered and the player confirms. |
 | **§5 Assignments, schedule and ownership** | **Untouched.** Precedence `coach > player > auto`; §5.2 inertness; §5.3 cadences; §5.4 the player sets blocks per week and a coach adds work on top of it; §5.5 level is the ladder's. |
@@ -393,7 +443,7 @@ system will break by accident. They are unaffected by anything in this document.
 > lower the assignment; the ladder does that on its own after three misses. **No API accepts a
 > coach-supplied level.**"* — §5.5
 >
-> **There is no `level` column on `atlas.prescriptions`.** The absence is the enforcement: no column,
+> **There is no `level` column on `atlas.assignments`.** The absence is the enforcement: no column,
 > so no grant and no policy can be got wrong. ⚠️ `FORGE.dc.html:4623` pushes a `rung` onto the
 > player's queue and contradicts this; the Coach Console carries one in its draft and correctly
 > **drops it at commit**. Whoever ports the coach panel must be told, because a `rung` field on an
@@ -437,7 +487,7 @@ correct pattern, for `billing_svc`: its credential *"must be held by ONE process
 it is that a compromised request path cannot grant entitlements."*
 
 So: **`forge_svc` holds the writes that decide something** — `facet_rungs`, `facet_rung_events`,
-`prescriptions.completed_at`, `prescription_completions`, and `source='auto'` inserts. `forge_app`
+`assignments.completed_at`, `assignment_completions`, and `source='auto'` inserts. `forge_app`
 holds **SELECT** on all of them. *"The ladder is the only thing that sets level"* then becomes a
 privilege refusal (42501), not a convention.
 
@@ -504,7 +554,7 @@ Three states: `ok`, `dob_required`, `consent_required`. It fails **closed** — 
 coach all Atlas metrics for all of their students. So:
 
 - `GET /coach/roster` and `GET /coach/players/:id` are **Atlas routes**, running as `atlas_app`.
-- A coach's writes — prescriptions and notes — land in `atlas.*` through `atlas_app`, where they
+- A coach's writes — assignments and notes — land in `atlas.*` through `atlas_app`, where they
   already belong.
 - `atlas_app` holds **SELECT only** on every Forge data table, which is how §6.2's surviving rule is
   enforced as a privilege.
@@ -523,7 +573,7 @@ Found while mapping, not introduced by it, and it defeats the escalation trap in
 `actor_user_id = current_user_id()` and `status='pending'` but says **nothing about
 `subject_user_id`**; `user_relationships_subject_decides` lets the subject set `status='active'`. One
 person can be both. `app_private.coaches(self)` then returns true, and a player can write
-`source='coach'` prescriptions about themselves — **outranking their real coach**, which is precisely
+`source='coach'` assignments about themselves — **outranking their real coach**, which is precisely
 what the `source` precedence rule exists to prevent. It equally lets them write
 `atlas.coaching_notes` about themselves and sign off their own `drill_progress`.
 
@@ -532,7 +582,7 @@ alter table public.user_relationships
   add constraint user_relationships_no_self_edge check (actor_user_id <> subject_user_id);
 ```
 
-Also add the `created_by_user_id <> subject_user_id` term to the prescriptions **UPDATE** branch, not
+Also add the `created_by_user_id <> subject_user_id` term to the assignments **UPDATE** branch, not
 only INSERT, so the policy does not depend on a column grant to be correct.
 
 ⚠️ The table has **9 live rows, 7 of them approved edges** — not zero. Check for existing self-edges
@@ -546,9 +596,9 @@ Ordered by blast radius. Each says what is blocked and, as importantly, what is 
 
 | # | Question | Who | Blocks | Does NOT block |
 | --- | --- | --- | --- | --- |
-| 1 | **`baselineHandicap` has three answers for 225 yd: 15 (Spec step table) / 12.5 (`forge-math.js` interpolation) / 7.5 (the test fixture).** The Spec's precedence rule makes the shipped module non-conformant — but the module is probably right: *"A step table would put 234 and 236 yards a full stroke apart"*, and under the step model 234 → 15 and 236 → 10. Five strokes for two yards. | **Luke** | Every driving `practice_index` ever written. It must be settled **before the first row**, not patched after. | The schema. Column shapes are identical either way. |
+| 1 | **ANSWERED 2026-10-06 — interpolation; Build Spec §2.3 amended (see §2 below). Asked as:** **`baselineHandicap` has three answers for 225 yd: 15 (Spec step table) / 12.5 (`forge-math.js` interpolation) / 7.5 (the test fixture).** The Spec's precedence rule makes the shipped module non-conformant — but the module is probably right: *"A step table would put 234 and 236 yards a full stroke apart"*, and under the step model 234 → 15 and 236 → 10. Five strokes for two yards. | **Luke** | Every driving `practice_index` ever written. It must be settled **before the first row**, not patched after. | The schema. Column shapes are identical either way. |
 | 2 | **`CAL.putt18.base` and `k` are PROVISIONAL**, and §7.2 is emphatic: *"Do not ship a guessed constant."* They need fitting against known reference rounds (a scratch player's Putt 18, a 20-handicap's). | **Luke + Makel** | Writing `practice_index` for `(putting, putt18)` rows at all. A provisional constant stamped with a `scoring_version` is recoverable; a published number is not. | The `putt18_holes` table, which stores `putts` and `expected_putts` and not the index. |
-| 3 | **Which benchmark table is real** — `CAL.benchmarks` (tagged MEASURED) or the Arccos-cited `BENCH`? 13 yards and ~5 fairway points apart at handicap 12.5, and the app's own comment contradicts the MEASURED tag. | **Luke** | Same blast radius as #1. | The schema. |
+| 3 | **ANSWERED 2026-10-06 — `CAL.benchmarks` ships, its tag is `UNSOURCED` (`FORGE-MATH-ADOPTION.md` §4.1). Asked as:** **Which benchmark table is real** — `CAL.benchmarks` (tagged MEASURED) or the Arccos-cited `BENCH`? 13 yards and ~5 fairway points apart at handicap 12.5, and the app's own comment contradicts the MEASURED tag. | **Luke** | Same blast radius as #1. | The schema. |
 | 4 | **After §7.2, which putting drill does the ladder promote on?** §4 promotes on *"a session's facet index at or below the target"*; §7.2 made the Putting Index **Putt 18**, which the Spec gives no levels; §2.4 gives the four putting levels to **Makeables**, *"a putting predictor… The Putting Index comes from Putt 18."* So the only putting drill with levels never enters the Index, and §4's rule has no value to judge. **Unresolvable from the text.** | **Luke** | The ladder's putting branch, and whether `level` is NULL on the Putt 18 row. | Everything else. The column is nullable either way. |
 | 5 | **Does the player confirm a promotion the server computed, or pick a rung freely?** The prototype lets a tap set any rung with no ladder event; §4 says *"the ladder is the only thing that sets level"* **and** that promotion is *"offered, not automatic — the player confirms."* Reconcilable or not. | **Luke** | Whether `facet_rungs` is `forge_svc`-write with a confirm endpoint, or player-writable — and therefore whether a player can trivially satisfy a coach's assignment at an easier level. | The rest of the profile mapping. |
 | 6 | **Do provisional sessions count toward the streak and blocks-per-week?** The Spec flags this itself as an open decision. | **Luke / Makel** | What the coach dashboard's "behind" flag *means*. | The tables. Both readings are a filter, not a column. |
@@ -556,17 +606,17 @@ Ordered by blast radius. Each says what is blocked and, as importantly, what is 
 | 8 | **Does a mid-week change to `blocks_per_week` apply to this week or the next?** Current-only storage is gameable: at 1 of 5 blocks on Sunday, set it to 1 and the flag clears retroactively with nothing in the database that could show it happened. | **Luke** | **The migration, not just the behaviour** — the answer decides whether a `practice_commitment_history` sibling is required. | Nothing else. |
 | 9 | **Is FORGE's Coach Console a real second client?** If it ships on `forge_app` it inherits that role's write grants and drops from two layers of defence to one. | **Makel + Luke** | Whether `forge_coach_app` is created (§7.3). | The policies, which hold either way. |
 | 10 | **Does Forge's server run inside eco's `attachUser`/`withRls`, or does Luke's team get a connection string?** If the latter, that server sets `app.current_user_id` to any uuid it likes and every policy here is only as strong as its code. | **Makel + Yannick + Luke** | The entire trust model. This is the largest open item on the page. | Schema design, which is identical either way. |
-| 11 | **Who holds `forge_svc`'s credential, given FORGE is Luke's app?** It is the only principal that may stamp a completion, write a rung or insert an `auto` prescription. | **Makel + Luke** | Creating `forge_svc` meaningfully. | `forge_app`, which can be created now. |
+| 11 | **Who holds `forge_svc`'s credential, given FORGE is Luke's app?** It is the only principal that may stamp a completion, write a rung or insert an `auto` assignment. | **Makel + Luke** | Creating `forge_svc` meaningfully. | `forge_app`, which can be created now. |
 | 12 | **Is FORGE plan-gated?** `'forge'` is in `APPS` already, but nothing says what it costs or what gates it: a `user_app_roles` row with `app='forge'`, an `app_private.plan_at_least()` check, or neither. Nothing writes that row today, so `requireApp('forge')` refuses everyone. | **Makel** | The entitlement half of §7.2. | The data tables. |
 | 13 | **`gender`.** Binary because §2.6's named-level tables exist only for men and women, and it selects both the carry table and the slider floor. What does a player who is neither see? Is it asked in Forge at all, given `rypstick-ios` Firestore already holds it? ⚠️ The Firestore **vocabulary is unverified** — a backfill could write `'Male'`, `'m'`, `'other'` or blanks into the column that picks the benchmark table. | **Luke / Makel** | A third value needs a third named-level table — content, not schema. Also: whether `gender` may sit on a row a **self-requested pending** coach can read (`golf_profile_coach_read` is `coaches_or_pending`). | The rest of the profile collapse. |
 | 14 | **Does Forge own the display name?** Its onboarding captures one, but §6.1's `PUT /me/profile` lists only *"handicap, carry, target, gender"*. Writing it makes a second app a writer of an identity column, against `identity.ts`'s *"Atlas is the runtime writer; every other app reads it."* SELECT only, pending an answer. | **Luke / Makel** | One grant line. | Everything. |
-| 15 | **Should Atlas-authored coaching notes stay editable at all?** If no, the whole table becomes append-only by **privilege** for both apps — stronger and simpler — at the cost of Atlas's note-editing route. ⚠️ Atlas also has a **soft-delete** route; under the `source_app <> 'forge'` predicate a coach could never retract their own Forge note. | **Makel** | Whether the policy predicate is needed at all. | The collapse itself. |
+| 15 | **ANSWERED 2026-10-06 — no: append-only for both apps by privilege; the `source_app <> 'forge'` predicate is dropped; a correction is a new note; an admin may retract through an audited path, a coach may not (409, not 404).** The predicate this question asked about is gone. **Asked as:** **Should Atlas-authored coaching notes stay editable at all?** If no, the whole table becomes append-only by **privilege** for both apps — stronger and simpler — at the cost of Atlas's note-editing route. ⚠️ Atlas also has a **soft-delete** route; under the `source_app <> 'forge'` predicate a coach could never retract their own Forge note. | **Makel** | Whether the policy predicate is needed at all. | The collapse itself. |
 | 16 | **Does a Forge coach seeing Atlas notes, and vice versa, need saying out loud?** That is the unified-profile intent, and it is a visible product change to both apps that nobody has agreed to. | **Makel / Luke** | Nothing technically. Confirm before build. | — |
 | 17 | **Is shot-grain data visible to a coach in v1?** `atlas_app` SELECT exposes every individual ball a student hit; the Coach Console shows only facet-level numbers. | **Makel** | A privacy call, not a schema one. | The table. |
 | 18 | **`outcomes` (§7.3) is unrouted.** See §2. | **Luke** | §7.4's correlation work. | Everything built in §4. |
-| 19 | **Table naming:** `golf.range_sessions`? And one word for `assignments` vs `prescriptions` — the Forge player screen says "PRESCRIBED BY YOUR COACH", the coach UI says "ASSIGN WORK", the Spec says `assignments`, three eco files reserve `prescriptions`. | **Makel** | Nothing — but settle it **before the migration is generated**. Under the 2030 model plan a deferred rename is a migration. | — |
-| 20 | **Driving asymmetry.** The Spec defers this itself: *"Asymmetry — prototype bug, decide before building. The formula above reproduces the prototype exactly: only column 0 (bad left) counts as a bad miss… the intended behaviour is symmetric."* | **Luke / Makel** | **Every historic driving index becomes non-comparable the day it changes** — same blast radius as Q1, and the Spec says decide *before* building. | Storage. `outcome_value` is 0–4 either way. |
-| 21 | **Does `source='auto'` ship in v1?** §5.1 requires it, but `auto` is derived from Forge's `primaryLeak`, and METRIC-MAP forbids promoting that into the shared layer — *"Forge's `primaryLeak` stays private precisely so two competing priority labels are never shown to the same player."* The Spec requires the thing the map forbids exposing. | **Makel** | Whether `forge_svc` needs an INSERT path on `atlas.prescriptions` at all, and whether a second priority label reaches the player. | The `source` column and its escalation close, which are needed for `coach`/`player` regardless. |
+| 19 | **ANSWERED 2026-10-06 — the table is `atlas.assignments`; `golf.range_sessions` stands.** The player-facing copy stays "PRESCRIBED BY YOUR COACH" and the coach UI stays "ASSIGN WORK": a table name is not UI copy. The three eco files that reserved the old name are repointed in the same change. **Asked as:** **Table naming:** `golf.range_sessions`? And one word for `assignments` vs the earlier reserved name — the Forge player screen says "PRESCRIBED BY YOUR COACH", the coach UI says "ASSIGN WORK", the Spec says `assignments`. | **Makel** | Nothing — but settle it **before the migration is generated**. Under the 2030 model plan a deferred rename is a migration. | — |
+| 20 | **ANSWERED 2026-10-06 — symmetric (`FORGE-MATH-ADOPTION.md` §2.5a). Asked as:** **Driving asymmetry.** The Spec defers this itself: *"Asymmetry — prototype bug, decide before building. The formula above reproduces the prototype exactly: only column 0 (bad left) counts as a bad miss… the intended behaviour is symmetric."* | **Luke / Makel** | **Every historic driving index becomes non-comparable the day it changes** — same blast radius as Q1, and the Spec says decide *before* building. | Storage. `outcome_value` is 0–4 either way. |
+| 21 | **Does `source='auto'` ship in v1?** §5.1 requires it, but `auto` is derived from Forge's `primaryLeak`, and METRIC-MAP forbids promoting that into the shared layer — *"Forge's `primaryLeak` stays private precisely so two competing priority labels are never shown to the same player."* The Spec requires the thing the map forbids exposing. | **Makel** | Whether `forge_svc` needs an INSERT path on `atlas.assignments` at all, and whether a second priority label reaches the player. | The `source` column and its escalation close, which are needed for `coach`/`player` regardless. |
 | 22 | **Does Putt 18's "enter as a total" mode survive?** It writes a **complete** Putt 18 with **zero** `putt18_holes` rows — `complete: true`, `holesPlayed.putting = 18`, `holes: null`. The Spec never mentions it. Keeping it means every consumer must forever handle an 18-hole round with no holes, and §7.4's per-hole correlation work is starved of its only input whenever a player uses it. | **Luke / Makel** | Nothing structurally — completeness already lives on the facet row, not on a `count(*)` here. But it decides whether §7.4 has data. | The `putt18_holes` table. |
 | 23 | **Is the 30-minute block permanent product policy, or a v1 simplification?** The Spec is emphatic twice — *"always 30 minutes and is not stored"*, *"the product's fixed unit and is not configurable"* — and this document builds to it. But `blocks_per_week` is a count whose unit is **implicit**: if a tier, an academy or a junior programme ever practises in 45- or 60-minute blocks, every historical row silently re-means and no migration can recover the original intent. | **Makel / Luke** | Nothing today. | Nothing — but a `block_minutes integer not null default 30` is **cheap now and un-backfillable later**. Answer it before the first row. |
 | 24 | 🔴 **Server-allocated seed vs §6.3's "never blocked" — a conflict this document creates.** §4 puts the row insert at `POST /sessions` so the seed is the one the holes were played with. §6.3, listed as untouched, says *"Local write-through on every tap… the player is never blocked from continuing."* **A range with no signal means no `POST /sessions`, and therefore no seed and no session.** Either the client may generate a session id and seed offline and the server adopts them on submit (which gives up "allocates the seed server-side" as a privilege control), or a session genuinely cannot start offline. | **Luke + Makel** | The seed's provenance control, and `POST /sessions` vs the §6.3 flow. This is the one place where two sections this document calls settled actually disagree. | The columns. `seed` and `idempotency_key` exist either way; only the grant on `seed` changes. |

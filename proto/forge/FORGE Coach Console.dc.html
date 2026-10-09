@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="theme-color" content="#0d0d0d">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700;900&amp;display=swap" rel="stylesheet">
+<style>
+  html, body { margin:0; padding:0; background:#0d0d0d; -webkit-font-smoothing:antialiased; }
+  * { box-sizing:border-box; }
+  a { color:#00af51; text-decoration:none; }
+  a:hover { color:#33c47a; }
+  input, button, textarea { font-family:inherit; }
+  textarea, input { outline:none; }
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb { background:#2a2a2a; border-radius:4px; }
+  @keyframes fUp { from { opacity:0; transform:translateY(7px); } to { opacity:1; transform:none; } }
+</style>
+</helmet>
+
+<div style="{{ shellStyle }}">
+
+  <aside style="{{ asideStyle }}">
+    <div style="{{ brandStyle }}">
+      <div style="font-size:18px;font-weight:900;letter-spacing:0.06em">FORGE</div>
+      <div style="font-size:9px;font-weight:600;letter-spacing:0.2em;color:#00af51;margin-top:4px">COACH CONSOLE</div>
+    </div>
+
+    <div style="{{ navStyle }}">
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="4">
+        <button onClick="{{ n.go }}" style="{{ n.style }}">
+          <span style="flex:1;text-align:left">{{ n.name }}</span>
+          <span style="{{ n.badgeStyle }}">{{ n.badge }}</span>
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="{{ dividerStyle }}"></div>
+
+    <div style="{{ sideExtraStyle }}">
+      <div style="font-size:9px;font-weight:600;letter-spacing:0.16em;color:#6a6a6a">NEEDS ATTENTION</div>
+      <sc-for list="{{ alerts }}" as="a" hint-placeholder-count="3">
+        <div onClick="{{ a.go }}" style="background:#1a1a1a;border:1px solid #2a2a2a;border-left:2px solid #dc2626;border-radius:10px;padding:9px 11px;cursor:pointer">
+          <div style="font-size:13px;font-weight:700">{{ a.name }}</div>
+          <div style="font-size:10px;font-weight:600;letter-spacing:0.04em;color:#6a6a6a;margin-top:2px">{{ a.reason }}</div>
+        </div>
+      </sc-for>
+      <sc-if value="{{ noAlerts }}" hint-placeholder-val="{{ false }}">
+        <div style="font-size:12px;color:#6a6a6a;line-height:1.4">Everyone is current.</div>
+      </sc-if>
+    </div>
+
+    <div style="{{ profileStyle }}">
+      <div style="width:32px;height:32px;flex:none;border-radius:10px;background:#00af51;color:#0d0d0d;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900">RC</div>
+      <div style="min-width:0">
+        <div style="font-size:13px;font-weight:700">Coach Reid</div>
+        <div style="font-size:9px;font-weight:600;letter-spacing:0.1em;color:#6a6a6a">RYP FLIGHT SCHOOL</div>
+      </div>
+    </div>
+  </aside>
+
+  <main style="flex:1;min-width:0">
+
+    <sc-if value="{{ isRoster }}" hint-placeholder-val="{{ true }}">
+      <div style="padding:26px 30px 44px;display:flex;flex-direction:column;gap:18px;animation:fUp .28s ease both">
+
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:22px">
+          <div>
+            <div style="font-size:33px;font-weight:900;letter-spacing:-0.02em">Roster</div>
+            <div style="font-size:14px;color:#c8c8c8;margin-top:5px;text-wrap:pretty">Where each index sits against its target, and whether the work you set is getting done.</div>
+          </div>
+          <div style="display:flex;gap:9px;flex:none">
+            <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="3">
+              <div style="min-width:116px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:16px;padding:12px 14px">
+                <div style="font-size:9px;font-weight:600;letter-spacing:0.14em;color:#6a6a6a">{{ k.label }}</div>
+                <div style="font-variant-numeric:tabular-nums;font-size:25px;font-weight:900;margin-top:4px;color:{{ k.color }}">{{ k.val }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+          <div style="display:flex;gap:3px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:999px;padding:3px">
+            <sc-for list="{{ filters }}" as="f" hint-placeholder-count="4">
+              <button onClick="{{ f.go }}" style="{{ f.style }}">{{ f.name }}</button>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:3px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:999px;padding:3px">
+            <sc-for list="{{ densityTabs }}" as="t" hint-placeholder-count="2">
+              <button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.name }}</button>
+            </sc-for>
+          </div>
+          <input value="{{ query }}" onChange="{{ onQuery }}" placeholder="Find a player" style="width:200px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:999px;padding:11px 16px;color:#ffffff;font-size:13px">
+          <div style="flex:1"></div>
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="font-size:9px;font-weight:600;letter-spacing:0.14em;color:#6a6a6a">SORT</span>
+            <div style="display:flex;gap:3px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:999px;padding:3px">
+              <sc-for list="{{ sorts }}" as="o" hint-placeholder-count="3">
+                <button onClick="{{ o.go }}" style="{{ o.style }}">{{ o.name }}</button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <sc-if value="{{ isCompact }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:20px;overflow-x:auto">
+           <div style="min-width:560px">
+            <div style="display:grid;grid-template-columns:minmax(0,1.55fr) 58px 58px 58px 58px 72px 54px;gap:8px;padding:11px 16px;border-bottom:1px solid #2a2a2a;background:#0d0d0d">
+              <sc-for list="{{ cCols }}" as="c" hint-placeholder-count="7">
+                <div style="{{ c.style }}">{{ c.name }}</div>
+              </sc-for>
+            </div>
+            <sc-for list="{{ cRows }}" as="r" hint-placeholder-count="6">
+              <div onClick="{{ r.go }}" style="{{ r.style }}">
+                <div style="display:flex;align-items:center;gap:9px;min-width:0;overflow:hidden">
+                  <div style="width:30px;height:30px;flex:none;border-radius:9px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:#c8c8c8">{{ r.initials }}</div>
+                  <div style="min-width:0;overflow:hidden">
+                    <div style="font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</div>
+                    <div style="{{ r.flagStyle }}">{{ r.flag }}</div>
+                  </div>
+                </div>
+                <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="4">
+                  <div style="font-variant-numeric:tabular-nums;font-size:15px;font-weight:800;color:{{ c.color }}">{{ c.v }}</div>
+                </sc-for>
+                <div style="{{ r.totalStyle }}">{{ r.total }}</div>
+                <div style="font-size:13px;font-weight:700;color:{{ r.workColor }}">{{ r.work }}</div>
+              </div>
+            </sc-for>
+            <sc-if value="{{ noRows }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:30px 16px;text-align:center;font-size:14px;color:#6a6a6a">No players match that.</div>
+            </sc-if>
+           </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isFull }}" hint-placeholder-val="{{ true }}">
+        <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:20px;overflow-x:auto">
+         <div style="min-width:1060px">
+          <div style="display:grid;grid-template-columns:minmax(0,2.2fr) 88px 82px 84px 104px repeat(4,72px);gap:11px;padding:12px 20px;border-bottom:1px solid #2a2a2a;background:#0d0d0d">
+            <sc-for list="{{ cols }}" as="c" hint-placeholder-count="9">
+              <div style="{{ c.style }}">{{ c.name }}</div>
+            </sc-for>
+          </div>
+          <sc-for list="{{ rows }}" as="r" hint-placeholder-count="6">
+            <div onClick="{{ r.go }}" style="{{ r.style }}">
+              <div style="display:flex;align-items:center;gap:11px;min-width:0">
+                <div style="width:36px;height:36px;flex:none;border-radius:11px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:#c8c8c8">{{ r.initials }}</div>
+                <div style="min-width:0;overflow:hidden">
+                  <div style="display:flex;align-items:center;gap:7px;overflow:hidden">
+                    <span style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span>
+                    <span style="{{ r.flagStyle }}">{{ r.flag }}</span>
+                  </div>
+                  <div style="font-size:9px;font-weight:600;letter-spacing:0.08em;color:#6a6a6a;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.meta }}</div>
+                </div>
+              </div>
+              <div>
+                <div style="font-variant-numeric:tabular-nums;font-size:19px;font-weight:900;color:{{ r.idxColor }}">{{ r.idx }}</div>
+                <div style="font-variant-numeric:tabular-nums;font-size:10px;font-weight:700;color:{{ r.trendColor }};margin-top:1px">{{ r.trend }} 30d</div>
+              </div>
+              <div style="font-size:13px;font-weight:700;color:{{ r.lastColor }}">{{ r.last }}</div>
+              <div style="font-size:13px;font-weight:700;color:{{ r.workColor }}">{{ r.work }}</div>
+              <div style="font-size:13px;font-weight:700;color:#c8c8c8">{{ r.leak }}</div>
+              <sc-for list="{{ r.facets }}" as="L" hint-placeholder-count="4">
+                <div style="{{ L.cellStyle }}">
+                  <div style="font-variant-numeric:tabular-nums;font-size:15px;font-weight:900;color:{{ L.color }}">{{ L.v }}</div>
+                  <div style="font-size:8px;font-weight:600;letter-spacing:0.06em;color:#6a6a6a;margin-top:2px">{{ L.level }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+          <sc-if value="{{ noRows }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:32px 20px;text-align:center;font-size:14px;color:#6a6a6a">No players match that.</div>
+          </sc-if>
+         </div>
+        </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isPlayer }}" hint-placeholder-val="{{ false }}">
+      <div style="{{ padStyle }}">
+
+        <button onClick="{{ backToRoster }}" style="align-self:flex-start;background:transparent;border:1px solid #2a2a2a;border-radius:999px;color:#6a6a6a;font-size:10px;font-weight:700;letter-spacing:0.12em;padding:8px 14px;cursor:pointer">← ROSTER</button>
+
+        <div style="{{ pHeadStyle }}">
+          <div style="display:flex;align-items:center;gap:15px">
+            <div style="width:58px;height:58px;flex:none;border-radius:18px;background:#2a2a2a;display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:900">{{ pInitials }}</div>
+            <div>
+              <div style="{{ pTitleStyle }}">{{ pName }}</div>
+              <div style="display:flex;align-items:center;gap:9px;margin-top:5px">
+                <span style="font-size:9px;font-weight:600;letter-spacing:0.12em;color:#6a6a6a">{{ pMeta }}</span>
+                <span style="{{ pFlagStyle }}">{{ pFlag }}</span>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;gap:9px;flex:none">
+            <div style="min-width:132px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:16px;padding:12px 14px">
+              <div style="font-size:9px;font-weight:600;letter-spacing:0.14em;color:#6a6a6a">FORGE INDEX</div>
+              <div style="font-variant-numeric:tabular-nums;font-size:29px;font-weight:900;margin-top:3px;color:{{ pIdxColor }}">{{ pIdx }}</div>
+              <div style="font-variant-numeric:tabular-nums;font-size:10px;font-weight:700;color:{{ pTrendColor }};margin-top:2px">{{ pTrend }} · 30 DAYS</div>
+            </div>
+            <button onClick="{{ assignFor }}" style="align-self:stretch;background:#00af51;color:#0d0d0d;border:none;border-radius:16px;padding:0 20px;font-size:11px;font-weight:700;letter-spacing:0.14em;cursor:pointer">ASSIGN WORK</button>
+          </div>
+        </div>
+
+        <div style="{{ detailGrid }}">
+
+          <div style="display:flex;flex-direction:column;gap:13px">
+            <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:20px;padding:17px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <div style="font-size:10px;font-weight:600;letter-spacing:0.14em;color:#6a6a6a">INDEX AGAINST TARGET</div>
+                <div style="font-size:9px;font-weight:600;letter-spacing:0.1em;color:#6a6a6a">{{ pSessionCount }}</div>
+              </div>
+              <svg viewBox="0 0 300 100" preserveAspectRatio="none" style="width:100%;height:140px">
+                <line x1="0" y1="{{ pTargetY }}" x2="300" y2="{{ pTargetY }}" stroke="#00af51" stroke-width="1" stroke-dasharray="4 4" opacity="0.55"></line>
+                <polyline points="{{ pPoints }}" fill="none" stroke="#ffffff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
+                <sc-for list="{{ pDots }}" as="d" hint-placeholder-count="6">
+                  <circle cx="{{ d.x }}" cy="{{ d.y }}" r="3.2" fill="{{ d.fill }}"></circle>
+                </sc-for>
+              </svg>
+              <div style="display:flex;justify-content:space-between;font-size:9px;font-weight:600;letter-spacing:0.1em;color:#6a6a6a">
+                <span>{{ pFirstDate }}</span>
+                <span style="color:#00af51">TARGET {{ pTarget }}</span>
+                <span>{{ pLastDate }}</span>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <sc-for list="{{ pFacets }}" as="f" hint-placeholder-count="4">
+                <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:9px">
+                  <div style="display:flex;align-items:center;justify-content:space-between">
+                    <span style="font-size:14px;font-weight:700">{{ f.name }}</span>
+                    <span style="{{ f.levelStyle }}">{{ f.level }}</span>
+                  </div>
+                  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:10px">
+                    <div>
+                      <div style="font-variant-numeric:tabular-nums;font-size:22px;font-weight:900;color:{{ f.color }}">{{ f.val }}</div>
+                      <div style="font-size:9px;font-weight:600;letter-spacing:0.08em;color:#6a6a6a;margin-top:2px">{{ f.tag }}</div>
+                    </div>
+                    <svg viewBox="0 0 100 30" preserveAspectRatio="none" style="width:92px;height:30px;flex:none">
+                      <polyline points="{{ f.spark }}" fill="none" stroke="{{ f.color }}" stroke-width="2" stroke-linejoin="round"></polyline>
+                    </svg>
+                  </div>
+                  <div style="font-size:10px;font-weight:600;color:#6a6a6a;line-height:1.35">{{ f.spec }}</div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:20px;padding:17px;display:flex;flex-direction:column;gap:10px">
+              <div style="font-size:10px;font-weight:600;letter-spacing:0.14em;color:#6a6a6a">SESSION HISTORY</div>
+              <div style="display:grid;grid-template-columns:1.1fr repeat(4,0.7fr);gap:8px;padding-bottom:8px;border-bottom:1px solid #2a2a2a">
+                <sc-for list="{{ histCols }}" as="h" hint-placeholder-count="5">
+                  <div style="font-size:9px;font-weight:600;letter-spacing:0.1em;color:#6a6a6a">{{ h.name }}</div>
+                </sc-for>
+              </div>
+              <sc-for list="{{ pHistory }}" as="h" hint-placeholder-count="6">
+                <div style="display:grid;grid-template-columns:1.1fr repeat(4,0.7fr);gap:8px;align-items:baseline">
+                  <div style="font-size:12px;font-weight:600;color:#c8c8c8">{{ h.date }}</div>
+                  <sc-for list="{{ h.cells }}" as="c" hint-placeholder-count="4">
+                    <div style="font-variant-numeric:tabular-nums;font-size:13px;font-weight:700;color:{{ c.color }}">{{ c.v }}</div>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:13px">
+
+            <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:20px;padding:17px;display:flex;flex-direction:column;gap:11px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <div style="font-size:10px;font-weight:600;letter-spacing:0.14em;color:#6a6a6a">ASSIGNED WORK</div>
+                <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:#00af51">{{ pQueueDone }}</div>
+              </div>
+              <sc-for list="{{ pQueue }}" as="q" hint-placeholder-count="2">
+                <div style="{{ q.style }}">
+                  <div style="flex:1;min-width:0">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                      <span style="font-size:15px;font-weight:700">{{ q.title }}</span>
+                      <span style="{{ q.tagStyle }}">{{ q.tag }}</span>
+                    </div>
+                    <div style="font-size:12px;color:#c8c8c8;margin-top:4px;line-height:1.4;text-wrap:pretty">{{ q.note }}</div>
+                    <div style="font-size:9px;font-weight:600;letter-spacing:0.1em;color:#6a6a6a;margin-top:5px">{{ q.when }}</div>
+                  </div>
+                  <button onClick="{{ q.remove }}" style="flex:none;background:transparent;border:1px solid #2a2a2a;border-radius:999px;color:#6a6a6a;font-size:9px;font-weight:700;letter-spacing:0.1em;padding:7px 11px;cursor:pointer">PULL</button>
+                </div>
+              </sc-for>
+              <sc-if value="{{ pQueueEmpty }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:13px;color:#6a6a6a;line-height:1.45">Nothing assigned. They will train whatever the app flags as their leak.</div>
+              </sc-if>
+            </div>
+
+            <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:20px;padding:17px;display:flex;flex-direction:column;gap:10px">
+              <div style="font-size:10px;font-weight:600;letter-spacing:0.14em;color:#6a6a6a">COACH NOTE</div>
+              <textarea value="{{ noteDraft }}" onChange="{{ onNote }}" placeholder="What you saw, what to watch for next session." style="width:100%;min-height:88px;resize:vertical;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:14px;padding:12px;color:#ffffff;font-size:13px;line-height:1.45"></textarea>
+              <button onClick="{{ saveNote }}" style="align-self:flex-start;background:transparent;border:1px solid #00af51;border-radius:999px;color:#00af51;font-size:10px;font-weight:700;letter-spacing:0.12em;padding:9px 15px;cursor:pointer">SAVE NOTE</button>
+            </div>
+
+            <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:20px;padding:17px;display:flex;flex-direction:column;gap:10px">
+              <div style="font-size:10px;font-weight:600;letter-spacing:0.14em;color:#6a6a6a">SCHEDULE · PLAYER SET</div>
+              <div style="display:flex;align-items:baseline;gap:10px">
+                <div style="font-variant-numeric:tabular-nums;font-size:29px;font-weight:900">{{ pBlocks }}</div>
+                <div style="font-size:13px;color:#c8c8c8">30-minute blocks per week</div>
+              </div>
+              <div style="display:flex;gap:4px">
+                <sc-for list="{{ pBlockPips }}" as="b" hint-placeholder-count="7">
+                  <div style="{{ b.style }}"></div>
+                </sc-for>
+              </div>
+              <div style="font-size:11px;color:#6a6a6a;line-height:1.45;text-wrap:pretty">{{ pScheduleNote }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isAssign }}" hint-placeholder-val="{{ false }}">
+      <div style="{{ padStyle }}">
+
+        <div>
+          <div style="{{ h1Style }}">Assign work</div>
+          <div style="font-size:14px;color:#c8c8c8;margin-top:5px;text-wrap:pretty">Who, which drill, and how often — the level comes from their ladder. It lands on their Today screen; the other drills stay tappable but marked inert until it is done.</div>
+        </div>
+
+        <div style="{{ assignGrid }}">
+
+          <div style="display:flex;flex-direction:column;gap:15px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:20px;padding:19px">
+
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div style="font-size:10px;font-weight:600;letter-spacing:0.14em;color:#6a6a6a">PLAYERS</div>
+                <button onClick="{{ pickAll }}" style="background:transparent;border:none;color:#00af51;font-size:10px;font-weight:700;letter-spacing:0.1em;cursor:pointer;padding:0">{{ pickAllLabel }}</button>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:7px">
+                <sc-for list="{{ pickPlayers }}" as="p" hint-placeholder-count="6">
+                  <div onClick="{{ p.go }}" style="{{ p.style }}">
+                    <div style="{{ p.avatar }}">{{ p.initials }}</div>
+                    <div>
+                      <div style="font-size:13px;font-weight:700;white-space:nowrap">{{ p.name }}</div>
+                      <div style="font-size:8px;font-weight:600;letter-spacing:0.06em;color:#6a6a6a;white-space:nowrap">{{ p.count }}</div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="height:1px;background:#2a2a2a"></div>
+
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="font-size:10px;font-weight:600;letter-spacing:0.14em;color:#6a6a6a">DRILL</div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+                <sc-for list="{{ pickFacets }}" as="f" hint-placeholder-count="4">
+                  <button onClick="{{ f.go }}" style="{{ f.style }}">{{ f.name }}</button>
+                </sc-for>
+              </div>
+              <div style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:14px">
+                <div style="font-size:9px;font-weight:700;letter-spacing:0.12em;color:#00af51">{{ modeHeading }}</div>
+                <sc-if value="{{ hasModes }}" hint-placeholder-val="{{ true }}">
+                  <sc-for list="{{ modeGroups }}" as="g" hint-placeholder-count="2">
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <div style="display:flex;align-items:baseline;gap:8px">
+                        <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:#c8c8c8">{{ g.label }}</div>
+                        <div style="flex:1;height:1px;background:#2a2a2a"></div>
+                      </div>
+                      <div style="display:flex;flex-wrap:wrap;gap:6px">
+                        <sc-for list="{{ g.modes }}" as="m" hint-placeholder-count="3">
+                          <button onClick="{{ m.go }}" style="{{ m.style }}">{{ m.name }}</button>
+                        </sc-for>
+                      </div>
+                      <div style="font-size:11px;color:#6a6a6a;line-height:1.4;text-wrap:pretty">{{ g.note }}</div>
+                    </div>
+                  </sc-for>
+                </sc-if>
+                <sc-if value="{{ noModes }}" hint-placeholder-val="{{ false }}">
+                  <div style="font-size:12px;color:#6a6a6a;line-height:1.45;text-wrap:pretty">{{ modeEmpty }}</div>
+                </sc-if>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div style="font-size:10px;font-weight:600;letter-spacing:0.14em;color:#6a6a6a">LEVEL</div>
+                <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:#00af51">SET BY THE LADDER</div>
+              </div>
+              <div style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:14px;padding:13px 14px;display:flex;flex-direction:column;gap:10px">
+                <div style="font-size:12px;color:#c8c8c8;line-height:1.45;text-wrap:pretty">You do not pick the level. Each player runs the drill at the level their ladder has them on — one clear promotes, three straight losses drop them back.</div>
+                <sc-if value="{{ hasLevelRows }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column">
+                    <sc-for list="{{ levelRows }}" as="L" hint-placeholder-count="3">
+                      <div style="display:flex;align-items:baseline;gap:10px;border-top:1px solid #2a2a2a;padding:9px 0 0">
+                        <div style="flex:none;width:34px;font-size:13px;font-weight:900;color:#00af51">{{ L.level }}</div>
+                        <div style="flex:none;width:96px;font-size:13px;font-weight:700">{{ L.name }}</div>
+                        <div style="flex:1;font-size:11px;font-weight:600;color:#6a6a6a;line-height:1.35">{{ L.spec }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="font-size:10px;font-weight:600;letter-spacing:0.14em;color:#6a6a6a">HOW OFTEN</div>
+              <div style="display:flex;gap:6px">
+                <sc-for list="{{ pickWhen }}" as="w" hint-placeholder-count="3">
+                  <button onClick="{{ w.go }}" style="{{ w.style }}">{{ w.name }}</button>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="font-size:10px;font-weight:600;letter-spacing:0.14em;color:#6a6a6a">NOTE TO THE PLAYER</div>
+              <textarea value="{{ draftNote }}" onChange="{{ onDraftNote }}" placeholder="One line on what you want out of it." style="width:100%;min-height:74px;resize:vertical;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:14px;padding:12px;color:#ffffff;font-size:13px;line-height:1.45"></textarea>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:13px">
+            <div style="background:#1a1a1a;border:1px solid #00af51;border-radius:20px;padding:17px;display:flex;flex-direction:column;gap:12px">
+              <div style="font-size:10px;font-weight:600;letter-spacing:0.14em;color:#00af51">WHAT THEY WILL SEE</div>
+              <div style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:14px;padding:14px">
+                <div style="font-size:17px;font-weight:700">{{ previewTitle }}</div>
+                <div style="font-size:12px;color:#c8c8c8;margin-top:5px;line-height:1.45;text-wrap:pretty">{{ previewNote }}</div>
+                <div style="font-size:9px;font-weight:600;letter-spacing:0.1em;color:#6a6a6a;margin-top:8px">{{ previewWhen }}</div>
+              </div>
+              <div style="font-size:12px;color:#6a6a6a;line-height:1.45">{{ previewTo }}</div>
+              <button onClick="{{ commit }}" style="{{ commitStyle }}">{{ commitLabel }}</button>
+            </div>
+
+            <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:20px;padding:17px;display:flex;flex-direction:column;gap:10px">
+              <div style="font-size:10px;font-weight:600;letter-spacing:0.14em;color:#6a6a6a">OUTSTANDING ACROSS THE ROSTER</div>
+              <sc-for list="{{ outstanding }}" as="o" hint-placeholder-count="4">
+                <div onClick="{{ o.go }}" style="display:flex;align-items:center;gap:11px;border-top:1px solid #2a2a2a;padding-top:10px;cursor:pointer">
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:14px;font-weight:700">{{ o.name }}</div>
+                    <div style="font-size:11px;color:#6a6a6a;margin-top:2px">{{ o.what }}</div>
+                  </div>
+                  <div style="flex:none;font-size:11px;font-weight:700;letter-spacing:0.08em;color:{{ o.color }}">{{ o.state }}</div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ noOutstanding }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:13px;color:#6a6a6a">Nothing outstanding.</div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isLibrary }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:26px 30px 44px;display:flex;flex-direction:column;gap:18px;animation:fUp .28s ease both">
+        <div>
+          <div style="font-size:33px;font-weight:900;letter-spacing:-0.02em">Drill library</div>
+          <div style="font-size:14px;color:#c8c8c8;margin-top:5px;text-wrap:pretty">The scoring standard at every level, so what you assign means the same thing to every player.</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px">
+          <sc-for list="{{ library }}" as="d" hint-placeholder-count="4">
+            <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:20px;padding:18px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+                <div>
+                  <div style="font-size:22px;font-weight:900;letter-spacing:-0.01em">{{ d.name }}</div>
+                  <div style="font-size:9px;font-weight:600;letter-spacing:0.12em;color:#6a6a6a;margin-top:4px">{{ d.meta }}</div>
+                </div>
+                <div style="flex:none;text-align:right">
+                  <div style="font-size:9px;font-weight:600;letter-spacing:0.1em;color:#6a6a6a">WEIGHT</div>
+                  <div style="font-variant-numeric:tabular-nums;font-size:18px;font-weight:900;color:#00af51;margin-top:2px">{{ d.weight }}</div>
+                </div>
+              </div>
+              <div style="font-size:13px;color:#c8c8c8;line-height:1.45;text-wrap:pretty">{{ d.rule }}</div>
+              <sc-if value="{{ d.hasModes }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-wrap:wrap;gap:5px">
+                  <sc-for list="{{ d.modes }}" as="m" hint-placeholder-count="3">
+                    <div style="border:1px solid #2a2a2a;border-radius:999px;padding:5px 11px;font-size:9px;font-weight:700;letter-spacing:0.1em;color:#c8c8c8">{{ m.n }}</div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <div style="display:flex;flex-direction:column">
+                <sc-for list="{{ d.levels }}" as="L" hint-placeholder-count="4">
+                  <div style="display:flex;align-items:baseline;gap:12px;border-top:1px solid #2a2a2a;padding:10px 0">
+                    <div style="width:22px;flex:none;font-size:12px;font-weight:900;color:#00af51">{{ L.id }}</div>
+                    <div style="flex:1;font-size:13px;font-weight:600;line-height:1.35">{{ L.spec }}</div>
+                    <div style="flex:none;font-size:9px;font-weight:600;letter-spacing:0.1em;color:#6a6a6a">{{ L.eq }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <button onClick="{{ d.go }}" style="align-self:flex-start;background:transparent;border:1px solid #2a2a2a;border-radius:999px;color:#c8c8c8;font-size:9px;font-weight:700;letter-spacing:0.12em;padding:8px 13px;cursor:pointer">ASSIGN THIS</button>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+  </main>
+
+  <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#00af51;color:#0d0d0d;border-radius:999px;padding:12px 22px;font-size:12px;font-weight:700;letter-spacing:0.06em;z-index:40;animation:fUp .22s ease both">{{ toast }}</div>
+  </sc-if>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:980}}">
+class Component extends DCLogic {
+  GREEN = '#00af51'; CRIM = '#dc2626'; SLATE = '#6a6a6a'; DIM = '#c8c8c8';
+
+  FACETS = [
+    { id: 'driving', name: 'Driving', weight: 0.30,
+      modes: [{ id: 'stock', n: 'STOCK' }, { id: 'variable', n: 'VARIABLE' }],
+      groups: [{ label: 'SHOT PATTERN', note: 'Both feed the Driving Index. Variable calls two draws and two fades at random across the twenty.',
+        modes: [{ id: 'stock', n: 'STOCK' }, { id: 'variable', n: 'VARIABLE' }] }],
+      fixed: true,
+      rule: '20 drives. Hit, look, sort — one ball into the column where it finished. Fairway 30 yd wide; small miss within 15 yd of its edge; wider is a big miss.',
+      levels: [{ spec: 'Fairway 30 yd · small miss within 15 yd of the edge · wider is a big miss', eq: 'FIXED' }] },
+    { id: 'approach', name: 'Approach', weight: 0.35, modes: [{ id: 'stock', n: 'STOCK' }, { id: 'variable', n: 'VARIABLE' }],
+      groups: [{ label: 'SHOT PATTERN', note: 'Both feed the Approach Index. Variable calls a shape on each shot — draw, fade, or wind ball.',
+        modes: [{ id: 'stock', n: 'STOCK' }, { id: 'variable', n: 'VARIABLE' }] }],
+      rule: 'Rotate through every range pin left to right. No two consecutive shots share a target.',
+      levels: [{ spec: 'Birdie 10% · par 20%', eq: 'HIGH HCP' }, { spec: 'Eagle 5% · par 10%', eq: 'MID HCP' },
+        { spec: 'Birdie 5% · par 10%', eq: 'LOW HCP' }, { spec: 'Birdie 5% · triple beyond 10%', eq: 'TOUR' }] },
+    { id: 'chipping', name: 'ATG', weight: 0.15, modes: [{ id: 'fairway', n: 'FAIRWAY' }, { id: 'rough', n: 'ROUGH' }, { id: 'bunker', n: 'BUNKER' }],
+      groups: [{ label: 'LIE', note: 'Same option set from every lie, and all three feed the ATG Index. Levels track independently per lie.',
+        modes: [{ id: 'fairway', n: 'FAIRWAY' }, { id: 'rough', n: 'ROUGH' }, { id: 'bunker', n: 'BUNKER' }] }],
+      rule: 'One spot, 5 to 25 yards out. New flag every shot, rotating through all of them left to right, like a sprinkler. Proximity by eye.',
+      levels: [{ spec: 'Birdie 7 ft · par 15 ft', eq: 'DEVELOPMENTAL' }, { spec: 'Birdie 4 ft · par 7 ft', eq: 'COMPETITIVE' },
+        { spec: 'Birdie 3 ft · par 6 ft', eq: 'ADVANCED' }, { spec: 'Birdie 2 ft · par 4 ft', eq: 'ELITE' }] },
+    { id: 'putting', name: 'Putting', weight: 0.20,
+      modes: [{ id: 'course', n: 'PUTT 18' }, { id: 'makeables', n: 'MAKEABLES' }, { id: 'lag', n: 'LAG' }, { id: 'stroke', n: 'STROKE TEST' }],
+      groups: [
+        { label: 'THE OUTCOME · IS THE PUTTING INDEX', note: 'Eighteen holes against expected putts. This is the number you are trying to move.',
+          modes: [{ id: 'course', n: 'PUTT 18' }] },
+        { label: 'PREDICTORS · SHOULD MOVE PUTT 18', note: 'Each carries its own score and none enters the Index. Weighted by how much they are believed to explain Putt 18: Makeables 50%, Lag 30%, Stroke Test 20%.',
+          modes: [{ id: 'makeables', n: 'MAKEABLES · 50%' }, { id: 'lag', n: 'LAG · 30%' }, { id: 'stroke', n: 'STROKE TEST · 20%' }] }],
+      rule: 'Putt 18 is the Index — eighteen generated holes against expected putts. Makeables, Lag and Stroke Test are predictors of it.',
+      levels: [{ spec: 'Makeables · 100° rotation, mixed distance', eq: 'STANDARD' }, { spec: 'Tighter spread', eq: 'CHALLENGE 2' },
+        { spec: 'Longer spread', eq: 'CHALLENGE 3' }, { spec: 'Pressure set', eq: 'CHALLENGE 4' }] }
+  ];
+
+  WHEN = [{ id: 'day', n: 'EVERY BLOCK' }, { id: 'week', n: 'THIS WEEK' }, { id: 'once', n: 'ONE OFF' }];
+
+  PLAYERS = [
+    { id: 'p1', name: 'Mara Ellis', target: 0, targetLabel: 'SCRATCH', last: 1, blocks: 5,
+      rungs: { driving: 2, approach: 2, chipping: 2, putting: 1 },
+      hist: [{ d: 'Jul 2', f: { driving: 7, approach: 6.4, chipping: 6, putting: 2.7 } },
+        { d: 'Jul 8', f: { driving: 6, approach: 5.8, chipping: 5.4, putting: 2.2 } },
+        { d: 'Jul 14', f: { driving: 5, approach: 5.2, chipping: 5.4, putting: 1.8 } },
+        { d: 'Jul 19', f: { driving: 5, approach: 4.6, chipping: 4.8, putting: 1.4 } },
+        { d: 'Jul 26', f: { driving: 4, approach: 4, chipping: 4.2, putting: 1.4 } },
+        { d: 'Aug 2', f: { driving: 4, approach: 3.4, chipping: 3.6, putting: 0.9 } }],
+      queue: [{ id: 'q1', fid: 'driving', rung: 2, when: 'week', note: 'Bad miss inside 20 yd. Two sessions before Friday.', done: true }],
+      note: 'Ball flight is holding up. Watch the tee ball under pressure.' },
+    { id: 'p2', name: 'Devin Park', target: 2, targetLabel: 'D2', last: 6, blocks: 3,
+      rungs: { driving: 1, approach: 2, chipping: 1, putting: 1 },
+      hist: [{ d: 'Jul 1', f: { driving: 10, approach: 8.8, chipping: 9, putting: 4.5 } },
+        { d: 'Jul 7', f: { driving: 9, approach: 8.2, chipping: 8.4, putting: 4.1 } },
+        { d: 'Jul 15', f: { driving: 8, approach: 7.6, chipping: 9, putting: 3.6 } },
+        { d: 'Jul 22', f: { driving: 7, approach: 7, chipping: 8.4, putting: 3.6 } },
+        { d: 'Jul 29', f: { driving: 7, approach: 6.4, chipping: 8.4, putting: 3.2 } }],
+      queue: [{ id: 'q2', fid: 'chipping', mode: 'bunker', rung: 0, when: 'week', note: 'Bunker is two levels behind everything else.' }],
+      note: '' },
+    { id: 'p3', name: 'Coby Rhodes', target: 3, targetLabel: 'D3', last: 14, blocks: 2,
+      rungs: { driving: 1, approach: 1, chipping: 1, putting: 0 },
+      hist: [{ d: 'Jun 28', f: { driving: 15, approach: 14.4, chipping: 13.2, putting: 5.4 } },
+        { d: 'Jul 5', f: { driving: 14, approach: 13.8, chipping: 13.2, putting: 5 } },
+        { d: 'Jul 12', f: { driving: 14, approach: 13.2, chipping: 12.6, putting: 4.5 } },
+        { d: 'Jul 21', f: { driving: 15, approach: 13.8, chipping: 13.2, putting: 5 } }],
+      queue: [], note: 'Two weeks quiet. Call him.' },
+    { id: 'p4', name: 'Sam Iwu', target: 5, targetLabel: '5', last: 2, blocks: 4,
+      rungs: { driving: 1, approach: 1, chipping: 1, putting: 1 },
+      hist: [{ d: 'Jul 3', f: { driving: 19, approach: 17.4, chipping: 16.2, putting: 7.7 } },
+        { d: 'Jul 10', f: { driving: 18, approach: 16.8, chipping: 15.6, putting: 7.2 } },
+        { d: 'Jul 17', f: { driving: 17, approach: 15.6, chipping: 15, putting: 6.3 } },
+        { d: 'Jul 24', f: { driving: 16, approach: 15, chipping: 14.4, putting: 5.9 } },
+        { d: 'Aug 1', f: { driving: 15, approach: 14.4, chipping: 13.8, putting: 5.4 } }],
+      queue: [{ id: 'q3', fid: 'approach', rung: 1, when: 'day', note: 'Long end of the rotation — 150 yd and out.', done: true },
+        { id: 'q4', fid: 'putting', mode: 'makeables', rung: 0, when: 'week', note: 'Makeables at 6 to 10 ft — the band costing him most on Putt 18.', done: true }],
+      note: '' },
+    { id: 'p5', name: 'Tess Byrne', target: 10, targetLabel: '10', last: 4, blocks: 3,
+      rungs: { driving: 1, approach: 1, chipping: 0, putting: 0 },
+      hist: [{ d: 'Jul 6', f: { driving: 22, approach: 20.4, chipping: 19.2, putting: 9 } },
+        { d: 'Jul 13', f: { driving: 21, approach: 19.8, chipping: 18.6, putting: 8.6 } },
+        { d: 'Jul 23', f: { driving: 20, approach: 19.2, chipping: 18.6, putting: 8.1 } },
+        { d: 'Jul 30', f: { driving: 19, approach: 18.6, chipping: 18, putting: 7.7 } }],
+      queue: [{ id: 'q5', fid: 'chipping', mode: 'fairway', rung: 0, when: 'day', note: 'Inside 15 ft from the fairway. Every session.' }],
+      note: '' },
+    { id: 'p6', name: 'Ana Ruiz', target: 8, targetLabel: '8', last: 11, blocks: 2,
+      rungs: { driving: 1, approach: 1, chipping: 1, putting: 0 },
+      hist: [{ d: 'Jul 4', f: { driving: 17, approach: 16.2, chipping: 15.6, putting: 6.8 } },
+        { d: 'Jul 11', f: { driving: 17, approach: 15.6, chipping: 15, putting: 6.8 } },
+        { d: 'Jul 18', f: { driving: 16, approach: 15.6, chipping: 15, putting: 6.3 } }],
+      queue: [{ id: 'q6', fid: 'driving', rung: 1, when: 'week', note: 'Bad miss inside 30 yd.' }], note: '' }
+  ];
+
+  STALE = 10;
+
+  state = { screen: 'roster', players: this.PLAYERS, sel: null, filter: 'all', sort: 'attention', query: '', density: 'full',
+    draft: { players: [], fid: 'approach', rung: 1, mode: '', when: 'week', note: '' }, noteDraft: '', toast: '' };
+
+  componentDidMount() {
+    this._rz = () => this.setState({ w: window.innerWidth });
+    window.addEventListener('resize', this._rz);
+    this._rz();
+  }
+  componentWillUnmount() { window.removeEventListener('resize', this._rz); clearTimeout(this._t); }
+  flash(t) { this.setState({ toast: t }); clearTimeout(this._t); this._t = setTimeout(() => this.setState({ toast: '' }), 2400); }
+  facet(id) { return this.FACETS.filter(f => f.id === id)[0]; }
+  idxOf(f) { return this.FACETS.reduce((a, x) => a + (f[x.id] || 0) * x.weight, 0); }
+  txt(v) { return v < -0.05 ? '+' + Math.abs(v).toFixed(1) : Math.abs(v) < 0.05 ? '0.0' : v.toFixed(1); }
+  initials(n) { return n.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase(); }
+  pill(on) {
+    return 'border:none;border-radius:999px;padding:9px 14px;font-size:10px;font-weight:700;letter-spacing:0.1em;cursor:pointer;white-space:nowrap;background:'
+      + (on ? this.GREEN : 'transparent') + ';color:' + (on ? '#0d0d0d' : this.SLATE);
+  }
+  block(on) {
+    return 'border:1px solid ' + (on ? this.GREEN : '#2a2a2a') + ';border-radius:12px;padding:10px 0;font-size:10px;font-weight:700;letter-spacing:0.08em;cursor:pointer;background:'
+      + (on ? this.GREEN : '#0d0d0d') + ';color:' + (on ? '#0d0d0d' : this.DIM);
+  }
+  read(p) {
+    const h = p.hist, cur = h[h.length - 1].f, first = h[0].f;
+    const idx = this.idxOf(cur);
+    let leak = this.FACETS[0], worst = -99;
+    this.FACETS.forEach(f => { const gap = (cur[f.id] - p.target) * f.weight; if (gap > worst) { worst = gap; leak = f; } });
+    const q = p.queue || [], done = q.filter(x => x.done).length;
+    return { idx: idx, d30: idx - this.idxOf(first), leak: leak, cur: cur, q: q, done: done,
+      stale: p.last >= this.STALE, behind: q.length > done };
+  }
+
+  renderVals() {
+    const s = this.state, v = {}, players = s.players;
+    const reads = {}; players.forEach(p => { reads[p.id] = this.read(p); });
+    v.toast = s.toast; v.hasToast = !!s.toast;
+
+    // Viewport-driven layout: the lesson-tee case is one player on a phone.
+    const narrow = (s.w || 1440) < 760;
+    v.shellStyle = 'min-height:100vh;background:#0d0d0d;color:#ffffff;font-family:\'Work Sans\',system-ui,sans-serif;display:flex;flex-direction:'
+      + (narrow ? 'column' : 'row');
+    v.asideStyle = narrow
+      ? 'flex:none;border-bottom:1px solid #2a2a2a;padding:14px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap'
+      : 'width:246px;flex:none;border-right:1px solid #2a2a2a;padding:22px 15px;display:flex;flex-direction:column;gap:20px;height:100vh;position:sticky;top:0;overflow-y:auto';
+    v.navStyle = 'display:flex;gap:' + (narrow ? '5px;flex:1;min-width:0;flex-wrap:wrap' : '3px;flex-direction:column');
+    v.sideExtraStyle = narrow ? 'display:none' : 'display:flex;flex-direction:column;gap:8px';
+    v.dividerStyle = narrow ? 'display:none' : 'height:1px;background:#2a2a2a';
+    v.profileStyle = narrow
+      ? 'display:flex;align-items:center;gap:10px;flex:none'
+      : 'margin-top:auto;display:flex;align-items:center;gap:10px;border-top:1px solid #2a2a2a;padding-top:15px';
+    v.brandStyle = narrow ? 'flex:none' : '';
+    v.padStyle = 'padding:' + (narrow ? '18px 16px 40px' : '26px 30px 44px')
+      + ';display:flex;flex-direction:column;gap:18px;animation:fUp .28s ease both';
+    const oneCol = narrow ? '1fr' : null;
+    v.detailGrid = 'display:grid;grid-template-columns:' + (oneCol || '1.3fr 1fr') + ';gap:13px;align-items:start';
+    v.assignGrid = 'display:grid;grid-template-columns:' + (oneCol || '1.35fr 1fr') + ';gap:13px;align-items:start';
+    v.pHeadStyle = 'display:flex;align-items:flex-start;justify-content:space-between;gap:' + (narrow ? '14px;flex-wrap:wrap' : '22px');
+    v.pTitleStyle = 'font-size:' + (narrow ? '26px' : '33px') + ';font-weight:900;letter-spacing:-0.02em';
+    v.h1Style = 'font-size:' + (narrow ? '27px' : '33px') + ';font-weight:900;letter-spacing:-0.02em';
+
+    const flagged = players.filter(p => reads[p.id].stale || reads[p.id].behind);
+    const openPlayer = id => () => this.setState({ screen: 'player', sel: id,
+      noteDraft: (players.filter(p => p.id === id)[0] || {}).note || '' });
+
+    v.nav = [{ k: 'roster', n: 'Roster', b: String(players.length) },
+      { k: 'assign', n: 'Assign work', b: flagged.length ? String(flagged.length) : '' },
+      { k: 'library', n: 'Drill library', b: '' }].map(o => {
+      const on = s.screen === o.k || (o.k === 'roster' && s.screen === 'player');
+      return { name: o.n, badge: o.b, go: () => this.setState({ screen: o.k }),
+        style: 'width:100%;display:flex;align-items:center;gap:8px;border:none;border-radius:12px;padding:11px 13px;font-size:14px;font-weight:700;cursor:pointer;background:'
+          + (on ? '#1a1a1a' : 'transparent') + ';color:' + (on ? '#ffffff' : this.SLATE),
+        badgeStyle: 'font-variant-numeric:tabular-nums;font-size:10px;font-weight:700;color:'
+          + (o.b && o.k === 'assign' ? this.CRIM : this.SLATE) };
+    });
+
+    v.alerts = flagged.slice(0, 4).map(p => {
+      const r = reads[p.id];
+      return { name: p.name, go: openPlayer(p.id),
+        reason: r.stale ? p.last + ' DAYS QUIET' : (r.q.length - r.done) + ' OF ' + r.q.length + ' NOT DONE' };
+    });
+    v.noAlerts = flagged.length === 0;
+
+    // ---- ROSTER
+    v.isRoster = s.screen === 'roster';
+    v.query = s.query; v.onQuery = e => this.setState({ query: e.target.value });
+    v.kpis = [{ label: 'PLAYERS', val: String(players.length), color: '#ffffff' },
+      { label: 'NEED ATTENTION', val: String(flagged.length), color: flagged.length ? this.CRIM : this.GREEN },
+      { label: 'ACTIVE · 7 DAYS', val: String(players.filter(p => p.last <= 7).length), color: '#ffffff' }];
+    v.filters = [{ k: 'all', n: 'ALL' }, { k: 'flag', n: 'NEEDS ATTENTION' }, { k: 'behind', n: 'BEHIND' }, { k: 'quiet', n: 'QUIET' }]
+      .map(o => ({ name: o.n, go: () => this.setState({ filter: o.k }), style: this.pill(s.filter === o.k) }));
+    v.sorts = [{ k: 'attention', n: 'ATTENTION' }, { k: 'index', n: 'INDEX' }, { k: 'name', n: 'NAME' }]
+      .map(o => ({ name: o.n, go: () => this.setState({ sort: o.k }), style: this.pill(s.sort === o.k) }));
+    v.isCompact = s.density === 'compact';
+    v.isFull = !v.isCompact;
+    v.densityTabs = [{ k: 'full', n: 'FULL' }, { k: 'compact', n: 'COMPACT' }]
+      .map(o => ({ name: o.n, go: () => this.setState({ density: o.k }), style: this.pill((s.density || 'full') === o.k) }));
+    v.cCols = ['PLAYER', 'DRV', 'APP', 'ATG', 'PUTT', 'TOTAL', 'WORK'].map((c, i) => ({ name: c,
+      style: 'font-size:9px;font-weight:600;letter-spacing:0.1em;white-space:nowrap;color:'
+        + (i === 5 ? '#c8c8c8' : '#6a6a6a') + (i === 5 ? ';border-left:1px solid #2a2a2a;padding-left:9px' : '') }));
+
+    v.cols = ['PLAYER', 'INDEX', 'LAST', 'WORK', 'LEAK', 'DRV', 'APP', 'ATG', 'PUTT']
+      .map((c, i) => ({ name: c, style: 'font-size:9px;font-weight:600;letter-spacing:0.12em;color:#6a6a6a;white-space:nowrap'
+        + (i === 5 ? ';border-left:1px solid #2a2a2a;padding-left:10px' : '') }));
+
+    const q = (s.query || '').trim().toLowerCase();
+    let list = players.filter(p => {
+      const r = reads[p.id];
+      if (s.filter === 'flag' && !(r.stale || r.behind)) return false;
+      if (s.filter === 'behind' && !r.behind) return false;
+      if (s.filter === 'quiet' && !r.stale) return false;
+      return !q || p.name.toLowerCase().indexOf(q) >= 0;
+    });
+    if (s.sort === 'index') list = list.slice().sort((a, b) => reads[a.id].idx - reads[b.id].idx);
+    else if (s.sort === 'name') list = list.slice().sort((a, b) => a.name.localeCompare(b.name));
+    else list = list.slice().sort((a, b) => {
+      const ra = reads[a.id], rb = reads[b.id];
+      return ((rb.stale ? 2 : 0) + (rb.behind ? 1 : 0)) - ((ra.stale ? 2 : 0) + (ra.behind ? 1 : 0)) || ra.idx - rb.idx;
+    });
+
+    v.noRows = list.length === 0;
+    v.rows = list.map((p, i) => {
+      const r = reads[p.id];
+      return { name: p.name, initials: this.initials(p.name), go: openPlayer(p.id),
+        meta: 'TARGET ' + p.targetLabel + ' · ' + p.blocks + ' BLOCKS/WK',
+        style: 'display:grid;grid-template-columns:minmax(0,2.2fr) 88px 82px 84px 104px repeat(4,72px);gap:11px;align-items:center;padding:14px 20px;cursor:pointer'
+          + (i ? ';border-top:1px solid #2a2a2a' : ''),
+        flag: r.stale ? 'QUIET' : r.behind ? 'BEHIND' : '',
+        flagStyle: 'display:' + (r.stale || r.behind ? 'inline-block' : 'none') + ';border:1px solid ' + this.CRIM
+          + ';border-radius:999px;padding:2px 7px;font-size:8px;font-weight:700;letter-spacing:0.1em;color:' + this.CRIM,
+        idx: this.txt(r.idx), idxColor: r.idx <= p.target + 0.4 ? this.GREEN : '#ffffff',
+        trend: (r.d30 <= 0 ? '−' : '+') + Math.abs(r.d30).toFixed(1), trendColor: r.d30 <= 0 ? this.GREEN : this.CRIM,
+        last: p.last === 0 ? 'today' : p.last + 'd ago', lastColor: r.stale ? this.CRIM : this.DIM,
+        work: r.q.length ? r.done + '/' + r.q.length : 'none',
+        workColor: r.behind ? this.CRIM : r.q.length ? this.GREEN : this.SLATE,
+        leak: r.leak.name,
+        facets: this.FACETS.map((f, fi) => {
+          const val = r.cur[f.id];
+          return { v: this.txt(val), level: f.fixed ? 'FIXED' : 'L' + ((p.rungs[f.id] || 0) + 1),
+            color: val <= p.target + 0.4 ? this.GREEN : val >= p.target + 3 ? this.CRIM : this.DIM,
+            cellStyle: fi === 0 ? 'border-left:1px solid #2a2a2a;padding-left:10px' : '' };
+        }) };
+    });
+
+    v.cRows = list.map((p, i) => {
+      const r = reads[p.id];
+      return { name: p.name, initials: this.initials(p.name), go: openPlayer(p.id),
+        style: 'display:grid;grid-template-columns:minmax(0,1.55fr) 58px 58px 58px 58px 72px 54px;gap:8px;align-items:center;padding:12px 16px;cursor:pointer'
+          + (i ? ';border-top:1px solid #2a2a2a' : ''),
+        flag: r.stale ? p.last + 'd quiet' : r.behind ? 'behind' : 'on track',
+        flagStyle: 'font-size:9px;font-weight:700;letter-spacing:0.06em;margin-top:1px;white-space:nowrap;color:'
+          + (r.stale || r.behind ? this.CRIM : this.GREEN),
+        cells: this.FACETS.map(f => {
+          const val = r.cur[f.id];
+          return { v: this.txt(val),
+            color: val <= p.target + 0.4 ? this.GREEN : val >= p.target + 3 ? this.CRIM : this.DIM };
+        }),
+        total: this.txt(r.idx),
+        totalStyle: 'font-variant-numeric:tabular-nums;font-size:19px;font-weight:900;border-left:1px solid #2a2a2a;padding-left:9px;color:'
+          + (r.idx <= p.target + 0.4 ? this.GREEN : '#ffffff'),
+        work: r.q.length ? r.done + '/' + r.q.length : '—',
+        workColor: r.behind ? this.CRIM : r.q.length ? this.GREEN : this.SLATE };
+    });
+
+    // ---- PLAYER
+    v.isPlayer = s.screen === 'player';
+    const P = players.filter(p => p.id === s.sel)[0] || players[0];
+    const R = reads[P.id];
+    v.backToRoster = () => this.setState({ screen: 'roster' });
+    v.pName = P.name; v.pInitials = this.initials(P.name);
+    v.pMeta = 'TARGET ' + P.targetLabel + ' · ' + P.hist.length + ' SESSIONS · LAST ' + (P.last === 0 ? 'TODAY' : P.last + 'D AGO');
+    v.pFlag = R.stale ? 'GONE QUIET' : R.behind ? 'BEHIND ON WORK' : 'ON TRACK';
+    v.pFlagStyle = 'border:1px solid ' + (R.stale || R.behind ? this.CRIM : this.GREEN)
+      + ';border-radius:999px;padding:3px 9px;font-size:8px;font-weight:700;letter-spacing:0.1em;color:'
+      + (R.stale || R.behind ? this.CRIM : this.GREEN);
+    v.pIdx = this.txt(R.idx); v.pIdxColor = R.idx <= P.target + 0.4 ? this.GREEN : '#ffffff';
+    v.pTrend = (R.d30 <= 0 ? '−' : '+') + Math.abs(R.d30).toFixed(1);
+    v.pTrendColor = R.d30 <= 0 ? this.GREEN : this.CRIM;
+    v.pTarget = P.targetLabel; v.pSessionCount = P.hist.length + ' SESSIONS';
+    v.pFirstDate = P.hist[0].d.toUpperCase(); v.pLastDate = P.hist[P.hist.length - 1].d.toUpperCase();
+    v.assignFor = () => this.setState({ screen: 'assign', draft: Object.assign({}, s.draft, { players: [P.id] }) });
+
+    const comps = P.hist.map(h => this.idxOf(h.f));
+    const allV = comps.concat([P.target]);
+    const hi = Math.max.apply(null, allV) + 1.5, lo = Math.min.apply(null, allV) - 1.5;
+    const yOf = val => (6 + (val - lo) / ((hi - lo) || 1) * 88).toFixed(1);
+    const xOf = i => (comps.length < 2 ? 0 : i / (comps.length - 1) * 296 + 2).toFixed(1);
+    v.pPoints = comps.map((c, i) => xOf(i) + ',' + yOf(c)).join(' ');
+    v.pTargetY = yOf(P.target);
+    v.pDots = comps.map((c, i) => ({ x: xOf(i), y: yOf(c), fill: c <= P.target + 0.4 ? this.GREEN : '#ffffff' }));
+
+    v.pFacets = this.FACETS.map(f => {
+      const vals = P.hist.map(h => h.f[f.id]);
+      const cur = vals[vals.length - 1];
+      const fhi = Math.max.apply(null, vals), flo = Math.min.apply(null, vals);
+      const col = cur <= P.target + 0.4 ? this.GREEN : cur >= P.target + 3 ? this.CRIM : this.DIM;
+      const rung = f.fixed ? 0 : Math.min(P.rungs[f.id] || 0, f.levels.length - 1);
+      return { name: f.name, val: this.txt(cur), color: col,
+        level: f.fixed ? 'FIXED' : 'L' + (rung + 1),
+        levelStyle: 'border:1px solid #2a2a2a;border-radius:999px;padding:3px 8px;font-size:9px;font-weight:700;letter-spacing:0.08em;color:' + this.SLATE,
+        tag: 'WEIGHT ' + f.weight.toFixed(2),
+        spec: f.levels[rung].spec,
+        spark: vals.map((val, i) => (vals.length < 2 ? 0 : i / (vals.length - 1) * 100).toFixed(1) + ','
+          + (3 + (val - flo) / ((fhi - flo) || 1) * 24).toFixed(1)).join(' ') };
+    });
+
+    v.histCols = ['DATE'].concat(this.FACETS.map(f => f.name.toUpperCase())).map(c => ({ name: c }));
+    v.pHistory = P.hist.slice().reverse().map(h => ({ date: h.d,
+      cells: this.FACETS.map(f => ({ v: this.txt(h.f[f.id]),
+        color: h.f[f.id] <= P.target + 0.4 ? this.GREEN : h.f[f.id] >= P.target + 3 ? this.CRIM : this.DIM })) }));
+
+    v.pQueue = R.q.map(x => {
+      const f = this.facet(x.fid);
+      return { title: f.name + (x.mode ? ' · ' + x.mode.toUpperCase() : ''),
+        note: x.note, when: (f.fixed ? 'FIXED CORRIDOR' : 'L' + ((P.rungs[x.fid] || 0) + 1) + ' · SET BY LADDER') + ' · ' + ({ day: 'EVERY BLOCK', week: 'THIS WEEK', once: 'ONE OFF' })[x.when],
+        tag: x.done ? 'DONE' : 'OUTSTANDING',
+        tagStyle: 'border:1px solid ' + (x.done ? this.GREEN : this.SLATE) + ';border-radius:999px;padding:2px 8px;font-size:8px;font-weight:700;letter-spacing:0.1em;color:' + (x.done ? this.GREEN : this.SLATE),
+        style: 'display:flex;align-items:flex-start;gap:11px;border:1px solid ' + (x.done ? '#2a2a2a' : 'rgba(0,175,81,0.4)')
+          + ';border-radius:14px;padding:13px;background:#0d0d0d',
+        remove: () => {
+          this.setState({ players: players.map(p => p.id !== P.id ? p
+            : Object.assign({}, p, { queue: p.queue.filter(y => y.id !== x.id) })) });
+          this.flash('Pulled from ' + P.name + '.');
+        } };
+    });
+    v.pQueueEmpty = R.q.length === 0;
+    v.pQueueDone = R.q.length ? R.done + ' OF ' + R.q.length + ' DONE' : '';
+    v.noteDraft = s.noteDraft;
+    v.onNote = e => this.setState({ noteDraft: e.target.value });
+    v.saveNote = () => {
+      this.setState({ players: players.map(p => p.id !== P.id ? p : Object.assign({}, p, { note: s.noteDraft })) });
+      this.flash('Note saved.');
+    };
+    v.pBlocks = String(P.blocks);
+    v.pBlockPips = Array.from({ length: 7 }, (_, i) => ({
+      style: 'flex:1;height:7px;border-radius:4px;background:' + (i < P.blocks ? this.GREEN : '#2a2a2a') }));
+    v.pScheduleNote = 'The player sets this. You add work on top of it — you do not change how often they have committed to train.';
+
+    // ---- ASSIGN
+    v.isAssign = s.screen === 'assign';
+    const d = s.draft;
+    const setDraft = patch => this.setState({ draft: Object.assign({}, d, patch) });
+    const dF = this.facet(d.fid);
+
+    v.pickPlayers = players.map(p => {
+      const on = d.players.indexOf(p.id) >= 0;
+      return { name: p.name, initials: this.initials(p.name), count: (p.queue || []).length + ' ASSIGNED',
+        go: () => setDraft({ players: on ? d.players.filter(x => x !== p.id) : d.players.concat([p.id]) }),
+        style: 'display:flex;align-items:center;gap:9px;border:1px solid ' + (on ? this.GREEN : '#2a2a2a')
+          + ';border-radius:14px;padding:9px 13px 9px 9px;cursor:pointer;background:' + (on ? 'rgba(0,175,81,0.12)' : '#0d0d0d'),
+        avatar: 'width:30px;height:30px;flex:none;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;background:'
+          + (on ? this.GREEN : '#2a2a2a') + ';color:' + (on ? '#0d0d0d' : this.DIM) };
+    });
+    v.pickAllLabel = d.players.length === players.length ? 'CLEAR ALL' : 'SELECT ALL';
+    v.pickAll = () => setDraft({ players: d.players.length === players.length ? [] : players.map(p => p.id) });
+
+    v.pickFacets = this.FACETS.map(f => ({ name: f.name.toUpperCase(),
+      go: () => setDraft({ fid: f.id, mode: '', rung: Math.min(d.rung, 3) }), style: this.block(d.fid === f.id) }));
+    const chip = m => ({ name: m.n,
+      go: () => setDraft({ mode: d.mode === m.id ? '' : m.id }),
+      style: 'border:1px solid ' + (d.mode === m.id ? this.GREEN : '#2a2a2a')
+        + ';border-radius:999px;padding:9px 15px;font-size:9px;font-weight:700;letter-spacing:0.1em;cursor:pointer;background:'
+        + (d.mode === m.id ? this.GREEN : 'transparent') + ';color:' + (d.mode === m.id ? '#0d0d0d' : this.DIM) });
+    v.hasModes = (dF.groups || []).length > 0;
+    v.noModes = !v.hasModes;
+    v.modeHeading = dF.name.toUpperCase() + ' · WHICH VERSION';
+    v.modeEmpty = dF.empty || '';
+    v.modeGroups = (dF.groups || []).map(g => ({ label: g.label, note: g.note, modes: g.modes.map(chip) }));
+    v.levelRows = d.players.map(id => {
+      const p = players.filter(x => x.id === id)[0];
+      const rung = dF.fixed ? 0 : Math.min(p.rungs[d.fid] || 0, dF.levels.length - 1);
+      return { name: p.name, level: dF.fixed ? 'FIXED' : 'L' + (rung + 1), spec: dF.levels[rung].spec };
+    });
+    v.hasLevelRows = v.levelRows.length > 0;
+    v.pickWhen = this.WHEN.map(w => ({ name: w.n, go: () => setDraft({ when: w.id }),
+      style: this.block(d.when === w.id) + ';flex:1' }));
+    v.draftNote = d.note;
+    v.onDraftNote = e => setDraft({ note: e.target.value });
+
+    const soloRung = d.players.length === 1
+      ? ((players.filter(x => x.id === d.players[0])[0] || {}).rungs || {})[d.fid] || 0 : null;
+    v.previewTitle = dF.name + (d.mode ? ' · ' + d.mode.toUpperCase() : '')
+      + (soloRung == null ? ' · CURRENT LEVEL' : ' · L' + (soloRung + 1));
+    v.previewNote = d.note || (soloRung == null ? dF.rule : dF.levels[soloRung].spec + ' — ' + dF.rule);
+    v.previewWhen = ({ day: 'EVERY BLOCK', week: 'THIS WEEK', once: 'ONE OFF' })[d.when] + ' · 20 SHOTS';
+    v.previewTo = d.players.length === 0 ? 'No players selected yet.'
+      : d.players.length === 1 ? 'Goes to ' + (players.filter(p => p.id === d.players[0])[0] || {}).name + '.'
+      : 'Goes to ' + d.players.length + ' players.';
+    v.commitLabel = d.players.length ? 'ASSIGN TO ' + d.players.length + (d.players.length === 1 ? ' PLAYER' : ' PLAYERS') : 'PICK A PLAYER';
+    v.commitStyle = 'width:100%;border:none;border-radius:999px;padding:15px;font-size:11px;font-weight:700;letter-spacing:0.14em;background:'
+      + (d.players.length ? this.GREEN : '#2a2a2a') + ';color:' + (d.players.length ? '#0d0d0d' : this.SLATE)
+      + ';cursor:' + (d.players.length ? 'pointer' : 'default');
+    v.commit = () => {
+      if (!d.players.length) return;
+      const stamp = Date.now();
+      this.setState({ players: players.map(p => d.players.indexOf(p.id) < 0 ? p : Object.assign({}, p, {
+        queue: (p.queue || []).concat([{ id: 'q' + stamp + p.id, fid: d.fid, mode: d.mode, when: d.when,
+          note: d.note || dF.levels[p.rungs[d.fid] || 0].spec }]) })),
+        draft: Object.assign({}, d, { players: [], note: '' }) });
+      this.flash('Assigned to ' + d.players.length + (d.players.length === 1 ? ' player.' : ' players.'));
+    };
+
+    const out = [];
+    players.forEach(p => (p.queue || []).forEach(x => {
+      if (x.done) return;
+      const f = this.facet(x.fid);
+      out.push({ name: p.name, what: f.name + (x.mode ? ' · ' + x.mode : '') + ' · L' + ((p.rungs[x.fid] || 0) + 1),
+        state: reads[p.id].stale ? p.last + 'D QUIET' : ({ day: 'EVERY BLOCK', week: 'THIS WEEK', once: 'ONE OFF' })[x.when],
+        color: reads[p.id].stale ? this.CRIM : this.SLATE, go: openPlayer(p.id) });
+    }));
+    v.outstanding = out; v.noOutstanding = out.length === 0;
+
+    // ---- LIBRARY
+    v.isLibrary = s.screen === 'library';
+    v.library = this.FACETS.map(f => ({ name: f.name, weight: f.weight.toFixed(2), rule: f.rule,
+      meta: '20 SHOTS · ' + (f.modes.length ? f.modes.length + ' MODES' : 'SINGLE MODE'),
+      hasModes: f.modes.length > 0, modes: f.modes,
+      levels: f.levels.map((L, i) => ({ id: 'L' + (i + 1), spec: L.spec, eq: L.eq })),
+      go: () => this.setState({ screen: 'assign', draft: Object.assign({}, d, { fid: f.id, mode: '' }) }) }));
+
+    return v;
+  }
+}
+</script>
+</body>
+</html>
