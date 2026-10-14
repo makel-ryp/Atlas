@@ -11,6 +11,8 @@ import { intakeRouter } from './routes/intake'
 import { reviewRouter } from './routes/review'
 import { practiceRouter } from './routes/practice'
 import { messagesRouter } from './routes/messages'
+import { forgeConfig } from './forgeDb'
+import { createForgeRouter } from './routes/forge'
 
 const app = express()
 const isProduction = process.env.NODE_ENV === 'production'
@@ -42,6 +44,23 @@ app.use('/api', intakeRouter)
 app.use('/api', reviewRouter)
 app.use('/api', practiceRouter)
 app.use('/api', messagesRouter)
+
+// FORGE gets its own two database principals (forge_app, forge_svc). If either credential is missing
+// or names the wrong role the router is NOT mounted — there is deliberately no fallback to atlas_app,
+// which would hand a player the coach's grants. A stub answers 503 so the client sees "FORGE is
+// unavailable" rather than the 404 that means "no such route". It touches no database. This sits
+// BEFORE the /api 404 below, which would otherwise swallow every /api/forge request.
+if (forgeConfig.ok) {
+  app.use('/api/forge', createForgeRouter(forgeConfig.pools))
+} else {
+  console.error(
+    '[forge] NOT MOUNTED — /api/forge answers 503. ' + forgeConfig.problems.join('; ') +
+      '. Set both in .env (see .env.example); a connection string is never printed.',
+  )
+  app.use('/api/forge', (_req, res) => {
+    res.status(503).json({ error: 'forge_unavailable' })
+  })
+}
 
 // Unmatched /api/* fails as JSON, in BOTH environments. In prod it would otherwise reach the SPA
 // fallback and return index.html with a 200 — the client then parses '<!doctype html>' and reports a

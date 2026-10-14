@@ -20,12 +20,12 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-10-09 11:27 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-10-14 12:20 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | main | **2 file(s)** | **13 ahead** |
-| eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | forge-port-design | clean | **— ahead** |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | forge-port | **7 file(s)** | pushed |
+| eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | forge-port-design | **2 file(s)** | pushed |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
 | locker-room | `~/Desktop/ATR/apps/locker-room` | makel-ryp/locker-room | feature | clean | pushed |
@@ -33,8 +33,8 @@ _Regenerated 2026-10-09 11:27 CDT by `docs/refresh-status.sh`._
 | practice-dna | `~/Desktop/ATR/apps/practice-dna` | **not a git repo** | — | — | — |
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
-- **@ryp/eco version:** `0.27.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.27.0.tgz`
-- **Atlas HEAD:** `06e3951 The fix checklist, from the reviewer's list rather than my summary of it`
+- **@ryp/eco version:** `0.28.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.28.0.tgz`
+- **Atlas HEAD:** `1f7a928 Vendor eco 0.28.0 — and this branch must never point at production`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
