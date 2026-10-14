@@ -1,11 +1,21 @@
 # FORGE scoring module — adoption plan
 
-**Status:** proposal, **with three of its questions now decided** (Makel, 2026-10-06 — decisions in
+**Status:** proposal, **with four of its questions now decided** (Makel, 2026-10-06 — decisions in
 `decisions/FORGE-PORT-ANSWERS-2026-10-06.md`, consequences in `decisions/FORGE-PORT-FIX-CHECKLIST.md`):
 **§3** interpolation is signed (the *tail* below the last row is NOT — see §3); **§4** is **overruled**
 — `CAL.benchmarks` ships, tagged `UNSOURCED` (§4.1); **§2.5a** driving asymmetry is decided symmetric
-and recorded as a formula change that lands before the first row. Text below that still recommends
-the opposite is retained as the argument that was overruled, and says so where it appears.
+and recorded as a formula change that lands before the first row; **§2.1 / B2** is **superseded by B22**
+(answer 22) — there is **no `gender` column**, the field is `golf.player_profile.carry_reference` and the
+snapshot is `carry_reference_at_play`. Text below that still recommends the opposite is retained as the
+argument that was overruled, and says so where it appears.
+
+**Updated 2026-10-14 — the scoring module is no longer a proposal; it is built (`@ryp/eco/scoring`,
+`2a858d3`, 193 fixtures passing).** Sections 1–8 are the analysis of **`forge-math.js` as received** and keep
+its signatures; **§9 says what the ported module actually does** — `SCORING_VERSION`, the carry-reference
+change (T-125 closed in the scoring layer), every deliberate departure, the `UNSOURCED` tag now applied to
+**both** `CAL.carry` and `CAL.benchmarks` (§4.2), and what is **NOT BUILT**. An earlier version of this
+header said `CAL.benchmarks` was "tagged `UNSOURCED`" when it was not yet true in any code; it is now, in the
+module — the vendored `forge-math.js:56` still says `MEASURED` and is never edited.
 **Written:** 2026-10-06. Every number below was verified first-hand by running the code, not read
 off a summary. Where this document contradicts `docs/FORGE-CONTEXT.md`, this one is newer and the
 contradiction is called out in place.
@@ -13,6 +23,18 @@ contradiction is called out in place.
 **Subject:** `/Users/makelmackbee/Downloads/FORGE-package/build/forge-math.js` — 337 lines, pure,
 dependency-free, clock-free. **23 exports** (not 22 — `grep -c '^export'` returns 23; the earlier
 count missed one). Fixture file `build/forge-math.test.js`, 57 checks, one failing.
+
+> ⚠️ **Read this before the numbers in §§2–5.** Those sections analyse **`forge-math.js` as received**, whose
+> signatures are `baselineHandicap(yards, gender = 'm')` and `drivingIndex(zones, averageYards, gender = 'm')`.
+> A call written `baselineHandicap(230)` below is **that** signature with the men's default. **The ported module,
+> `@ryp/eco/scoring` (commit `2a858d3`), takes a carry reference instead, and a one-argument call returns `null`.**
+> For `'pga_scratch'` these figures were re-run against the built module on 2026-10-14 and **are unchanged**:
+> `baselineHandicap` of 245 → 7.5, 225 → 12.5, 234 → 10.3, 236 → 9.8, 230 → 11.3, 184 → 25.0, 150 → 25.9,
+> 100 → 27.3; 205 → 18.3 on `'pga_scratch'` and 10.0 on `'lpga_d3'`; `drivingIndex(10 FW, 8 small, 2 big, 230)` →
+> 13.3 and `(12 FW, 6 small, 2 big, 230)` → 11.3 (both with the big misses on the left, where the old and the
+> symmetric formula agree); `benchmarkAt(12.5)` → 221 yd / 50%. **Not re-run:** the 8.6 and 12.5 comparison
+> figures in §4.1, and every figure not listed here. What the ported module does differently — all of it —
+> is in **§9**.
 
 Baseline run, unmodified package:
 
@@ -37,7 +59,7 @@ backfill is impossible once the session is over. The Build Spec says this itself
 | 🔴 BLOCKS the migration (table shape) | ⚪ Does not block (a computed number, recomputable later) |
 | --- | --- |
 | **B1.** No **carry snapshot** on the driving facet row. `drivingIndex` reads `avg_carry_yds`, which the player can edit at any time. Without a snapshot, re-scoring an old session silently rewrites history. §2.1 | **N1.** The three-way `baselineHandicap(225)` conflict. Changes every driving index; changes no column. §3 |
-| **B2.** No **gender column anywhere in eco.** `baselineHandicap(yards, gender)` selects between `CAL.carry.m` and `CAL.carry.f`. `golf.player_profile` has `handedness`, not gender; `identity.ts` has none. A scoring input with no home. §2.1 | **N2.** Which benchmark table is real. Display-only; feeds no stored column. §4 |
+| **B2.** *(superseded by **B22**, answer 22 — read as "no home for the carry-table selector".)* eco had nowhere to hold *which carry table scores this player*. It is **not** a gender column and none is being added: the home is `golf.player_profile.carry_reference`, frozen per driving row as `carry_reference_at_play`. §2.1 | **N2.** Which benchmark table is real. Display-only; feeds no stored column. §4 |
 | **B3.** No **`scoring_version`** on the stored facet index. Several constants are GUESS and *will* be refitted. Precedent already exists in this codebase. §2.3 | **N3.** The facet weights, and the chipping/putting swap. The composite is derived-never-stored, so a wrong weight is a wrong pixel, not a wrong row. §5 |
 | | **N4.** Every unfitted constant — `yardsPerShot`, the ATG set, `putt18`. §6 |
 | | **N5.** Where the module lives, and the level/option tables moving into it. §1, §5.3 |
@@ -142,38 +164,57 @@ Spec §1 already stores most of what re-scoring needs, and it is well designed:
 - `session_facets.raw_total`, `shot_count`, `holes_played`, `mode`, `meta`.
 
 🔴 **What is missing — and it is only missing for driving.** `drivingIndex(zones, averageYards,
-gender)` depends on two values that live on the mutable player row and are snapshotted nowhere:
+carryReference)` depends on two values that live on the mutable player row and are snapshotted nowhere:
 
 | Input | Lives on | Why a snapshot is required |
 | --- | --- | --- |
 | `avg_carry_yds` | the player row (spec §1), i.e. `golf.player_profile.driver_carry_yds` | The player edits it from `PUT /me/profile` (§6.1). Re-scoring a June session in December uses December's carry. `baselineHandicap` is added **directly** into the driving index, so a 20-yard carry edit moves every historic driving index by ~5 strokes. |
-| `gender` | **nowhere** | Selects `CAL.carry.m` vs `CAL.carry.f`. 205 yd reads **18.3** as a man and **10.0** as a woman — **8.3 strokes**. |
+| the carry reference | `golf.player_profile.carry_reference` — `'pga_scratch'` \| `'lpga_d3'` | Selects `CAL.carry.m` vs `CAL.carry.f`. 205 yd reads **18.3** on `'pga_scratch'` and **10.0** on `'lpga_d3'` — **8.3 strokes**. The player can change it. |
+
+> **Superseded — B22, 2026-10-09 (answer 22).** This section originally prescribed a `gender text` column
+> (`'m'` \| `'f'`) on `golf.player_profile` and a `gender_at_play` snapshot on the facet row. Makel decided
+> not to ask for gender at all: the field never meant "who are you", it meant "which statistical reference
+> class should we compare you against". So the column is **`carry_reference`** and the snapshot is
+> **`carry_reference_at_play`**. **Do not add a gender column; nothing is backfilled from RYP-RED's Firestore
+> `gender`** (its vocabulary is unverified, and a reference class is not a gender). The structural argument
+> for a snapshot is unchanged and stands below.
 
 The spec's own rationale for snapshotting `level` applies verbatim: *"or every trend lies."* Carry
 is the same kind of value and got the same treatment nowhere.
 
-**Fix (B1 + B2), two columns on the driving facet row** — not in `meta`, because `meta` is
+**Fix (B1 + B22), two columns on the driving facet row** — not in `meta`, because `meta` is
 untyped jsonb and these are scoring inputs that a re-score must not have to guess at:
 
 ```
-carry_yds_at_play   integer   null    -- snapshot of driver_carry_yds when this facet was scored
-gender_at_play      text      null    -- 'm' | 'f'; selects the carry table. Text + const, not an enum.
+carry_yds_at_play         integer   null    -- snapshot of driver_carry_yds when this facet was scored
+carry_reference_at_play   text      null    -- 'pga_scratch' | 'lpga_d3'; selects the carry table. Text + const, not an enum.
 ```
 
-Null is honest for a session scored before the player supplied a carry — `baselineHandicap`
-already returns 30 for a falsy input.
+Declared on `golf.facet_scores` in `eco/src/schema/forge.ts` (`carryYdsAtPlay`, `carryReferenceAtPlay`), with
+CHECKs for the vocabulary, for "driving rows only", and for *"a driving `practice_index` may be stored only if
+both are set"* — read from the file, **not applied to any database as far as this document knows**.
 
-**And B2 has a second half: eco needs a gender column at all.** Grep confirms none exists —
-`golf.player_profile` has `handedness` (which is not a proxy; a left-handed man and a woman select
-different tables for different reasons) and `identity.ts` has nothing. Add to
-`golf.player_profile`, alongside `handedness`, following the existing convention:
+**Null means two different things here, and one of them is a trap.** A null `carry_reference_at_play` is
+honest and means *no driving index*: `drivingIndex` returns `null` (ruling 10, §9.3) and the CHECK above
+refuses to store one. A null `carry_yds_at_play` **with a reference present** is *not* caught by the scorer:
+`baselineHandicap` still returns **30** for a missing or zero distance, so `drivingIndex(10 FW + 10 small misses,
+null, 'pga_scratch')` is **28**, a plausible number built on a baseline of 30 (verified against `dist`,
+2026-10-14). Only the CHECK stops a *null* being stored — and it tests `is not null` only (no `carry_yds_at_play > 0` CHECK exists in `forge.ts`, grepped), so **a stored `0` passes it and scores on a baseline of 30**. The scorer behaviour is an open item — §9.5.
+
+**And B2 has a second half — a home for the table selector — and B22 settled it differently from the first
+draft of this section.** Grep confirmed there was no such column in eco: `golf.player_profile` has `handedness`
+(not a proxy — a left-handed man and a woman select different tables for different reasons) and `identity.ts`
+has nothing. Added to `golf.player_profile`, alongside `handedness`, following the existing convention:
 
 ```
-gender   text   -- 'm' | 'f'. Selects the carry→handicap table (Forge §2.3). Text + const, never a pg enum.
+carry_reference   text null, no default   -- 'pga_scratch' | 'lpga_d3'. Selects the carry→handicap table (Forge §2.3). Text + const, never a pg enum.
 ```
 
-It belongs in `golf.*` by the placement rule — it is a shared golf attribute another app reads,
-and it sits next to `handicap_index`, `driver_carry_yds` and `handedness` which are already there.
+It belongs in `golf.*` by the placement rule — it is a shared golf attribute another app reads, and it sits
+next to `handicap_index`, `driver_carry_yds` and `handedness` which are already there. The vocabulary is
+`CARRY_REFERENCES` in `eco/src/schema/enums.ts`, CHECKed in `golf.ts`. The module imports nothing, so it holds
+its own copy of the two names (`CARRY_TABLE_KEY` in `index.ts`); a fixture
+(`scoring-fixtures.mjs:121–127`) proves the copy agrees with `CARRY_REFERENCES`.
 
 ⚠️ **Do not add `avg_carry_yds` as a new column.** `golf.player_profile.driver_carry_yds` already
 exists and is the same quantity. Forge's `players.avg_carry_yds` maps onto it.
@@ -207,7 +248,8 @@ scoring_version   text   not null    -- no default. Stamped by the server from t
 ```
 
 This also satisfies the standing rule that **a scoring change needs a version bump** — the same
-rule Atlas's DNA fork already operates under.
+rule Atlas's DNA fork already operates under. On ryp-core the table is `golf.facet_scores`, not
+`session_facets` (`FORGE-ON-RYP-CORE.md` §2), and the module exports the string as `SCORING_VERSION` (§9.1).
 
 ### 2.4 Never stored — recomputed on every read
 
@@ -431,7 +473,8 @@ check('225 yd is half way 15→10', baselineHandicap(225), 12.5);
 > 🔴 **OVERRULED — Makel, 2026-10-06 (answer 21). `CAL.benchmarks` SHIPS.** The verdict above, and
 > Actions 1, 2 and 4 below, are retained as the argument that lost; do not build them. What survives
 > of this section is §4.1, which records the one claim that is a fact rather than a preference.
-> Action 3 (men-only, no gender parameter on `benchmarkAt`) is unaffected and still open.
+> Action 3 (men-only, no carry-reference parameter on `benchmarkAt`) is unaffected and still open — the
+> ported `benchmarkAt` still takes one argument.
 
 **The divergence at handicap 12.5, computed:**
 
@@ -491,9 +534,9 @@ prototype's comment names the disagreement and takes a side:
    constant rather than a number folded into the table — so the correction is visible and a later
    refit changes one value.
 2. Re-tag: yards ESTIMATED, fairway % MEASURED.
-3. ⚠️ **Both tables are men-only, and `benchmarkAt(handicap)` takes no gender parameter** while
-   `baselineHandicap(yards, gender)` does. A woman is currently benchmarked against men's driving
-   distance. Either add the parameter with a women's table, or suppress the distance benchmark for
+3. ⚠️ **Both tables are men-only, and `benchmarkAt(handicap)` takes no carry-reference parameter** while
+   `baselineHandicap(yards, carryReference)` does. A player on the `'lpga_d3'` scale is currently
+   benchmarked against men's driving distance. Either add the parameter with a women's table, or suppress the distance benchmark for
    women until one exists. Flagged, not solved — there is no women's source in the package.
 4. The existing fixture `check('benchmark at 7.5 interpolates', benchmarkAt(7.5).yards, 233)` must
    change: under `BENCH` the answer is **219**. Update it in the same change, or the suite goes red
@@ -531,18 +574,47 @@ shipped calibration, not a defect to be re-reported.** The place it would be rep
 number a good player sees — which is why it is written down here, in the same breath as the choice
 that causes it.
 
-⚠️ **Scope note.** The 11.3 comes from `CAL.carry`, not `CAL.benchmarks`, and `CAL.carry` carries the
-same `MEASURED` tag with no source either (§4, final subsection). B19 re-tags the *benchmarks*
-table only. Whether `CAL.carry` follows is **not decided here**.
+⚠️ **Scope note — and it is now decided.** The 11.3 comes from `CAL.carry`, not `CAL.benchmarks`, and `CAL.carry`
+carried the same `MEASURED` tag with no source either. B19 re-tagged the *benchmarks* table only, and an earlier
+version of this note said whether `CAL.carry` follows "is not decided here". **It is decided: ruling 8,
+2026-10-14 — `UNSOURCED` too.** That is §4.2.
+
+**Where each tag lives, so neither is re-reported.** `eco/src/scoring/index.ts` — the module that ships — tags
+`CAL.benchmarks` `UNSOURCED` (and defines the tier in its legend; earlier text of this document said the tag
+was applied when it was not). The vendored `atlas/proto/forge/build/forge-math.js:56` **still says `MEASURED`,
+by design** — `proto/forge/` is the unedited record of Luke's delivery and is never edited. Both statements are
+true and neither is a defect.
+
+### 4.2 `CAL.carry` is `UNSOURCED` too, and it matters more than the benchmarks tag *(ruling 8, 2026-10-14)*
+
+| | |
+| --- | --- |
+| **Tag as received** | `MEASURED` (`forge-math.js:47`: *"MEASURED — average carry by handicap, men and women"*), directly above a table the package does not source. The module's own comment now says so in the same place. |
+| **Why it matters more** | `CAL.benchmarks` is display-only. **`CAL.carry` feeds scoring**: `baselineHandicap` reads it and `drivingIndex` adds the result straight in. A wrong tag on a display table is a wrong label; a wrong tag on this table is a wrong *number*. |
+| **Both rows, not one** | The `UNSOURCED` tag is on the whole table, `m` and `f` alike. There is **no source for the women's rows** either; the `'lpga_d3'` scale's figures are exactly as unsupported as the men's. |
+| **The contradiction** | `CAL.carry` and `CAL.benchmarks` **disagree with each other by 30 yards at scratch**: `CAL.carry.m` puts a scratch player at **280** yd (`[280, 0]`); `CAL.benchmarks` puts handicap 0 at **250** (`benchmarkAt(0).yards`, verified). They cannot both be "average carry by handicap". (This is **separate** from the ~50 yd disagreement with Arccos recorded in the subsection below — 280 vs 230. Two comparisons, two gaps, do not merge them.) |
+
+**The consequence, concretely, verified against `dist` on 2026-10-14.** `baselineHandicap(250, 'pga_scratch')` is **6.3**,
+while `CAL.benchmarks` says a scratch golfer carries 250. So **the app can tell a player a scratch golfer carries
+250, watch them carry 250, and score them 6.3** — the benchmark display and the scoring table contradict each other on
+the same screen, with no tag anywhere on that screen able to say which one is wrong. (On the `'lpga_d3'`
+scale the same 250 yd scores −1.0, a plus handicap: `CAL.carry.f` reaches scratch at 245.)
+
+The tag does not fix any of this — it **stops the table claiming a measurement it does not have**. Luke is
+still asked for the source (ruling 7); the 30 yd conflict is his own Q6 finding (`decisions/ASK-LUKE-forge-port.md`), where he proposed `ESTIMATED` and ruling 8 chose `UNSOURCED` because nothing here is derived from a measurement. Until a source arrives the tag stays: a tag that is not
+true is worse than no tag, because everything downstream trusts it. Citing or refuting `CAL.carry` before a
+driving index reaches a user is still **Sequence step 6**, and still open.
 
 ---
 
 ### 🔴 A larger contradiction this exposed, which needs a citation before any driving index ships
 
+*(Against **Arccos** — 280 vs 230, ~50 yd. The 30 yd gap against `CAL.benchmarks` is §4.2 above. Both stand.)*
+
 `CAL.carry` and the Arccos data **disagree by ~50 yards about the same golfer**, and they cannot
 both be right:
 
-- `CAL.carry` (tagged **MEASURED**, and identical in the Build Spec §2.3): a **scratch** player
+- `CAL.carry` (tagged **MEASURED** as received — `UNSOURCED` in the module now, §4.2 — and identical in the Build Spec §2.3): a **scratch** player
   carries **280 yd**.
 - Arccos, roll-corrected: a **2.5-handicap** carries **230 yd**.
 
@@ -645,6 +717,15 @@ them move into `CAL` with a tag during the port:
 | `8`, `× 2`, `20 / shots` | `drivingIndex` body | These three *are* specified, in Build Spec §2.3 — `index = clamp(baseline_hcp + (8 − adj))`, `adj = (fairways − bad × 2) × scale`. Spec'd but still untagged in the module. |
 | `-6`, `40` | `clampIndex` | The index clamp. Spec'd in §2.2. |
 
+> 🔴 **Status in the eco port (`2a858d3`) — §§5.1, 5.3 and 5.4 are NOT BUILT, and the module header does not say so.**
+> Verified by reading `index.ts` and `Object.keys(CAL)`: `CAL` holds `sgRate, se20, window, yardsPerShot, atg,
+> putt18, carry, expPutts, benchmarks` — **there is no `CAL.weights`** (`practiceHandicap` still takes the weights as
+> a parameter), **no level `base`/`slope` tables and no option-set values**, and the loose literals are all still
+> literals: `zoneCentresYards` and `deadband` are default arguments, `8` / `× 2` / `20 / n` are in `drivingIndex`,
+> `-6` / `40` are in `clampIndex`. So `headScoredIndex` still cannot compute an index without constants that live
+> in the client, and the server and the client can still hold two copies of the weights. **Sequence step 2's
+> "move … into `CAL`" has not happened.**
+
 ---
 
 ## 6. The unfitted constants
@@ -656,7 +737,7 @@ players: `yardsPerShot`, ATG constants, Putt 18 calibration."*
 | --- | --- | --- | --- |
 | `yardsPerShot: 0.06` | **GUESS** | `dispersion().shotsLostToBias` | The **stroke cost** of a miss bias. Never *"your bias costs you 0.4 shots."* Show the bias direction and spread instead — but see the caveat below: those are modelled too, just less badly. |
 | `atg: { perYard, baseYards, rungStepYards, shortSided }` | **GUESS** | `atgAllowance` → `headScoredIndex` allowance → **the ATG index itself** | The ATG/chipping index as a number. A GUESS is inside the index, not just a label on it. |
-| `putt18: { base: 8, k: 1.2 }` | **PROVISIONAL** | `putt18Handicap` → **the putting index** | The putting index as a number. Module's own note: *"Both numbers must be calibrated against known reference rounds."* |
+| `putt18: { base: 10, k: 9.09 }` — *received as `{ base: 8, k: 1.2 }`* | `k`: **ESTIMATED** · `base`: **PROVISIONAL** | `putt18Handicap` → **the putting index** | The putting index as a number, until `base` is pinned. `k = 20 / (20 × sgRate.putting)` = 9.09; the received `1.2` was a bug, 7.58× too small (Luke's Q1, `decisions/ASK-LUKE-forge-port.md`). `base` 10 is the mid-scale value. 🔴 **Not gated** — see §9.5. |
 | `sgRate`, `se20`, `expPutts` | ESTIMATED | strokes gained, the ± confidence range, expected putts | Showable with the modelled marker. Defensible, not measured. |
 
 ### The cascade — this is the part that matters
@@ -753,6 +834,13 @@ Under that rule the reclassification falls out mechanically:
   the provenance from the worst tag among them. Then refitting `putt18` from PROVISIONAL to
   MEASURED upgrades the putting index and the composite automatically, and nobody has to remember
   to edit a second list. A hand-written map will go stale on the first refit.
+- ⚠️ **Status in the eco port: the tier exists; the derivation does not.** `PROVENANCE` in `index.ts` has the
+  three-value type (`Provenance = 'measured' | 'modelled' | 'provisional'`) and **one** `'provisional'` entry,
+  `putt18Index`, written by hand. The reclassification table above — `biasCost`, the ATG and putting
+  `facetIndex`, `practiceHandicap`, `strokesGained`, driving — is **not applied**: those entries are still
+  `'modelled'` (verified: `Object.keys(PROVENANCE)` is the ten original keys plus `putt18Index`). Nothing derives a
+  tier from `CAL`'s tags, so the "refit upgrades it automatically" property does not exist yet. And, as §9.5
+  says, nothing *acts* on `'provisional'`.
 - **The `'provisional'` tier is a release gate, not just styling.** §6's rule — do not present a
   guess as a measurement — is enforceable in one place if the UI refuses to render a
   `'provisional'` figure as a headline. That is the cheapest available protection against the
@@ -763,15 +851,18 @@ Under that rule the reclassification falls out mechanically:
 
 ## 8. Sequence
 
-1. **B1 + B2 + B3** — `gender` on `golf.player_profile`; `carry_yds_at_play` + `gender_at_play` +
-   `scoring_version` on the Forge facet row. Generated normally with `drizzle-kit generate`; the
-   journal was repaired under T-107 and `migrate` against production is a verified no-op.
+1. **B1 + B22 + B3** — `carry_reference` on `golf.player_profile`; `carry_yds_at_play` +
+   `carry_reference_at_play` + `scoring_version` on the Forge facet row (`golf.facet_scores`). Generated
+   normally with `drizzle-kit generate`; the journal was repaired under T-107 and `migrate` against production
+   is a verified no-op. *(An earlier draft of this step named a `gender` column and `gender_at_play`; B22
+   removed both — see §2.1.)*
 2. **Port to `@ryp/eco/scoring`** — TS, strict, zero imports, own tsup entry, non-node target.
    Carry the three fixes: the `drivingIndex` big-miss asymmetry (§2.5a — the spec has already
    decided this one), the `currentFacet` hard-coded 20 (§2.5b), and the `baselineHandicap` tail
    (§3). Move `weights`, `base`/`slope`, the option-set values and the loose literals into `CAL`
    (§5.3, §5.4).
-3. **Fixtures as eco's first test** — 59 cases against `dist`, including the two corrected distance
+3. **Fixtures as eco's first test** — *(planned as 59 cases; now 193, `node scripts/scoring-fixtures.mjs`
+   → `193 passed, 0 failed`, run 2026-10-14)* against `dist`, including the two corrected distance
    cases and the four-facet weights case, plus new cases for each fix in step 2: a right big miss
    costing the same as a left one, a complete Putt 18 at 18 holes, and the tail continuity
    assertion.
@@ -785,3 +876,110 @@ Under that rule the reclassification falls out mechanically:
 7. **Fitting exercise** once enough sessions with stored shots exist.
 
 Steps 1–3 are mechanical. Steps 4 and 6 need Makel.
+
+**Where each step stands (2026-10-14).** 1 — declared in the schema files, **applied nowhere** that this document
+checked. 2 — the port exists with the symmetric driving fix, the stored-completeness fix and the carry-reference
+change; **the `CAL` consolidation is not done** (§5 status note). 3 — done, 193 passing. 4 — signed (answer 17);
+the tail extrapolation inside it is **not** signed (§3). 5 — overruled. 6 — **open**. 7 — **open**.
+
+---
+
+## 9. What the ported module does now *(`@ryp/eco/scoring`, commit `2a858d3`, 2026-10-14)*
+
+Everything here was read from `eco/src/scoring/index.ts` and `eco/scripts/scoring-fixtures.mjs`, and the quoted
+values were run against `eco/dist/scoring/index.js`. The fixtures were also run: **`193 passed, 0 failed`**.
+
+### 9.1 `SCORING_VERSION`
+
+`export const SCORING_VERSION = 'forge-2026.10-1'`. The fixtures assert its shape (`forge-<year>.<month>-<n>`) and
+pin a **behaviour fingerprint** — a SHA-256 over every constant in `CAL` and the output of every index function
+across a fixed battery (`scoring-fixtures.mjs:521–526`) — keyed by version. It **fails when `CAL` or an index
+function changes without a bump**, which is what stops two calibrations sharing one stamp on a trend line. The
+module header says the server stamps it into `golf.facet_scores.scoring_version` on every scoring pass (§2.3) — **no
+route exists yet, so nothing has stamped anything.**
+
+### 9.2 🔴 T-125 landing in the scoring layer
+
+T-125 was a woman scored on the men's table through a vocabulary mismatch. B22 removed the `gender` column so no
+vocabulary could mismatch — and, because there is no longer a column to default, the argument became *usually
+absent*, and **absent still meant the men's table**. The port had inherited `CAL.carry[gender] || CAL.carry.m`.
+Ruling 10 fixed it where it lived: `baselineHandicap(yards, carryReference)` maps the reference through an explicit
+two-entry table (`pga_scratch` → men's rows, `lpga_d3` → women's) with **no fallback**, and returns `null` for
+anything else — `null`, `undefined`, a one-argument call, a misspelling, **and the old `'m'` / `'f'` vocabulary,
+which is now rejected rather than silently mapped**. `drivingIndex` propagates the `null`.
+
+Verified against `dist`, 2026-10-14:
+
+```
+baselineHandicap(250, null)          = null        baselineHandicap(250)        = null
+baselineHandicap(250, undefined)     = null        baselineHandicap(250, 'm')   = null
+baselineHandicap(250, 'f')           = null        baselineHandicap(250, 'lpga_d3')      = -1
+baselineHandicap(250, 'pga_scratch') = 6.3         drivingIndex(20 fairways, 250, null)  = null
+```
+
+The prototype scored a woman carrying 250 yd as 6.3 instead of a plus handicap; before the ruling the port still
+returned 6.3 for `(250, null)` and −1 for `(250, 'f')`.
+
+### 9.3 Every departure from `forge-math.js`, in one place
+
+**If a number differs from the prototype, check this list before assuming a porting mistake.** The module header
+carries the same list; this mirrors it. *Two numberings exist and are easy to confuse* — "port note N" is the
+header's list, **[ruling N]** is `decisions/FORGE-PORT-RULINGS-2026-10-14.md`.
+
+| Port note | Ruling | Departure | Why |
+| --- | --- | --- | --- |
+| 1 | *(authorised)* | `putt18` is `{ base: 10, k: 9.09 }`; was `{ 8, 1.2 }` | `1.2` was a bug, not a calibration gap — §6. |
+| 2 | *(authorised)* | `drivingIndex` counts big misses on **both** sides (zones 0 and 4) | Answer 16 / §2.5a. |
+| 3 | *(authorised)* | `currentFacet` takes the stored `is_complete` per facet; no hard-coded 20; **throws** if a facet has a value and no flag | §2.5b. |
+| 4 | [10] | `baselineHandicap` / `drivingIndex` take a **carry reference**, not `gender`; `null` for a null / undefined / unknown one; the argument is **required** | §9.2. |
+| 5 | [11] | `drivingIndex` returns `null` if **any** zone is not an integer 0–4 | The prototype scored a zone of 7 as a neutral small miss. |
+| 6 | [12] | `clampIndex` returns `null` for NaN, ±Infinity or a non-numeric value; `currentFacet` **skips** a non-finite score like a missing one. So `headScoredIndex`, `drivingIndex`, `putt18Handicap` can return `null` where they returned `NaN` or `40` | The prototype clamped `Infinity` to 40.0 — a plausible worst handicap — and let `NaN` make the median depend on input order. |
+| 7 | [1] | `facetStrokesGained` returns `null` for an unknown facet (prototype: `0`) | `0` reads as "gained no strokes". |
+| 8 | [2] | `daysBetween` **throws** on a malformed or impossible date (prototype: `NaN`); validation is a shape regex plus a UTC round-trip | The first port's check let `'2026-08-'` through as day 0 and rolled `'2026-02-31'` over to March. |
+| 9 | [3] | `dispersion` returns `null` for a zone outside the centres array (prototype: an object holding `NaN`) | An object containing `NaN` is silent wrongness with extra steps. |
+| 10 | [4] | `totalStrokesGained` / `practiceHandicap` iterate the four known facets, not `Object.keys` | A stray key from a DB text column is ignored, not summed. |
+| 11 | [5] | `practiceHandicap` coerces numeric-**string** weights with `Number()`. A null, blank or non-numeric weight for a **scored** facet gives `null` (the prototype counted a null weight as 0 and returned a number from the remaining facets). `currentFacet` and `clampIndex` accept numeric strings too | node-pg returns `numeric` as a string. Without the coercion every database-sourced composite is `null`. |
+
+Added, **not** departures: `SCORING_VERSION` [6]; the `UNSOURCED` tier and its tags on `CAL.carry` and
+`CAL.benchmarks` [7, 8], §4.1–§4.2; the `'provisional'` tier and `PROVENANCE.putt18Index` [9].
+
+**Consequence:** any index computed by the prototype is non-comparable to one computed here — because of 1 and 2,
+and because a driving index now needs a carry reference to exist at all.
+
+### 9.4 Tags in the module
+
+The legend has five tiers: `MEASURED`, `ESTIMATED`, `GUESS`, `PROVISIONAL` and **`UNSOURCED`** (a table with no
+source anywhere in the package, so that neither measured nor derived is true of it). **`CAL.carry` and
+`CAL.benchmarks` both carry `UNSOURCED`** (§4.1, §4.2). The fixtures read the tag text above each table
+(`scoring-fixtures.mjs`, the `tagAbove('  carry: {')` and `tagAbove('  benchmarks: [')` checks), so a later edit
+that restores `MEASURED` fails the suite.
+
+### 9.5 NOT BUILT, and still open
+
+The module header ends with a **NOT BUILT** paragraph naming two things. Both are carried forward:
+
+1. **No gate on the provisional Putt 18 constants.** `CAL.putt18.base` is `PROVISIONAL`, and nothing in the module
+   withholds a Putt 18 index: `putt18Handicap` returns a number for any strokes-gained it is given.
+   `PROVENANCE.putt18Index = 'provisional'` is a **label** for a screen to read, and nothing reads it. Whoever
+   builds the screen or the route owns the gate. (Checklist C1 had this index stored as NULL until fitted; Luke's
+   Q1 overturned it for `k`, not for `base`.)
+2. **`baselineHandicap` still returns 30 for a missing or zero distance** — `(null, 'pga_scratch')` and
+   `(0, 'pga_scratch')` are both 30 (verified). The reference check runs *first*, so a missing **reference** is
+   `null` and a missing **distance** is 30; the prototype did the same for distance. It is **not** a departure
+   and **no ruling covers it** — which is exactly why it is open. Its effect is in §2.1: a driving index of 28 from
+   no distance at all.
+
+Also open, and recorded elsewhere in this document rather than in the header:
+
+3. **The tail below the last populated row** — the `[0, 30]` row is still an anchor, `baselineHandicap(100,
+   'pga_scratch')` is 27.3; the extrapolation in §3 is a proposal awaiting Makel, not built.
+4. **§5.1 / §5.3 / §5.4** — `CAL.weights`, the level tables and the loose literals are not in `CAL` (§5 status note).
+   **The module header's NOT BUILT paragraph does not list these.**
+5. **§7** — the provenance reclassification and its derivation from `CAL` tags (§7 status note).
+6. **Citing or refuting `CAL.carry`** — step 6, and Luke's Q6.
+
+### 9.6 Where whoever writes `server/routes/forge.ts` will see the integration hazard
+
+node-pg returns `date` as a JS `Date` and `numeric` as a string; the module wants `YYYY-MM-DD` strings and finite
+numbers, and now **throws** on a malformed date. It is written up as cross-cutting rule **h** in
+`FORGE-ON-RYP-CORE.md` §4, beside the raw-SQL rule every Forge writer already has to read. Not duplicated here.
