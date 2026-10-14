@@ -20,12 +20,12 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-10-14 12:20 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-10-14 15:48 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | forge-port | **7 file(s)** | pushed |
-| eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | forge-port-design | **2 file(s)** | pushed |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | forge-port | **8 file(s)** | pushed |
+| eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | forge-port-design | clean | pushed |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
 | locker-room | `~/Desktop/ATR/apps/locker-room` | makel-ryp/locker-room | feature | clean | pushed |
@@ -33,8 +33,8 @@ _Regenerated 2026-10-14 12:20 CDT by `docs/refresh-status.sh`._
 | practice-dna | `~/Desktop/ATR/apps/practice-dna` | **not a git repo** | — | — | — |
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
-- **@ryp/eco version:** `0.28.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.28.0.tgz`
-- **Atlas HEAD:** `1f7a928 Vendor eco 0.28.0 — and this branch must never point at production`
+- **@ryp/eco version:** `0.29.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.29.0.tgz`
+- **Atlas HEAD:** `b671db8 The FORGE API exists. It boots, takes a real session, and stores the client's seed.`
 <!-- AUTO:END -->
 
 Regenerate the block above with:

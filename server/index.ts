@@ -13,6 +13,8 @@ import { practiceRouter } from './routes/practice'
 import { messagesRouter } from './routes/messages'
 import { forgeConfig } from './forgeDb'
 import { createForgeRouter } from './routes/forge'
+import { feedbackConfig } from './feedbackConfig'
+import { createFeedbackRouter } from './routes/feedback'
 
 const app = express()
 const isProduction = process.env.NODE_ENV === 'production'
@@ -27,7 +29,13 @@ app.disable('x-powered-by')
 // X-Forwarded-For and let a caller spoof its own address.
 if (isProduction) app.set('trust proxy', 1)
 
-app.use(express.json())
+// ⚠️ `/api/feedback` is EXCLUDED from the 100 kb default parser on purpose. A screenshot is megabytes of
+// base64, and a body over THIS parser's limit is rejected here with a 413 before the route is ever
+// reached — so a bigger limit set inside routes/feedback.ts would silently never apply. That route
+// parses its own body (6 MB, after authentication). Do not "simplify" this back to one parser, and do
+// not raise this limit to make it work: that would let every route buffer six megabytes.
+const defaultJson = express.json()
+app.use((req, res, next) => (req.path === '/api/feedback' ? next() : defaultJson(req, res, next)))
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', ts: new Date().toISOString() })
@@ -59,6 +67,22 @@ if (forgeConfig.ok) {
   )
   app.use('/api/forge', (_req, res) => {
     res.status(503).json({ error: 'forge_unavailable' })
+  })
+}
+
+// SLACK FEEDBACK: same refuse-to-mount shape as FORGE above. Without a bot token AND a channel ID the
+// router is not mounted and a stub answers 503 (the stub reads no body, so the global-parser skip
+// above is harmless). proto.ts reads the same `feedbackConfig` and injects no button in that case.
+// Names only are logged, never a value. Before the /api 404 below, which would swallow it.
+if (feedbackConfig.ok) {
+  app.use('/api/feedback', createFeedbackRouter(feedbackConfig))
+} else {
+  console.error(
+    '[feedback] NOT MOUNTED — /api/feedback answers 503 and no feedback button is shown. ' +
+      feedbackConfig.problems.join('; ') + '. Set both in .env (see .env.example); a value is never printed.',
+  )
+  app.use('/api/feedback', (_req, res) => {
+    res.status(503).json({ error: 'feedback_unavailable' })
   })
 }
 

@@ -153,6 +153,7 @@ Reading it: the attacker started with **no** access (`before=f`); the self-issue
 | T-17 | ⚪ open | Put `practice-dna` and `inventory` under git | Makel | Both are currently **not git repos**. Unversioned work is at risk. |
 | T-18 | ⚪ open | `drizzle-kit` can no longer migrate | AI | `atlas_app` has no DDL rights. Migrations are applied by hand via the Neon connector with a hand-inserted journal row. Document or fix. |
 | T-19 | ⚪ open | Commit the dirty file in `RYP-RED` (`mac` branch) | Makel | 1 uncommitted file. |
+| T-130 | 🟡 built, not run against Slack | **Slack feedback button for Testing** (branch `forge-port`, uncommitted) | Makel + AI | Code written; typecheck + stubbed-fetch + headless-Chrome smoke pass, but **never sent to a real workspace**. To go live: create a Slack app (bot scopes `files:write`, `chat:write`, `channels:history`/`groups:history`), invite it to the channel, set `SLACK_BOT_TOKEN` + `SLACK_FEEDBACK_CHANNEL` (channel **ID**). Unset = no button, `/api/feedback` 503. |
 
 ## 4. Frozen by decision — do not action, do not re-raise
 
@@ -214,4 +215,4 @@ Reading it: the attacker started with **no** access (`before=f`); the self-issue
 
 **Retired IDs:** T-32 → D-31 · T-33 → D-30.
 
-_Next free ID: **T-130** / **D-35**._
+_Next free ID: **T-131** / **D-35**._
