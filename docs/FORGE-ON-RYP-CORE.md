@@ -260,9 +260,57 @@ Four things changed, and each is load-bearing:
 > - `golf.facet_scores` / `golf.range_shots` INSERT — the branch bypasses the parent-liveness test.
 >
 > Where a privileged write genuinely must happen, it does **not** get a bypass branch on the
-> request-path policy. It gets its own policy scoped `TO forge_svc` —
-> `using (app_private.rls_bypass()) with check (app_private.rls_bypass())` — on a role the request
-> path does not hold. See §7.1.
+> request-path policy. It gets its own policy scoped `TO forge_svc`, **row-pinned to the caller,
+> with no bypass branch at all**, on a role the request path does not hold. See §7.1.
+>
+> 🔴 **CORRECTED 2026-10-14 — AN EARLIER DRAFT OF THIS LINE TAUGHT THE DEFECT THIS CHANGE SET
+> NEARLY SHIPPED.** It prescribed `using (app_private.rls_bypass()) with check
+> (app_private.rls_bypass())` for the `TO forge_svc` policies. That is wrong, and it is wrong in the
+> quiet direction. `rls_bypass()` is a session GUC, so keying the policy on the **variable** instead
+> of the **row** hands the whole control back to anything holding the connection. Worse, an
+> implementer who followed it would run the evaluator inside `withRlsBypass` — with no
+> `app.current_user_id` set — and get **two different failures**:
+>
+> 1. **`42501` on the INSERT.** Loud. This is the one you would notice.
+> 2. **The UPDATE half of the rung upsert matches ZERO ROWS and raises nothing.** Silent. This is
+>    the one that ships. A level that never moves is indistinguishable from a player who never
+>    improved, and nothing in the logs says otherwise.
+>
+> **The shipped policies, quoted from `eco/sql/rls_forge.sql` as applied to branch `alpha`
+> 2026-10-14. They are row-pinned to the role, with no bypass branch:**
+>
+> ```sql
+> create policy facet_rungs_service_write on golf.facet_rungs for all to forge_svc
+>   using      (user_id = app_private.current_user_id())
+>   with check (user_id = app_private.current_user_id());
+>
+> create policy facet_rung_events_service_insert on golf.facet_rung_events for insert to forge_svc
+>   with check (user_id = app_private.current_user_id());
+>
+> create policy assignment_completions_service_insert on atlas.assignment_completions
+>   for insert to forge_svc
+>   with check (subject_user_id = app_private.current_user_id());
+>
+> create policy facet_scores_service_recompute on golf.facet_scores for update to forge_svc
+>   using      (user_id = app_private.current_user_id())
+>   with check (user_id = app_private.current_user_id());
+> ```
+>
+> Three details that are easy to copy wrong:
+>
+> - the two `for insert` policies have **only** a `WITH CHECK`. An INSERT policy has no `USING`;
+> - `assignment_completions` keys on **`subject_user_id`**, not `user_id`;
+> - `facet_scores_service_recompute` deliberately carries **no liveness test**. That absence is the
+>   feature — a re-score has to reach a historic, completed session.
+>
+> **So `forge_svc` runs under `withRls(playerId)`, exactly like every other role — never under
+> `withRlsBypass`.** The `TO forge_svc` clause decides only *which process may reach the verb*;
+> authorization is still identity, and it shows up in `pg_policies.roles` where a gate can pin it.
+>
+> ⚠️ **And the residual, stated rather than hidden:** the row scope is the caller's own claim
+> (`app.current_user_id` is a session GUC set by the same caller), so it stops a **bug**, not an
+> attacker who already holds the credential. `rls_forge.sql` §1 struck its "a compromised request
+> path cannot" sentence for exactly that reason. Do not reinstate that claim here.
 
 ### Four traps this ecosystem has already fallen into
 
@@ -273,16 +321,34 @@ Four things changed, and each is load-bearing:
    not hold. See §7.1.
 2. **A missing policy is not a deny-with-bypass.** With RLS enabled and **no** INSERT policy,
    Postgres denies every write *including* under bypass. If `forge_svc` is to write, it needs an
-   explicit `TO forge_svc` policy — `using (app_private.rls_bypass()) with check (app_private.rls_bypass())`.
-   Omitting it is not "locked down"; it is "nothing can ever write this table".
+   explicit `TO forge_svc` policy. 🔴 **CORRECTED 2026-10-14:** this line used to prescribe
+   `using (app_private.rls_bypass()) with check (app_private.rls_bypass())` for that policy. **It
+   gets no bypass branch** — see the carve-out box above for the four shipped policies and for the
+   two ways the bypass form fails, one of them silently. Omitting the policy altogether is still
+   not "locked down"; it is "nothing can ever write this table".
 3. **An RLS-filtered UPDATE matches 0 rows and raises nothing.** On 2026-09-25 a falsification test
    read that silence as success and reported a hole in a database where the policy was working
    perfectly. **Any test on a column the role CAN write must assert `GET DIAGNOSTICS n = ROW_COUNT`
    and read the value back.** Only a column the role *cannot* write (42501) is safe to test by
    exception.
 4. **RLS scopes rows, not columns.** A column grant is the only layer that can refuse a column. This
-   is why `seed`, `played_on`, `level`, `scored_at`, `entry_method` and `source_app` are withheld from
-   UPDATE grants: the row policy says "your own row", which a column-rewriting UPDATE still satisfies.
+   is why `seed`, `played_on`, `level`, `measured_at` and `source_app` are withheld from UPDATE
+   grants: the row policy says "your own row", which a column-rewriting UPDATE still satisfies.
+
+   🔴 **CORRECTED 2026-10-14 — this list named two columns wrongly.**
+   - **There is no `scored_at` column**, here or anywhere in `forge.ts` or `rls_forge.sql`. The
+     withheld re-dating column is **`measured_at`** on `golf.facet_scores` (re-dating a score fakes
+     recency on the coach roster — the same class as `practice_sessions.session_date`).
+   - **`entry_method` is NOT withheld.** It is in `forge_app`'s UPDATE grant on `golf.facet_scores`
+     *and* `golf.range_shots` (checklist A2, 2026-10-09), because §3.3's *"log it shot by shot
+     instead"* flow **reuses the same facet row** — the `(session_id, facet, mode)` unique key
+     forbids a second one — so the relabel has to be legal or the Spec's own flow has no path at
+     all, and an impossible flow is how a grant quietly becomes route code that bypasses it.
+     **It is updatable only while the parent session is live.** `facet_scores_update` carries the
+     liveness test, so once the session completes the identical statement matches **zero rows and
+     raises nothing** — which is the behaviour §10.2 case 6 asserts in both directions. It stays
+     withheld from `forge_svc`, whose UPDATE grant on `golf.facet_scores` is exactly
+     `(practice_index, scoring_version, updated_at)`.
 
 ---
 
@@ -290,7 +356,10 @@ Four things changed, and each is load-bearing:
 
 > ### Cross-cutting rules — these apply to EVERY row below. Read them once; they are not repeated.
 >
-> **a. The role.** `create role forge_app login nobypassrls;` — it does **not** exist today, even
+> **a. The role.** `create role forge_app login nobypassrls;` — ⚠️ **CORRECTED 2026-10-14: it now
+> exists on the Neon branch `alpha` (`br-spring-dawn-auoaqi5p`), together with `forge_svc`, both
+> verified `rolbypassrls = false`, `NOINHERIT`, not superuser. It still does NOT exist on `main`.**
+> This line used to say flatly that it does not exist — even
 > though `golf.drill_progress` already carries column comments calling `ticked_at`/`watched_at`
 > *"forge_app's columns"*. All four live roles are `LOGIN NOBYPASSRLS`; do not make this one NOLOGIN.
 > It also needs `grant usage on schema public, app_private, golf, atlas to forge_app` — PUBLIC holds
@@ -363,12 +432,12 @@ Four things changed, and each is load-bearing:
 | FORGE table | Verdict | Lands at | The one thing not to get wrong |
 | --- | --- | --- | --- |
 | `players` | **COLLAPSE** | `golf.player_profile` | Grains match exactly — `player_profile`'s PK **is** `user_id`. ⚠️ The prototype calls the **target** `hcp` and the **index** `myHcp` — inverted. Map explicitly, never by name. `rungs` does **not** land here (next row). ⚠️ `handedness` defaults to `'right'`; a Forge-first insert stamps a fabricated handedness on a left-hander. **Drop that default in the same migration.** |
-| `players.rungs` | **NEW (split out)** | `golf.facet_rungs` + `golf.facet_rung_events` | Not on the profile row: that row is readable at the **pending**-coach tier, and `golf_profile_self` is `for all`, so a write grant there lets a player set their own level. Keep the Spec's **0..3** index base for both `rung` and `level`-as-played — converting one and not the other puts an off-by-one in the §5.5 qualifying test. Writes are **`forge_svc` only**, with an explicit `TO forge_svc` write policy (see cross-cutting rule in §3, trap 2). |
+| `players.rungs` | **NEW (split out)** | `golf.facet_rungs` + `golf.facet_rung_events` | Not on the profile row: that row is readable at the **pending**-coach tier, and `golf_profile_self` is `for all`, so a write grant there lets a player set their own level. Keep the Spec's **0..3** index base for both `rung` and `level`-as-played — converting one and not the other puts an off-by-one in the §5.5 qualifying test. Writes are **`forge_svc` only**, with an explicit `TO forge_svc` write policy, **row-pinned to the caller and carrying no bypass branch** (see the carve-out box in §3). 🔴 **ADDED 2026-10-14 — both tables carry `mode`** (checklist D2): chipping rungs track **independently per lie**, and the trail has to be able to say *which lie* moved, so `facet_rung_events` carries it too. The vocabulary is a CHECK, `facet_rungs_mode_per_facet`: `chipping → one of ('fairway','rough','bunker')`, `putting → 'makeables'`, `approach → null`. **Driving has no ladder at all**, so a `driving` rung is refused with `23514` — observed on branch `alpha`, 2026-10-14, when a test fixture tried exactly that and the schema was right. |
 | `sessions` | **NEW** | `golf.range_sessions` | **Grain conflict with `golf.practice_sessions`** (one row per player per **day**, unique-indexed). Two tables, related on `(user_id, played_on) ↔ (user_id, session_date)` with **no FK**. **Forge does not write `practice_sessions`** — `session_date` is deliberately withheld from `atlas_app`'s UPDATE grant to stop streak forging, and a second writer re-opens it by another door. The roster's "days since" becomes `greatest(...)` of both. |
 | `session_facets` | **NEW** | `golf.facet_scores` | Grain is `(session_id, facet, mode)`. `index_value` → `practice_index`. ⚠️ The launch-monitor import is **stubbed and fabricates values**, so `entry_method = 'monitor'` rows must be refused by CHECK until it is real — do not leave it to every consumer to remember a filter. |
 | `shots` | **NEW** | `golf.range_shots` | Store `option_index` alongside `outcome_value`: the value alone is **lossy** — approach L1 scores both "Beyond 20%" and "Mishit" as `1`, and carry mode pairs every long bucket with its short twin, destroying the long/short bias §7 wants. ⚠️ `outcome_value` carries **two incomparable semantics** — a signed stroke delta for scored facets, a left-to-right **position** (2 = fairway, the best) for driving. Never average it across facets. |
 | `putt18_holes` | **NEW** | `golf.putt18_holes` | `expected_putts` is **withheld from the INSERT grant** and filled by a BEFORE INSERT trigger, with a `curve_version` beside it. Not a GENERATED column: altering a generation expression recomputes every historical row, which is the exact rewrite the Spec forbids. ⚠️ The trigger **will not be emitted by `drizzle-kit generate`**. |
-| `assignments` | **NEW** | `atlas.assignments` (+ append-only `atlas.assignment_completions`) | **The escalation trap lives here** — see §7.2. `source='auto'` is **`forge_svc`-only, not "bypass-only"**, and the request-path INSERT policy must **not** carry an `rls_bypass() OR` branch, or a bug on the Forge pool writes any `source` for any subject. `completed_at` is `forge_svc`'s alone, so a player tap gets 42501. |
+| `assignments` | **NEW** | `atlas.assignments` (+ append-only `atlas.assignment_completions`) | **The escalation trap lives here** — see §7.2. `source='auto'` is **`forge_svc`-only, not "bypass-only"**, and the request-path INSERT policy must **not** carry an `rls_bypass() OR` branch, or a bug on the Forge pool writes any `source` for any subject. 🔴 **CORRECTED 2026-10-14: there is no `completed_at` on `atlas.assignments`** — one nullable timestamp cannot carry a repeating order, and *"outstanding today"* must compare CALENDAR DAYS in the player's local time, which a UTC instant cannot. Completion is a **row** in `atlas.assignment_completions` (`played_on` is the date column), and INSERT on it is `forge_svc`'s alone, so a player tap gets 42501. |
 | `schedules` | **NEW** | `golf.practice_commitment` | ⚠️ `blocks_per_week` drives the streak, the nag and the coach's "behind" flag — all judged over **past** weeks — so a current-only row lets a player clear their own flag retroactively with no trace. Ship the append-only history sibling, or get a written product rule that no past week is ever recomputed. **Do not ship current-only silently.** |
 | `coach_notes` | **COLLAPSE** | `atlas.coaching_notes` (`source_app='forge'`) | **Superseded 2026-10-06 (answer 6): append-only for EVERYONE, by privilege.** `atlas_app` is narrowed to `update (deleted_at, updated_at)`, so `body` and `visibility` can never be rewritten by anyone, Forge-authored or not, and the `source_app <> 'forge'` predicate this row used to require is **dropped entirely**. A correction is a **new note** (`POST …/notes/:noteId/correct`); `PATCH` and a coach's `DELETE` answer **409** (`note_append_only`), and retraction is an audited admin action (answer 7). Player-invisibility is still a **withheld `visibility` column grant** on `forge_app`, so every Forge row takes the `'coaching_team'` default and the player branch of the select policy can never match. |
 | `coach_players` | **NOT BUILT** | `public.user_relationships` | Verbs invert: `invited_at` → `created_at`, `accepted_at` → `approved_at`, and **"accepted" is the conjunction `status='active' AND approved_at is not null`**, never status alone. ⚠️ **The table is not empty** — 9 rows, 7 of them approved edges. An earlier "0 rows" reading was an RLS-filtered count. Any unique index needs a duplicate check first. |
@@ -502,11 +571,26 @@ system will break by accident. They are unaffected by anything in this document.
 
 Three things exist because of this decision and do not exist today. None is optional.
 
+⚠️ **CORRECTED 2026-10-14.** "Do not exist today" is now true only of `main`. The two roles, the ten
+tables and the whole policy layer were created on the Neon branch `alpha`
+(`br-spring-dawn-auoaqi5p`) on 2026-10-14 — migration `0010_equal_warbird.sql`, then
+`eco/sql/rls_forge.sql` in one transaction: 120 policies, 7 restrictive, RLS enabled **and forced**
+on all 18 `golf`/`atlas` tables, 430 column grants. §10 was then run **as real logins** to **46
+cases, 46 pass** (of roughly eighty). Evidence:
+`decisions/FORGE-FALSIFICATION-RUN-2026-10-14.md`. 🔴 **`main` is untouched**, and "applied once,
+to a branch" is not "verified": `verify:schema` has still never been run against a database, both
+triggers are untested, and the remaining §10 sections are predictions.
+
 ### 7.1 The `forge_app` role — and a second one, `forge_svc`
 
-🔴 **`forge_app` does not exist.** Live `pg_roles` holds `atlas_app`, `red_app`, `lr_app`,
-`billing_svc` — all `LOGIN NOBYPASSRLS`. Yet `golf.drill_progress` already carries comments calling
-`ticked_at`/`watched_at` *"forge_app's columns"*. The role was designed and never created.
+🔴 **`forge_app` does not exist on `main`.** Live `pg_roles` there holds `atlas_app`, `red_app`,
+`lr_app`, `billing_svc` — all `LOGIN NOBYPASSRLS`. Yet `golf.drill_progress` already carries comments
+calling `ticked_at`/`watched_at` *"forge_app's columns"*. The role was designed and never created.
+⚠️ **CORRECTED 2026-10-14:** this said simply "`forge_app` does not exist". Both `forge_app` and
+`forge_svc` now exist **on the `alpha` branch** — the run record says the roles were created, not
+which block created them — verified
+`rolbypassrls = false`, `NOINHERIT`, not superuser. Passwords were generated into a `0600` file and
+never passed through tool output — that is how the T-111 Firebase key leaked.
 
 ```sql
 create role forge_app login nobypassrls;   -- the request path: players AND, if Luke's console ships, coaches
@@ -523,9 +607,15 @@ correct pattern, for `billing_svc`: its credential *"must be held by ONE process
 it is that a compromised request path cannot grant entitlements."*
 
 So: **`forge_svc` holds the writes that decide something** — `facet_rungs`, `facet_rung_events`,
-`assignments.completed_at`, `assignment_completions`, and `source='auto'` inserts. `forge_app`
-holds **SELECT** on all of them. *"The ladder is the only thing that sets level"* then becomes a
-privilege refusal (42501), not a convention.
+`assignment_completions`, and `source='auto'` inserts. `forge_app`
+holds **SELECT** on all of them.
+
+*"The ladder is the only thing that sets level"* then becomes a privilege refusal (42501), not a
+convention.
+
+🔴 **CORRECTED 2026-10-14:** that list used to include `assignments.completed_at`. **There is no
+such column.** Completion is a row in the append-only child `atlas.assignment_completions`, for the
+reason given in §4's table map.
 
 ⚠️ **State the limit of this honestly, because `/complete` is a request handler.** `billing_svc`'s
 credential is held by a webhook process with no player-facing surface. `forge_svc`'s, if
@@ -630,31 +720,42 @@ before adding the constraint. (A scan under bypass found none, but re-check at a
 
 Ordered by blast radius. Each says what is blocked and, as importantly, what is **not**.
 
+⚠️ **MARKED UP 2026-10-14.** Twelve more rows were ANSWERED and this table still presented them as
+open — Q4, Q5, Q6, Q7, Q8, Q9, Q11, Q12, Q17, Q21, Q22 and Q23. Each now opens with its answer and
+its source (`decisions/FORGE-PORT-ANSWERS-2026-10-06.md` by answer number, or
+`decisions/FORGE-PORT-FIX-CHECKLIST.md` §C by item), **with the original question kept below it as
+history** rather than deleted, so the reasoning survives and the question does not come back. Rows
+left open, and the half-open parts of rows marked ANSWERED, are named here so the count is not
+taken on trust: **Q2** (`CAL.putt18.base` still provisional, and the gate for it is built nowhere),
+**Q13**'s successor questions (UI copy for the two carry scales, and the content of `CAL.carry.f`),
+**Q18** (`outcomes` unrouted) and **Q24** (the server-allocated seed versus §6.3's "never blocked"
+offline flow — the one place where two sections this document calls settled actually disagree).
+
 | # | Question | Who | Blocks | Does NOT block |
 | --- | --- | --- | --- | --- |
 | 1 | **ANSWERED 2026-10-06 — interpolation; Build Spec §2.3 amended (see §2 below). Asked as:** **`baselineHandicap` has three answers for 225 yd: 15 (Spec step table) / 12.5 (`forge-math.js` interpolation) / 7.5 (the test fixture).** The Spec's precedence rule makes the shipped module non-conformant — but the module is probably right: *"A step table would put 234 and 236 yards a full stroke apart"*, and under the step model 234 → 15 and 236 → 10. Five strokes for two yards. | **Luke** | Every driving `practice_index` ever written. It must be settled **before the first row**, not patched after. | The schema. Column shapes are identical either way. |
 | 2 | **PARTLY ANSWERED (Luke's Q1, checked in `decisions/ASK-LUKE-forge-port.md`, committed 2026-10-13) — `k` is no longer open; `base` still is.** Asked as: *`CAL.putt18.base` and `k` are PROVISIONAL* (`base: 8, k: 1.2`), and §7.2 is emphatic: *"Do not ship a guessed constant."* **Now:** `CAL.putt18 = { base: 10, k: 9.09 }`. `k` is **ESTIMATED** — `20 / (20 × CAL.sgRate.putting)` — and the shipped `1.2` was a bug, 7.58× too small. `base` is **PROVISIONAL**: 10 is the mid-scale value, kept until Luke supplies one reference round (a scratch player's Putt 18, a 20-handicap's) to pin the intercept. 🔴 **Not gated:** nothing in the module withholds a Putt 18 index while `base` is provisional — `putt18Handicap` returns a number for any strokes-gained it is given, and `PROVENANCE.putt18Index = 'provisional'` is a *label* for a screen, nothing more (the module header says **NOT BUILT**). Any gate is the caller's, so decide who writes it. | **Luke + Makel** | **Per Luke's Q1 decision, `base` stays behind the existing gate: a `(putting, putt18)` `practice_index` is not published until one reference round pins `base`.** ⚠️ No such gate is built in the module (§9.5 of `FORGE-MATH-ADOPTION.md`); whether the schema or a route enforces it was **not checked here**. A provisional constant stamped with a `scoring_version` is recoverable; a published number is not. | The `putt18_holes` table, which stores `putts` and `expected_putts` and not the index. |
 | 3 | **ANSWERED 2026-10-06 — `CAL.benchmarks` ships, its tag is `UNSOURCED` (`FORGE-MATH-ADOPTION.md` §4.1) — and since 2026-10-14 it is, in `eco/src/scoring/index.ts`, together with `CAL.carry`, which feeds scoring (`FORGE-MATH-ADOPTION.md` §4.2). The vendored `forge-math.js:56` still says `MEASURED`, by design: `proto/forge/` is not edited. Asked as:** **Which benchmark table is real** — `CAL.benchmarks` (tagged MEASURED) or the Arccos-cited `BENCH`? 13 yards and ~5 fairway points apart at handicap 12.5, and the app's own comment contradicts the MEASURED tag. | **Luke** | Same blast radius as #1. | The schema. |
-| 4 | **After §7.2, which putting drill does the ladder promote on?** §4 promotes on *"a session's facet index at or below the target"*; §7.2 made the Putting Index **Putt 18**, which the Spec gives no levels; §2.4 gives the four putting levels to **Makeables**, *"a putting predictor… The Putting Index comes from Putt 18."* So the only putting drill with levels never enters the Index, and §4's rule has no value to judge. **Unresolvable from the text.** | **Luke** | The ladder's putting branch, and whether `level` is NULL on the Putt 18 row. | Everything else. The column is nullable either way. |
-| 5 | **Does the player confirm a promotion the server computed, or pick a rung freely?** The prototype lets a tap set any rung with no ladder event; §4 says *"the ladder is the only thing that sets level"* **and** that promotion is *"offered, not automatic — the player confirms."* Reconcilable or not. | **Luke** | Whether `facet_rungs` is `forge_svc`-write with a confirm endpoint, or player-writable — and therefore whether a player can trivially satisfy a coach's assignment at an easier level. | The rest of the profile mapping. |
-| 6 | **Do provisional sessions count toward the streak and blocks-per-week?** The Spec flags this itself as an open decision. | **Luke / Makel** | What the coach dashboard's "behind" flag *means*. | The tables. Both readings are a filter, not a column. |
-| 7 | **Which "behind" is the coach's flag?** §5.4 says `blocks_per_week` drives it — a **cadence** miss. Both prototypes compute something else and never read `blocks` — an **assignment-completion** miss. Different facts about different failures. ⚠️ **The streak and the nag have no formula anywhere in either prototype.** | **Luke, then Makel** | The roster's flag, and whether it is one column or two (`behind_on_cadence` / `behind_on_work`). | `practice_commitment`, which stores only the denominator. |
-| 8 | **Does a mid-week change to `blocks_per_week` apply to this week or the next?** Current-only storage is gameable: at 1 of 5 blocks on Sunday, set it to 1 and the flag clears retroactively with nothing in the database that could show it happened. | **Luke** | **The migration, not just the behaviour** — the answer decides whether a `practice_commitment_history` sibling is required. | Nothing else. |
-| 9 | **Is FORGE's Coach Console a real second client?** If it ships on `forge_app` it inherits that role's write grants and drops from two layers of defence to one. | **Makel + Luke** | Whether `forge_coach_app` is created (§7.3). | The policies, which hold either way. |
-| 10 | **Does Forge's server run inside eco's `attachUser`/`withRls`, or does Luke's team get a connection string?** If the latter, that server sets `app.current_user_id` to any uuid it likes and every policy here is only as strong as its code. | **Makel + Yannick + Luke** | The entire trust model. This is the largest open item on the page. | Schema design, which is identical either way. |
-| 11 | **Who holds `forge_svc`'s credential, given FORGE is Luke's app?** It is the only principal that may stamp a completion, write a rung or insert an `auto` assignment. | **Makel + Luke** | Creating `forge_svc` meaningfully. | `forge_app`, which can be created now. |
-| 12 | **Is FORGE plan-gated?** `'forge'` is in `APPS` already, but nothing says what it costs or what gates it: a `user_app_roles` row with `app='forge'`, an `app_private.plan_at_least()` check, or neither. Nothing writes that row today, so `requireApp('forge')` refuses everyone. | **Makel** | The entitlement half of §7.2. | The data tables. |
+| 4 | **ANSWERED 2026-10-06 (answer 24) — **Makeables promotes, Putt 18 measures.** The ladder promotes on the Makeables drill, which has the four levels; the Putting Index still comes from Putt 18. `golf.facet_rungs` enforces it: `facet_rungs_mode_per_facet` admits only `putting → 'makeables'`, so a Putt 18 rung cannot be written at all. `level` is NULL on the Putt 18 facet row. Asked as:** **After §7.2, which putting drill does the ladder promote on?** §4 promotes on *"a session's facet index at or below the target"*; §7.2 made the Putting Index **Putt 18**, which the Spec gives no levels; §2.4 gives the four putting levels to **Makeables**, *"a putting predictor… The Putting Index comes from Putt 18."* So the only putting drill with levels never enters the Index, and §4's rule has no value to judge. **Unresolvable from the text.** | **Luke** | The ladder's putting branch, and whether `level` is NULL on the Putt 18 row. | Everything else. The column is nullable either way. |
+| 5 | **ANSWERED 2026-10-09 (checklist C5 — decided without Luke, who supplied no answers) — **his spec wins: the ladder is the only thing that sets level.** The prototype's free rung tap (`FORGE.dc.html:3490`/`:4821`) is a debug affordance and does not survive. A rung is writable only by `forge_svc`, through `facet_rungs_service_write`; `forge_app`, `atlas_app` and `lr_app` hold SELECT and no write grant, so a player writing their own rung is **42501** — confirmed on branch `alpha`, 2026-10-14. A confirm endpoint is a product choice that does not change this. Asked as:** **Does the player confirm a promotion the server computed, or pick a rung freely?** The prototype lets a tap set any rung with no ladder event; §4 says *"the ladder is the only thing that sets level"* **and** that promotion is *"offered, not automatic — the player confirms."* Reconcilable or not. | **Luke** | Whether `facet_rungs` is `forge_svc`-write with a confirm endpoint, or player-writable — and therefore whether a player can trivially satisfy a coach's assignment at an easier level. | The rest of the profile mapping. |
+| 6 | **ANSWERED 2026-10-06 (answer 9) — **they COUNT.** Both readings were only ever a filter, so no column and no migration moved. Asked as:** **Do provisional sessions count toward the streak and blocks-per-week?** The Spec flags this itself as an open decision. | **Luke / Makel** | What the coach dashboard's "behind" flag *means*. | The tables. Both readings are a filter, not a column. |
+| 7 | **ANSWERED 2026-10-09 (checklist C2) — **build both, named separately; do not pick.** They are two different facts that disagree regularly (someone can practise five times a week and ignore every prescription). Both are derived on read: the coach sees `behind_cadence` and `behind_assigned`, and whichever Luke meant is already there. **No columns, no migration.** ⚠️ Still true and still unbuilt: neither the streak nor the nag has a formula anywhere in either prototype. Asked as:** **Which "behind" is the coach's flag?** §5.4 says `blocks_per_week` drives it — a **cadence** miss. Both prototypes compute something else and never read `blocks` — an **assignment-completion** miss. Different facts about different failures. ⚠️ **The streak and the nag have no formula anywhere in either prototype.** | **Luke, then Makel** | The roster's flag, and whether it is one column or two (`behind_on_cadence` / `behind_on_work`). | `practice_commitment`, which stores only the denominator. |
+| 8 | **ANSWERED 2026-10-09 (checklist C3; answer 4 had referred it to Luke, who did not reply) — **history sibling built, default NEXT week.** Current-week-only storage is gameable exactly as described, so `golf.practice_commitment_history` exists and is declared in `forge.ts`. Asked as:** **Does a mid-week change to `blocks_per_week` apply to this week or the next?** Current-only storage is gameable: at 1 of 5 blocks on Sunday, set it to 1 and the flag clears retroactively with nothing in the database that could show it happened. | **Luke** | **The migration, not just the behaviour** — the answer decides whether a `practice_commitment_history` sibling is required. | Nothing else. |
+| 9 | **ANSWERED 2026-10-09 (checklist C4) — **MOOT: there is no Coach Console.** Atlas has been the only coach surface since 2026-08-24, so `forge_coach_app` is not created. ⚠️ The rule this leaves unenforced: no coach screen touching player practice data may authenticate as `forge_app`. Through `forge_app` a coach write is refused by POLICY (silent zero rows), not by GRANT (42501). That rule lives in `rls_forge.sql` §4.1 and in nobody's code. Asked as:** **Is FORGE's Coach Console a real second client?** If it ships on `forge_app` it inherits that role's write grants and drops from two layers of defence to one. | **Makel + Luke** | Whether `forge_coach_app` is created (§7.3). | The policies, which hold either way. |
+| 10 | **ANSWERED 2026-10-06 (answer 8) — inside eco. FORGE's API runs in Atlas's Express server as `server/routes/forge.ts`, behind `attachUser` and `requireConsent`, alongside the nine existing routers. Luke's client calls that API and **never holds a database credential**, so the trust model is Atlas's, not a connection string handed out. ⚠️ The cost of that answer is Q11's: `forge_svc` then sits in the same deploy as a request path, so `billing_svc`'s isolation rule does not transfer — see §7.1's "state the limit honestly" paragraph. Asked as:** **Does Forge's server run inside eco's `attachUser`/`withRls`, or does Luke's team get a connection string?** If the latter, that server sets `app.current_user_id` to any uuid it likes and every policy here is only as strong as its code. | **Makel + Yannick + Luke** | The entire trust model. This is the largest open item on the page. | Schema design, which is identical either way. |
+| 11 | **ANSWERED 2026-10-06 (answer 8) — **Atlas holds it.** ⚠️ And the limit is recorded rather than hidden: `forge_svc` sits in the same deploy as a request path, so **do not copy `billing_svc`'s "ONE process / a compromised request path cannot" rule onto it**. The row scope (`user_id = app_private.current_user_id()`) stops a **bug**, not an attacker holding the credential. `rls_forge.sql` §1 struck its stronger claim for this reason. Asked as:** **Who holds `forge_svc`'s credential, given FORGE is Luke's app?** It is the only principal that may stamp a completion, write a rung or insert an `auto` assignment. | **Makel + Luke** | Creating `forge_svc` meaningfully. | `forge_app`, which can be created now. |
+| 12 | **ANSWERED 2026-10-06 (answer 5) — **a separate, admin-granted `forge` row in `user_app_roles`.** Not bundled, not automatic. Pricing is Makel's and does not block the schema; the task row is T-127. Until something writes that row, `requireApp('forge')` correctly refuses everyone. Asked as:** **Is FORGE plan-gated?** `'forge'` is in `APPS` already, but nothing says what it costs or what gates it: a `user_app_roles` row with `app='forge'`, an `app_private.plan_at_least()` check, or neither. Nothing writes that row today, so `requireApp('forge')` refuses everyone. | **Makel** | The entitlement half of §7.2. | The data tables. |
 | 13 | **ANSWERED 2026-10-06 (answer 22) — there is no `gender` column; ask for the carry reference directly.** The column is `golf.player_profile.carry_reference` (`'pga_scratch'` \| `'lpga_d3'`, nullable, no default), frozen at play as `golf.facet_scores.carry_reference_at_play`; a null reference means **no driving index is computed**, and the scoring module now enforces that itself (`baselineHandicap` returns `null`). The "neither" question dissolves (a player picks a scale, not an identity), the Firestore-vocabulary question dissolves (**no backfill from Firestore `gender`**), and the pending-coach exposure question is governed by answer 14 (a *pending* coach sees no profile at all) — **not checked here against the policy SQL**. ⚠️ Still true: asking a golfer to self-classify against a table they have never seen means the UI copy must name the scale *and* show its range. **Asked as — and the text below is the superseded question, kept as history:** **`gender`.** Binary because §2.6's named-level tables exist only for men and women, and it selects both the carry table and the slider floor. What does a player who is neither see? Is it asked in Forge at all, given `rypstick-ios` Firestore already holds it? ⚠️ The Firestore **vocabulary is unverified** — a backfill could write `'Male'`, `'m'`, `'other'` or blanks into the column that picks the benchmark table. | **Luke / Makel** | *(Was: a third value needs a third named-level table, and whether `gender` may sit on a row a self-requested pending coach can read — both moot, there is no such column.)* **New and open instead:** the UI copy for the two scales, and the content of `CAL.carry.f` (see `FORGE-MATH-ADOPTION.md` §4.2). | The rest of the profile collapse. |
 | 14 | **ANSWERED 2026-10-06 (answer 20) — Atlas owns the display name; Forge reads and never writes it.** **Asked as:** **Does Forge own the display name?** Its onboarding captures one, but §6.1's `PUT /me/profile` lists only *"handicap, carry, target, gender"* (the Spec's wording; `gender` is superseded by `carry_reference`, see Q13). Writing it makes a second app a writer of an identity column, against `identity.ts`'s *"Atlas is the runtime writer; every other app reads it."* SELECT only, pending an answer. | **Luke / Makel** | One grant line. | Everything. |
 | 15 | **ANSWERED 2026-10-06 — no: append-only for both apps by privilege; the `source_app <> 'forge'` predicate is dropped; a correction is a new note; an admin may retract through an audited path, a coach may not (409, not 404).** The predicate this question asked about is gone. **Asked as:** **Should Atlas-authored coaching notes stay editable at all?** If no, the whole table becomes append-only by **privilege** for both apps — stronger and simpler — at the cost of Atlas's note-editing route. ⚠️ Atlas also has a **soft-delete** route; under the `source_app <> 'forge'` predicate a coach could never retract their own Forge note. | **Makel** | Whether the policy predicate is needed at all. | The collapse itself. |
-| 16 | **Does a Forge coach seeing Atlas notes, and vice versa, need saying out loud?** That is the unified-profile intent, and it is a visible product change to both apps that nobody has agreed to. | **Makel / Luke** | Nothing technically. Confirm before build. | — |
-| 17 | **Is shot-grain data visible to a coach in v1?** `atlas_app` SELECT exposes every individual ball a student hit; the Coach Console shows only facet-level numbers. | **Makel** | A privacy call, not a schema one. | The table. |
+| 16 | **ANSWERED 2026-10-06 (answer 12) — YES, and it is the point: ONE NOTE RECORD PER PLAYER.** A Forge coach sees Atlas-authored notes and vice versa. **No note becomes visible to anyone who could not already read that student** — both sets are coach-only and both sit behind `app_private.coaches()`; the change is between coaches of the same student, never between a coach and a stranger. The failure it prevents is a colleague's safeguarding note being invisible because it was typed in the other app. Forge notes stay player-invisible by the withheld `visibility` grant (answer 19: a v1 default, expected to relax — one grant line plus a UI control, not a migration). **Asked as:** **Does a Forge coach seeing Atlas notes, and vice versa, need saying out loud?** That is the unified-profile intent, and it is a visible product change to both apps that nobody has agreed to. | **Makel / Luke** | Nothing technically. Confirm before build. | — |
+| 17 | **ANSWERED 2026-10-06 (answer 3) — **coaches see every shot.** `atlas_app` holds SELECT on `golf.range_shots` and `golf.putt18_holes`. It was a privacy call, not a schema one, and the tables are unchanged either way. Asked as:** **Is shot-grain data visible to a coach in v1?** `atlas_app` SELECT exposes every individual ball a student hit; the Coach Console shows only facet-level numbers. | **Makel** | A privacy call, not a schema one. | The table. |
 | 18 | **`outcomes` (§7.3) is unrouted.** See §2. | **Luke** | §7.4's correlation work. | Everything built in §4. |
 | 19 | **ANSWERED 2026-10-06 — the table is `atlas.assignments`; `golf.range_sessions` stands.** The player-facing copy stays "PRESCRIBED BY YOUR COACH" and the coach UI stays "ASSIGN WORK": a table name is not UI copy. The three eco files that reserved the old name are repointed in the same change. **Asked as:** **Table naming:** `golf.range_sessions`? And one word for `assignments` vs the earlier reserved name — the Forge player screen says "PRESCRIBED BY YOUR COACH", the coach UI says "ASSIGN WORK", the Spec says `assignments`. | **Makel** | Nothing — but settle it **before the migration is generated**. Under the 2030 model plan a deferred rename is a migration. | — |
 | 20 | **ANSWERED 2026-10-06 — symmetric (`FORGE-MATH-ADOPTION.md` §2.5a). Asked as:** **Driving asymmetry.** The Spec defers this itself: *"Asymmetry — prototype bug, decide before building. The formula above reproduces the prototype exactly: only column 0 (bad left) counts as a bad miss… the intended behaviour is symmetric."* | **Luke / Makel** | **Every historic driving index becomes non-comparable the day it changes** — same blast radius as Q1, and the Spec says decide *before* building. | Storage. `outcome_value` is 0–4 either way. |
-| 21 | **Does `source='auto'` ship in v1?** §5.1 requires it, but `auto` is derived from Forge's `primaryLeak`, and METRIC-MAP forbids promoting that into the shared layer — *"Forge's `primaryLeak` stays private precisely so two competing priority labels are never shown to the same player."* The Spec requires the thing the map forbids exposing. | **Makel** | Whether `forge_svc` needs an INSERT path on `atlas.assignments` at all, and whether a second priority label reaches the player. | The `source` column and its escalation close, which are needed for `coach`/`player` regardless. |
-| 22 | **Does Putt 18's "enter as a total" mode survive?** It writes a **complete** Putt 18 with **zero** `putt18_holes` rows — `complete: true`, `holesPlayed.putting = 18`, `holes: null`. The Spec never mentions it. Keeping it means every consumer must forever handle an 18-hole round with no holes, and §7.4's per-hole correlation work is starved of its only input whenever a player uses it. | **Luke / Makel** | Nothing structurally — completeness already lives on the facet row, not on a `count(*)` here. But it decides whether §7.4 has data. | The `putt18_holes` table. |
-| 23 | **Is the 30-minute block permanent product policy, or a v1 simplification?** The Spec is emphatic twice — *"always 30 minutes and is not stored"*, *"the product's fixed unit and is not configurable"* — and this document builds to it. But `blocks_per_week` is a count whose unit is **implicit**: if a tier, an academy or a junior programme ever practises in 45- or 60-minute blocks, every historical row silently re-means and no migration can recover the original intent. | **Makel / Luke** | Nothing today. | Nothing — but a `block_minutes integer not null default 30` is **cheap now and un-backfillable later**. Answer it before the first row. |
+| 21 | **ANSWERED 2026-10-06 (answer 2, an **OVERRULE** of the recommendation — do not reopen it) — **`source='auto'` SHIPS.** Security is unchanged: `auto` is reachable only through `assignments_insert_auto`, which is `TO forge_svc`. 🔴 The one obligation with **no enforcement behind it**: an auto row's `note` must be templated generically. Carrying Forge's `primaryLeak` label into `atlas.*` is what METRIC-MAP forbids, and no CHECK and no policy can tell a generic template from a leak label — `note` is free text shown verbatim to the player. It is the `forge_svc` proposer's job. Asked as:** **Does `source='auto'` ship in v1?** §5.1 requires it, but `auto` is derived from Forge's `primaryLeak`, and METRIC-MAP forbids promoting that into the shared layer — *"Forge's `primaryLeak` stays private precisely so two competing priority labels are never shown to the same player."* The Spec requires the thing the map forbids exposing. | **Makel** | Whether `forge_svc` needs an INSERT path on `atlas.assignments` at all, and whether a second priority label reaches the player. | The `source` column and its escalation close, which are needed for `coach`/`player` regardless. |
+| 22 | **ANSWERED 2026-10-06 (answer 15) — **it survives, flagged `entry_method = 'tally'`.** So every consumer must handle an 18-hole round with **zero** `putt18_holes` rows, and §7.4's per-hole correlation work is starved of input whenever a player uses it. Completeness lives on the facet row, never on a `count(*)` over the holes. Asked as:** **Does Putt 18's "enter as a total" mode survive?** It writes a **complete** Putt 18 with **zero** `putt18_holes` rows — `complete: true`, `holesPlayed.putting = 18`, `holes: null`. The Spec never mentions it. Keeping it means every consumer must forever handle an 18-hole round with no holes, and §7.4's per-hole correlation work is starved of its only input whenever a player uses it. | **Luke / Makel** | Nothing structurally — completeness already lives on the facet row, not on a `count(*)` here. But it decides whether §7.4 has data. | The `putt18_holes` table. |
+| 23 | **ANSWERED 2026-10-06 (answer 23) — **permanent, and it stays UNSTORED.** No `block_minutes` column. The risk is accepted and written down rather than mitigated: if a tier or an academy ever practises in 45- or 60-minute blocks, every historical `blocks_per_week` silently re-means and no migration can recover the original intent. Asked as:** **Is the 30-minute block permanent product policy, or a v1 simplification?** The Spec is emphatic twice — *"always 30 minutes and is not stored"*, *"the product's fixed unit and is not configurable"* — and this document builds to it. But `blocks_per_week` is a count whose unit is **implicit**: if a tier, an academy or a junior programme ever practises in 45- or 60-minute blocks, every historical row silently re-means and no migration can recover the original intent. | **Makel / Luke** | Nothing today. | Nothing — but a `block_minutes integer not null default 30` is **cheap now and un-backfillable later**. Answer it before the first row. |
 | 24 | 🔴 **Server-allocated seed vs §6.3's "never blocked" — a conflict this document creates.** §4 puts the row insert at `POST /sessions` so the seed is the one the holes were played with. §6.3, listed as untouched, says *"Local write-through on every tap… the player is never blocked from continuing."* **A range with no signal means no `POST /sessions`, and therefore no seed and no session.** Either the client may generate a session id and seed offline and the server adopts them on submit (which gives up "allocates the seed server-side" as a privilege control), or a session genuinely cannot start offline. | **Luke + Makel** | The seed's provenance control, and `POST /sessions` vs the §6.3 flow. This is the one place where two sections this document calls settled actually disagree. | The columns. `seed` and `idempotency_key` exist either way; only the grant on `seed` changes. |
 
 ---
