@@ -372,6 +372,246 @@ adminRouter.delete(
   },
 )
 
+// ─── POST /admin/users/:userId/app-access ──────────────────────────────────────────────────────
+/**
+ * Grant or revoke ONE app role for ONE user, with a mandatory reason. Built for Forge (T-127).
+ *
+ * ── Why this route exists ──────────────────────────────────────────────────────────────────────
+ * Forge access is opt-in per user: a ('forge', …) row in public.user_app_roles, granted separately
+ * rather than at signup (docs/decisions/FORGE-PORT-ANSWERS-2026-10-06.md, Batch 2 #5).
+ * `user_app_roles_atlas_signup` admits only ('atlas','user') and is deliberately not widened, so
+ * NOTHING in the app could write that row — and the alpha branch sat with 10 atlas rows and zero
+ * forge rows, every FORGE request 403ing for everyone, until someone unblocked it with hand-run
+ * SQL. A change carried by no artifact is exactly how T-107 happened. THIS ROUTE IS THE ALTERNATIVE
+ * TO HAND-RUN SQL: if you are about to `insert into user_app_roles` by hand, use it instead, so the
+ * grant has an actor, a reason and an admin_audit row. Do not delete it because the SQL "still works".
+ *
+ * ── Which write path, and why there are two ───────────────────────────────────────────────────
+ * `user_app_roles_app_admin_insert/_update` check `is_app_admin(app)`, so an Atlas admin — who holds
+ * no ('forge','admin') row, and is not meant to — is REFUSED a forge write on the ordinary pool.
+ * That refusal is correct for locker_room/ryp_red/debrief and it must stay. For forge the decision
+ * (Answers #5) is the audited billing_svc + withRlsBypass pattern parental-consent uses. So:
+ *
+ *   BYPASS_GRANTABLE apps (forge)  -> auditedWrite on billingPool. NO POLICY BINDS on this path, so
+ *                                     every restriction below is a plain `if` and is the ONLY gate.
+ *   every other app               -> auditedScopedWrite on the ordinary pool, where the database
+ *                                     decides via is_app_admin(app). Only reachable by an admin of
+ *                                     that app (callerAdminsApp is a message-quality pre-check; the
+ *                                     policy is the real gate).
+ *
+ * ⚠️ Adding an app to BYPASS_GRANTABLE REMOVES DATABASE ENFORCEMENT FOR THAT APP. Letting
+ * locker_room fall through to bypass would reopen the 2026-08-26 hole in which an Atlas admin could
+ * grant themselves Locker Room admin and read every Locker Room user. A narrow policy admitting an
+ * Atlas admin to write ('forge', non-admin) would let forge move onto the scoped path and make the
+ * `if`s below unnecessary — that is a schema decision (db-engineer), not this file's.
+ *
+ * ── What the bypass path refuses ──────────────────────────────────────────────────────────────
+ * - role 'admin' for anybody. Minting a Forge admin would hand out scoped authority through a path
+ *   nothing in the database checks, and it also covers "an admin grants THEMSELVES admin on an app
+ *   they do not administer": requireAdmin('atlas') proves Atlas authority only, and on bypass no
+ *   policy adds more. Refused here, stated here, because nothing else will.
+ * - any app not in BYPASS_GRANTABLE unless the caller already administers it.
+ * - self-modification of the caller's own ('atlas', …) row, matching the app-roles routes.
+ *
+ * ── Writes ────────────────────────────────────────────────────────────────────────────────────
+ * (user_id, app) is UNIQUE, so there is one row per user per app. Grant is therefore insert-or-
+ * revive-in-place: a revoked row still occupies the slot and re-granting clears deleted_at (a second
+ * INSERT would hit the unique index). Revoke is a soft delete — deleted_at, never DELETE; no role
+ * holds DELETE here. Every write is checked with .returning(): an RLS-filtered UPDATE matches ZERO
+ * rows and raises nothing, so a 200 on an unchecked write is a lie. A refusal THROWS from inside the
+ * transaction so the admin_audit row rolls back with it — an audit row for a change that did not
+ * happen is worse than none.
+ */
+const BYPASS_GRANTABLE: Partial<Record<(typeof APPS)[number], readonly (typeof ROLES)[number][]>> = {
+  forge: ROLES.filter((r) => r !== 'admin'),
+}
+
+const appAccessBodySchema = z
+  .object({
+    app: z.enum(APPS),
+    role: z.enum(ROLES),
+    action: z.enum(['grant', 'revoke']),
+    // Required and non-empty: an audit row with no reason is a log nobody can read later.
+    reason: z.string().trim().min(1).max(500),
+  })
+  .strict()
+
+// Thrown from inside the write transaction so it rolls back (audit row included), then translated
+// to an HTTP status outside it.
+class AccessRefused extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+  ) {
+    super(code)
+  }
+}
+
+// Only select/insert/update are used, none of which depend on the schema generic, so one helper can
+// run on either path's transaction handle.
+type AccessDb = NodePgDatabase<any>
+
+async function applyAccessChange(
+  db: AccessDb,
+  p: { userId: string; app: string; role: string; action: 'grant' | 'revoke' },
+): Promise<{ oldValue: string | null; newValue: string }> {
+  const { userId, app, role, action } = p
+  const label = `${app}:${role}`
+
+  if (action === 'revoke') {
+    // Matches ONLY a live row holding exactly this role, so revoking something that is not granted
+    // is a 404 rather than a quiet success, and an already-revoked row is not "revoked again".
+    const done = await db
+      .update(userAppRoles)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(userAppRoles.userId, userId),
+          eq(userAppRoles.app, app),
+          eq(userAppRoles.role, role),
+          isNull(userAppRoles.deletedAt),
+        ),
+      )
+      .returning({ id: userAppRoles.id })
+    if (done.length !== 1) throw new AccessRefused(404, 'no_active_role')
+    return { oldValue: label, newValue: 'revoked' }
+  }
+
+  // The FK would catch a missing user (23503), but a deleted account must not be handed access
+  // either, and attachUser refuses one anyway.
+  const target = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+    .limit(1)
+  if (target.length === 0) throw new AccessRefused(404, 'user_not_found')
+
+  // Read INSIDE the transaction so old_value is what was actually overwritten.
+  const [existing] = await db
+    .select()
+    .from(userAppRoles)
+    .where(and(eq(userAppRoles.userId, userId), eq(userAppRoles.app, app)))
+    .limit(1)
+
+  if (existing && existing.deletedAt === null && existing.role === role) {
+    throw new AccessRefused(409, 'already_granted')
+  }
+
+  // 🔴 NEVER SILENTLY OVERWRITE AN EXISTING `admin` ROW. Added 2026-10-15 after the route was
+  // driven against the alpha branch and this came back as a real hole.
+  //
+  // The route already refuses GRANTING admin. It did not refuse OVERWRITING one: a plain grant of
+  // 'user' over an existing ('forge','admin') row passed the already_granted check above and then
+  // UPDATE … SET role='user' DEMOTED that admin — on the bypass path, where no policy binds and
+  // nothing would have stopped it. An Atlas admin could strip a Forge admin without ever naming
+  // the word admin in the request.
+  //
+  // Refused on BOTH paths rather than only on bypass, deliberately. On the ordinary pool the
+  // policy already refuses it, so this check is redundant there — and that is the point: one rule
+  // that reads the same wherever you find it, instead of a conditional whose safety depends on
+  // remembering which pool you are on. Changing an admin role is a deliberate act and does not
+  // belong behind a grant button.
+  if (existing && existing.deletedAt === null && existing.role === 'admin') {
+    throw new AccessRefused(403, 'role_not_grantable_here')
+  }
+  const oldValue = existing
+    ? `${app}:${existing.role}${existing.deletedAt ? ' (revoked)' : ''}`
+    : null
+
+  if (existing) {
+    const done = await db
+      .update(userAppRoles)
+      .set({ role, deletedAt: null, updatedAt: new Date() })
+      .where(eq(userAppRoles.id, existing.id))
+      .returning({ id: userAppRoles.id })
+    if (done.length !== 1) throw new AccessRefused(404, 'no_rows_written')
+  } else {
+    const done = await db
+      .insert(userAppRoles)
+      .values({ userId, app, role })
+      .returning({ id: userAppRoles.id })
+    if (done.length !== 1) throw new AccessRefused(404, 'no_rows_written')
+  }
+  return { oldValue, newValue: label }
+}
+
+adminRouter.post('/admin/users/:userId/app-access', ...adminChain, async (req, res, next) => {
+  try {
+    const parsed = appAccessBodySchema.safeParse(req.body)
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_body', issues: parsed.error.issues })
+      return
+    }
+    const { app, role, action, reason } = parsed.data
+    const actor = (req as any).user as typeof users.$inferSelect
+    const userId = normaliseUuid(req.params.userId)
+    if (!userId) {
+      res.status(400).json({ error: 'invalid_user_id' })
+      return
+    }
+
+    if (userId === actor.id.toLowerCase() && app === 'atlas') {
+      res.status(400).json({ error: 'cannot_modify_own_admin_role' })
+      return
+    }
+
+    const bypassRoles = BYPASS_GRANTABLE[app]
+    const viaBypass = bypassRoles !== undefined
+    if (viaBypass) {
+      // NO POLICY BINDS ON THIS PATH — these ifs are the only gate. See the header.
+      if (!bypassRoles.includes(role)) {
+        res.status(403).json({ error: 'role_not_grantable_here', app, role })
+        return
+      }
+    } else if (!callerAdminsApp(req, app)) {
+      // Pre-check for a readable 403 only. The database is the real gate on this path:
+      // user_app_roles_app_admin_insert/_update refuse it via is_app_admin(app).
+      res.status(403).json({ error: 'not_admin_of_app', app })
+      return
+    }
+
+    const entry = { entity: 'user_app_roles', field: 'app_access' }
+    // The path rides in the reason so GET /admin/audit answers who/whom/what/why/how with no join.
+    const auditReason = `app access ${action} ${app}:${role} [${viaBypass ? 'bypass' : 'rls'}]: ${reason}`
+    const change = { userId, app, role, action }
+
+    const outcome = viaBypass
+      ? await auditedWrite(actor.id, auditReason, entry, async (db) => {
+          const c = await applyAccessChange(db, change)
+          return { entityId: `${userId}:${app}`, ...c, result: c }
+        })
+      : await auditedScopedWrite(actor, auditReason, entry, async (db) => {
+          const c = await applyAccessChange(db, change)
+          return { entityId: `${userId}:${app}`, ...c, result: c }
+        })
+
+    res.json({ userId, app, role, action, active: action === 'grant', previous: outcome.oldValue })
+  } catch (err) {
+    if (err instanceof AccessRefused) {
+      res.status(err.status).json({ error: err.code })
+      return
+    }
+    // drizzle may wrap the pg error, so look one level down for the code.
+    const code = (err as any)?.code ?? (err as any)?.cause?.code
+    // 42501: a WITH CHECK / missing-grant refusal. A specific 403, never a 500 carrying the raw
+    // Postgres policy string (schema disclosure, and it reads as a crash).
+    if (code === '42501') {
+      res.status(403).json({ error: 'forbidden' })
+      return
+    }
+    if (code === '23503') {
+      res.status(404).json({ error: 'user_not_found' })
+      return
+    }
+    if (code === '23505') {
+      // Two admins granting the same (user, app) at once; the loser's transaction rolled back.
+      res.status(409).json({ error: 'conflict_retry' })
+      return
+    }
+    next(err)
+  }
+})
+
 // ─── GET /admin/orgs ────────────────────────────────────────────────────────────────────────────
 adminRouter.get('/admin/orgs', ...adminChain, async (req, res, next) => {
   try {

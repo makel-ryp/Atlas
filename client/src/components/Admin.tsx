@@ -10,6 +10,12 @@ const ERROR_SENTENCES: Record<string, string> = {
   cannot_modify_own_admin_role: 'You cannot change your own admin role.',
   invalid_body: 'That reason (or field) did not pass validation.',
   not_signed_in: 'Your session expired — sign in again.',
+  role_not_grantable_here: 'That role cannot be granted from here.',
+  no_active_role: 'That user has no active grant to revoke.',
+  already_granted: 'They already have that access.',
+  user_not_found: 'That user no longer exists.',
+  conflict_retry: 'Someone else changed this at the same moment — try again.',
+  forbidden: 'The database refused that change.',
 }
 
 function describeError(err: unknown): string {
@@ -136,6 +142,37 @@ function UserRow({
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [forgeReason, setForgeReason] = useState('')
+  const [forgeBusy, setForgeBusy] = useState(false)
+  const [forgeError, setForgeError] = useState<string | null>(null)
+
+  // Forge is opt-in: a ('forge', …) row, granted here and nowhere else. The server's view of that
+  // row is the only truth — this component never assumes a click worked, it refetches. A revoked row
+  // is shown as revoked, not as absent, because re-granting revives it in place.
+  const forgeRow = user.appRoles.find((r) => r.app === 'forge')
+  const forgeActive = forgeRow !== undefined && !forgeRow.revoked
+
+  const changeForge = async (action: 'grant' | 'revoke') => {
+    setForgeBusy(true)
+    setForgeError(null)
+    try {
+      await apiFetch(`/api/admin/users/${user.id}/app-access`, {
+        method: 'POST',
+        body: JSON.stringify({
+          app: 'forge',
+          role: action === 'revoke' && forgeRow ? forgeRow.role : 'user',
+          action,
+          reason: forgeReason,
+        }),
+      })
+      setForgeReason('')
+      await Promise.all([onReload(), onMutated()])
+    } catch (err) {
+      setForgeError(describeError(err))
+    } finally {
+      setForgeBusy(false)
+    }
+  }
 
   const grant = async () => {
     setBusy(true)
@@ -191,11 +228,33 @@ function UserRow({
           Grant Atlas role
         </button>
       </div>
-      {/* Granting roles for other apps is refused by the database (not_admin_of_app), and that app's
-          own admin is the right place to do it — building a UI for a request the API will reject
-          would just move the confusion here. */}
-      <p className="muted small">Only Atlas roles can be granted here — other apps refuse the grant.</p>
+      {/* Other apps (locker_room, ryp_red, debrief) are refused by the database unless you administer
+          them (not_admin_of_app), and that app's own admin is the right place to do it. Forge is the
+          one exception, via POST /admin/users/:id/app-access — see the route's header. */}
+      <p className="muted small">Atlas roles are granted above. Forge access is separate, below.</p>
       {error && <p className="error small">{error}</p>}
+
+      <div className="grant-role">
+        <span>
+          Forge access:{' '}
+          <strong>{forgeActive ? `granted (${forgeRow?.role})` : forgeRow ? 'revoked' : 'none'}</strong>
+        </span>
+        <input
+          placeholder="reason (required)"
+          value={forgeReason}
+          onChange={(e) => setForgeReason(e.target.value)}
+        />
+        {forgeActive ? (
+          <button disabled={forgeBusy || !forgeReason.trim()} onClick={() => changeForge('revoke')}>
+            Revoke Forge access
+          </button>
+        ) : (
+          <button disabled={forgeBusy || !forgeReason.trim()} onClick={() => changeForge('grant')}>
+            {forgeRow ? 'Re-grant Forge access' : 'Grant Forge access'}
+          </button>
+        )}
+      </div>
+      {forgeError && <p className="error small">{forgeError}</p>}
     </li>
   )
 }
