@@ -37,6 +37,25 @@ if (isProduction) app.set('trust proxy', 1)
 const defaultJson = express.json()
 app.use((req, res, next) => (req.path === '/api/feedback' ? next() : defaultJson(req, res, next)))
 
+// ── Baseline security headers. Four lines, no dependency. ──────────────────────────────────────
+// Added 2026-10-15 after `curl -I` against the deployed Testing environment returned NONE of them.
+//
+// `nosniff` matters more here than it looks: `/proto/dashboard` serves a coach's whole roster as
+// HTML, and a browser that content-sniffs a response into a type we did not intend is how an
+// injected string becomes executable. `DENY` stops the authenticated app being framed by another
+// site and clicked through. Referrer is trimmed so a path never leaks to a third party in a header.
+//
+// ⚠️ NOT a Content-Security-Policy. Luke's pages are a mass of inline styles and inline handlers,
+// and a CSP strict enough to be worth having would break them — so it needs doing deliberately with
+// his markup in hand, not bolted on here where it would either be useless or break the product.
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-Frame-Options', 'DENY')
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+  if (isProduction) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+  next()
+})
+
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', ts: new Date().toISOString() })
 })

@@ -249,6 +249,19 @@ protoRouter.get(
     // shows the exact image before anything is sent and offers "send without screenshot". See
     // PREVIEW BEFORE SEND in ../feedbackConfig for the reasoning, and for the residual that
     // remains. Do not add a gate back here, and do not remove the preview from the widget.
+    // 🔴 `no-store`, AND IT CLOSES A HOLE THIS FILE ALREADY THOUGHT IT HAD CLOSED.
+    //
+    // `/api/session/end` above clears the cookie, and its comment says that shuts the shared-laptop
+    // case. It does not, on its own. This response carries the coach's ENTIRE ROSTER inline in
+    // `window.__ATLAS_DATA__` — every student's name, handicap and id — and without this header the
+    // browser keeps it in the back/forward cache. Sign out on a shared machine, hand it over, press
+    // Back: the page is served from that cache, with the roster still in it, and no request ever
+    // reaches the server to be refused.
+    //
+    // `private` and `max-age=0` are not enough. Only `no-store` keeps it out of bfcache, and
+    // `must-revalidate` covers proxies that honour the older wording.
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private')
+    res.setHeader('Pragma', 'no-cache')
     res.type('html').send(feedbackConfig.ok ? injectFeedback(page) : page)
   } catch (err) {
     next(err)
