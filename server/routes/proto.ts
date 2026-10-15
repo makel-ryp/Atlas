@@ -243,18 +243,13 @@ protoRouter.get(
     // The feedback button exists only while /api/feedback is actually mounted (same config object
     // index.ts reads) — a button over a 503 would take a tester's words and lose them. Injected like
     // the banner: Atlas hosting Luke's page, not part of his design. See ../feedbackWidget.
-    // ⚠️ ALLOWLISTED TESTERS ONLY, and this is the privacy control rather than a rollout gate.
-    // Injecting for everyone put the button on a COACH's screen, where a screenshot carries a
-    // student's name (or email), their coaching notes including the private tier, and their intake
-    // answers — injuries, "why you are here" — for students who may be minors. A guardian consented
-    // to the child USING the app, not to that reaching a third-party processor. So: named testers.
-    // The email comes from the AUTHENTICATED REQUEST, never from `__ATLAS_DATA__`. That payload is
-    // injected into the page and readable by anything running there, so an address added to it for
-    // this check would be a new disclosure to fix a disclosure.
-    const signedIn = (req as any).user as { email?: string | null } | undefined
-    const mayGiveFeedback =
-      feedbackConfig.ok && !!signedIn?.email && feedbackConfig.testers.has(signedIn.email.toLowerCase())
-    res.type('html').send(mayGiveFeedback ? injectFeedback(page) : page)
+    // ⚠️ EVERY SIGNED-IN USER, not a tester list. A list was the privacy control here (a coach's
+    // screenshot carries a student's name or email, coaching notes including the private tier, and
+    // intake answers — for students who may be minors). It was replaced, not dropped: the widget
+    // shows the exact image before anything is sent and offers "send without screenshot". See
+    // PREVIEW BEFORE SEND in ../feedbackConfig for the reasoning, and for the residual that
+    // remains. Do not add a gate back here, and do not remove the preview from the widget.
+    res.type('html').send(feedbackConfig.ok ? injectFeedback(page) : page)
   } catch (err) {
     next(err)
   }

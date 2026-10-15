@@ -3,25 +3,29 @@ import { z } from 'zod'
 import { attachUser, requireApp } from '@ryp/eco/auth'
 import type { users } from '@ryp/eco/schema'
 import { pool } from '../db'
-import { feedbackConfig } from '../feedbackConfig'
 import { cookieOrBearer } from '../cookieOrBearer'
 import { ensureAtlasAccess } from '../ensureAtlasAccess'
 import { sendFeedback, SlackError, type SlackTarget } from '../slackFeedback'
+import { FEEDBACK_MAX_PNG_BYTES, FEEDBACK_NOTE_MAX } from '../../shared/feedback'
 
 /**
  * POST /api/feedback — a tester's note, with a screenshot, into a Slack thread.
  *
- * The widget that calls this is injected by routes/proto.ts and exists only while the config in
- * ../feedbackConfig is complete. This router is mounted under the same condition (index.ts); when it
- * is not, /api/feedback answers 503 from a stub and nothing here is reachable.
+ * Two widgets call this: the one injected into Luke's page by routes/proto.ts, and the React
+ * <FeedbackButton /> on every SPA screen. Both exist only while the config in ../feedbackConfig is
+ * complete. This router is mounted under the same condition (index.ts); when it is not,
+ * /api/feedback answers 503 from a stub (every method) and nothing here is reachable.
+ *
+ * Any SIGNED-IN user may send. There is no tester list — see PREVIEW BEFORE SEND in
+ * ../feedbackConfig for what replaced it and why it must stay replaced.
  *
  * ── NO `requireConsent()`, deliberately ─────────────────────────────────────────────────────────
  * The other identity chains end in it. This one does not, and a later "make it consistent" edit would
  * be wrong: a minor whose consent is outstanding cannot use the app, and "I can't get in" is exactly
  * the report that most needs to reach us. The route reads no golfer data and writes none — it carries
- * what the tester typed, plus their name and email, to a channel Makel owns. (Today the widget only
- * appears on /proto/dashboard, which is itself consent-gated, so that case is not yet reachable from
- * the button; the route is simply not the thing that should close it.)
+ * what the person typed, plus their name and email, to a channel Makel owns. The SPA button DOES
+ * appear on the consent screens (date of birth, guardian pending) for exactly that reason. The route
+ * is simply not the thing that should close it.
  *
  * No database is touched, so no pool, no withRls, and no admin_audit row: there is no mutation of
  * Atlas state to audit. `pool` is passed to attachUser/ensureAtlasAccess only, as everywhere else.
@@ -33,8 +37,8 @@ const identityChain: RequestHandler[] = [
   requireApp('atlas'),
 ]
 
-/** Decoded-PNG ceiling. Slack accepts far larger; this is what we are willing to relay. */
-const MAX_PNG_BYTES = 4 * 1024 * 1024
+/** Decoded-PNG ceiling, shared with the client so the two cannot drift. */
+const MAX_PNG_BYTES = FEEDBACK_MAX_PNG_BYTES
 /**
  * Parser ceiling: 4 MiB of PNG is ~5.4 MiB once base64'd, so 6 MiB leaves room for the note and
  * JSON framing. The size that actually matters is MAX_PNG_BYTES, checked on the DECODED bytes below.
@@ -62,7 +66,7 @@ const jsonBody: RequestHandler = (req, res, next) => {
 
 const bodySchema = z
   .object({
-    note: z.string().trim().min(1).max(2000),
+    note: z.string().trim().min(1).max(FEEDBACK_NOTE_MAX),
     // No `.max()` on the screenshot: a zod length error is a 400, and an oversize image must be a
     // clear 413. Size is enforced below.
     screenshot: z.string().startsWith('data:image/png;base64,').optional(),
@@ -99,6 +103,14 @@ const PREFIX = 'data:image/png;base64,'
 export function createFeedbackRouter(target: SlackTarget): Router {
   const router = Router()
 
+  // "Is feedback configured?" for the SPA. This router is mounted ONLY when the Slack config is
+  // complete and a stub answers 503 to every method otherwise, so reaching this handler IS the
+  // answer. It exists so the React button is not drawn over a 503 that would eat a person's words.
+  // Same identity chain as the POST, so an anonymous caller learns nothing about the deployment.
+  router.get('/', ...identityChain, (_req, res) => {
+    res.json({ enabled: true })
+  })
+
   router.post('/', ...identityChain, jsonBody, async (req, res, next) => {
     try {
       const parsed = bodySchema.safeParse(req.body ?? {})
@@ -108,13 +120,12 @@ export function createFeedbackRouter(target: SlackTarget): Router {
       }
       const me = (req as any).user as typeof users.$inferSelect
 
-      // ⚠️ THE ALLOWLIST IS ENFORCED HERE TOO, not only at injection. Hiding the button stops the
-      // button; it does not stop a POST. Anyone with a session could call this endpoint directly
-      // and have the server put an arbitrary image into the Slack. Two checks, one list.
-      if (!feedbackConfig.ok || !me.email || !feedbackConfig.testers.has(me.email.toLowerCase())) {
-        res.status(403).json({ error: 'not_a_feedback_tester' })
-        return
-      }
+      // ⚠️ NO ALLOWLIST CHECK HERE, ON PURPOSE — any signed-in user may send. It was removed in
+      // favour of PREVIEW BEFORE SEND (see ../feedbackConfig), which is enforced in the widgets, not
+      // here: the server cannot see whether the person was shown the image. What it CAN and does
+      // enforce is below — identity (the chain above), a size ceiling, PNG magic bytes and a per-user
+      // rate limit. Do not read this gap as an oversight and re-add a list, and do not drop the
+      // preview because the server "has checks".
 
       let png: Buffer | undefined
       if (parsed.data.screenshot) {

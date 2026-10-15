@@ -28,24 +28,39 @@
  * fails, the report posts top-level, and threading just never happens.
  */
 export type FeedbackConfig =
-  | { ok: true; token: string; channel: string; testers: ReadonlySet<string> }
+  | { ok: true; token: string; channel: string }
   | { ok: false; problems: string[] }
 
 /**
- * ⚠️ THE ALLOWLIST IS A PRIVACY CONTROL, NOT A CONVENIENCE, AND IT IS WHY THIS FEATURE IS SAFE.
+ * ⚠️ PREVIEW BEFORE SEND REPLACED THE TESTER ALLOWLIST. DO NOT REINSTATE THE LIST, AND DO NOT
+ * REMOVE THE PREVIEW AS "REDUNDANT" — IT IS NOW THE WHOLE PRIVACY CONTROL.
  *
- * A screenshot captures whatever is on screen, and this product shows one person's data to another
- * by design. Without this list the button is injected for EVERY user who passes the consent gate —
- * every player, and every coach. A coach's screen carries a student's display name (falling back to
- * their EMAIL), their handicap, their coaching notes including the private tier, and their intake
- * answers: "Physical limitations — injuries, surgeries" and "Why you are here". Some of those
- * students are minors; `requireConsent.ts` exists for them.
+ * This used to be `SLACK_FEEDBACK_TESTERS`: the button reached named people only. Makel's decision
+ * (2026-10-15) is that anyone who is signed in may give feedback, so WHO may send is no longer the
+ * control. WHAT they knowingly send is.
  *
- * And consent does not cover this. What a guardian agreed to is the CHILD USING THE APP, not the
- * disclosure of their injury history to a third-party processor with its own retention and its own
- * member list. T-16 — what counts as consent — is still open with counsel.
+ * The risk that made the list necessary has not gone away. A screenshot captures whatever is on
+ * screen, and this product shows one person's data to another by design. A coach's screen carries a
+ * student's display name (falling back to their EMAIL), their handicap, their coaching notes
+ * including the private tier, and their intake answers: "Physical limitations — injuries, surgeries"
+ * and "Why you are here". Some of those students are minors (`requireConsent.ts` exists for them).
+ * Consent covers the CHILD USING THE APP, not disclosure to a third-party processor with its own
+ * retention and its own member list; T-16 — what counts as consent — is still open with counsel.
+ * The image persists in Slack, visible to every member of the channel.
  *
- * So the button reaches named testers only. Empty list = feature off, which is the safe default.
+ * So both widgets (`shared/feedback.ts` holds their copy, `server/feedbackWidget.ts` and
+ * `client/src/components/FeedbackButton.tsx` implement them) show the EXACT image in the composer
+ * before anything leaves the browser, say in one plain line where it goes, and offer "send without
+ * screenshot". The person whose screen it is sees it and chooses. That is informed disclosure by the
+ * account holder instead of silent capture. The widgets never capture at send time: the bytes
+ * POSTed are the bytes previewed.
+ *
+ * ⚠️ THE RESIDUAL IS REAL AND IS NOT CLOSED. A coach can still choose to send a student's data, and
+ * the student did not agree to that. The preview cannot stop it; it makes it a deliberate act, and
+ * the copy tells them so. The server cannot verify a preview happened (it never sees the UI), so it
+ * enforces only what it can: a signed-in identity, a rate limit, a size ceiling and PNG magic bytes.
+ * The other mitigation is operational, not code: SLACK_FEEDBACK_CHANNEL must be a PRIVATE channel
+ * with a short member list.
  */
 
 function loadFeedbackConfig(): FeedbackConfig {
@@ -61,18 +76,8 @@ function loadFeedbackConfig(): FeedbackConfig {
     problems.push('SLACK_FEEDBACK_CHANNEL is not a channel ID (C… or G…), a #name will not work')
   }
 
-  const testers = new Set(
-    (process.env.SLACK_FEEDBACK_TESTERS ?? '')
-      .split(',')
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean),
-  )
-  if (testers.size === 0) {
-    problems.push('SLACK_FEEDBACK_TESTERS is empty — set the testers\' emails, comma separated')
-  }
-
   if (problems.length > 0 || !token || !channel) return { ok: false, problems }
-  return { ok: true, token, channel, testers }
+  return { ok: true, token, channel }
 }
 
 export const feedbackConfig: FeedbackConfig = loadFeedbackConfig()

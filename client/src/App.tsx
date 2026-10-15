@@ -4,6 +4,7 @@ import { apiFetch } from './lib/api'
 import { Login } from './components/Login'
 import { Profile } from './components/Profile'
 import { Admin } from './components/Admin'
+import { FeedbackButton } from './components/FeedbackButton'
 import { Shell as IntakeShell } from './quiz/Shell'
 import { intakeApi } from './quiz/api'
 import { defaultStage } from './quiz/stages'
@@ -342,6 +343,10 @@ export default function App() {
   return (
     <AuthProvider>
       <Routes />
+      {/* A sibling of Routes, inside the provider: it reads auth context and so appears on every SPA
+          screen (login excepted — it renders nothing until signed in). It shows the person the exact
+          screenshot before anything is sent; see PREVIEW BEFORE SEND in FeedbackButton.tsx. */}
+      <FeedbackButton />
     </AuthProvider>
   )
 }
