@@ -354,9 +354,9 @@ function Composer() {
 
 // Self-contained so the component needs nothing from index.css; the palette is the same.
 const CSS = `
-.fb-root{position:fixed;right:0;bottom:0;z-index:2000;font-family:var(--mono,"IBM Plex Mono",ui-monospace,monospace)}
+.fb-root{position:fixed;left:0;bottom:0;z-index:2000;font-family:var(--mono,"IBM Plex Mono",ui-monospace,monospace)}
 .fb-root *{box-sizing:border-box}
-.fb-fab,.fb-panel{position:fixed;right:max(16px,env(safe-area-inset-right))}
+.fb-fab,.fb-panel{position:fixed;left:max(16px,env(safe-area-inset-left))}
 .fb-fab{bottom:max(16px,env(safe-area-inset-bottom));background:#c8a05e;color:#13110b;border:0;border-radius:999px;padding:11px 16px;font:700 11px/1 var(--mono,monospace);letter-spacing:.14em;text-transform:uppercase;cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.35)}
 .fb-panel{bottom:calc(max(16px,env(safe-area-inset-bottom)) + 52px);width:min(900px,calc(100vw - 32px));max-height:calc(100vh - 100px);overflow:auto;background:#0e141b;color:#ece7db;border:1px solid rgba(255,255,255,.16);border-radius:12px;padding:14px;box-shadow:0 8px 32px rgba(0,0,0,.5)}
 .fb-t{font:700 10px/1 var(--mono,monospace);letter-spacing:.2em;text-transform:uppercase;color:#c8a05e;margin:0 0 10px}

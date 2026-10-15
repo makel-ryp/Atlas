@@ -75,13 +75,15 @@ const WIDGET_JS = String.raw`(function () {
   function start() {
     var host = document.createElement('div');
     host.id = 'atlas-feedback-root';
-    host.style.cssText = 'all:initial;position:fixed;right:0;bottom:0;z-index:2147483000;';
+    host.style.cssText = 'all:initial;position:fixed;left:0;bottom:0;z-index:2147483000;';
     var root = host.attachShadow({ mode: 'open' });
     root.innerHTML =
       '<style>' +
       ':host{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace}' +
       '*{box-sizing:border-box}[hidden]{display:none!important}' +
-      '.fab,.panel{position:fixed;right:max(16px,env(safe-area-inset-right));}' +
+      // Bottom-LEFT (Makel, 2026-10-15). Luke's own fixed furniture lives bottom-right on several
+      // screens, and a floating control that sits on top of his is a bug report about us.
+      '.fab,.panel{position:fixed;left:max(16px,env(safe-area-inset-left));}' +
       '.fab{bottom:max(16px,env(safe-area-inset-bottom));background:#c8a05e;color:#13110b;border:0;border-radius:999px;' +
       'padding:11px 16px;font:700 11px/1 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;' +
       'cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.35)}' +
