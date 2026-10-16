@@ -1104,7 +1104,6 @@
                     </div>
                   </div>
                   <div style="font-family:'Newsreader',serif; font-size:16px; line-height:1.5; color:#c3cdd9;">{{ s.variantBlurb }}</div>
-                  <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#7fa8c9; margin-top:14px;">Assigned by Dr. Benoit from your movement screen</div>
                 </div>
               </sc-if>
 
@@ -1184,7 +1183,7 @@
           <div style="position:relative; aspect-ratio:16/9; background:linear-gradient(150deg,#26303f,#0e1319); display:grid; place-items:center;">
             <div style="text-align:center;">
               <div style="width:0; height:0; border-left:26px solid rgba(200,160,94,0.85); border-top:17px solid transparent; border-bottom:17px solid transparent; margin:0 auto 18px;"></div>
-              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.2em; text-transform:uppercase; color:#5f6b7a;">Demo — {{ demoRef }} · Dr. Benoit</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.2em; text-transform:uppercase; color:#5f6b7a;">Demo — {{ demoRef }}</div>
             </div>
           </div>
           <div style="padding:30px 34px;">
@@ -1435,7 +1434,7 @@
       <div style="border:1px solid rgba(255,255,255,0.09); border-radius:16px; background:#1a222e; padding:22px 26px; margin-bottom:44px; display:flex; align-items:center; gap:18px; flex-wrap:wrap;">
         <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f;">Coach's read</span>
         <span style="flex:1 1 300px; font-family:'Newsreader',serif; font-size:17px; line-height:1.5; color:#c3cdd9; min-width:0;">{{ overallRead }}</span>
-        <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#7fa8c9;">Sent to Dr. Benoit</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#7fa8c9;">Sent to your coach</span>
       </div>
 
     </div>
@@ -4330,8 +4329,8 @@ class Component extends DCLogic {
       fitnessDot: s.fitnessOn ? '#7fa8c9' : '#66717f',
       toggleFitness: () => this.setState({ fitnessOn: !s.fitnessOn }),
       fitnessNote: s.fitnessOn
-        ? 'Two lifts a week, programmed by Coach Phil against your movement screen. Additive — never subtracted from the practice floor, on any tier.'
-        : 'Available on every tier. Turn it on and Coach Phil programs against your screen; a limited result changes the programming, not the build.',
+        ? 'Two lifts a week, programmed by Coach Phil. Additive — never subtracted from the practice floor, on any tier.'
+        : 'Available on every tier. Turn it on and Coach Phil programs your lifts.',
       // ⚠️ WAS `i < 1` and the literal '1 of 2 this week' — the FOURTH fabricated compliance
       // figure, and the one the earlier sweep missed because it sits in a different vals block
       // from the other three. Every golfer was shown one lift filled in, always.
