@@ -9,6 +9,7 @@ import { adminRouter } from './routes/admin'
 import { notesRouter } from './routes/notes'
 import { intakeRouter } from './routes/intake'
 import { reviewRouter } from './routes/review'
+import { drillTicksRouter } from './routes/drillTicks'
 import { practiceRouter } from './routes/practice'
 import { messagesRouter } from './routes/messages'
 import { forgeConfig } from './forgeDb'
@@ -69,6 +70,10 @@ app.use('/api', adminRouter)
 app.use('/api', notesRouter)
 app.use('/api', intakeRouter)
 app.use('/api', reviewRouter)
+// The player's tick. Its own router, NOT folded into reviewRouter — that file's header guarantees
+// it cannot reach golf.drill_progress, and that guarantee is what keeps a review request unable to
+// forge a sign-off. See routes/drillTicks.ts.
+app.use('/api', drillTicksRouter)
 app.use('/api', practiceRouter)
 app.use('/api', messagesRouter)
 

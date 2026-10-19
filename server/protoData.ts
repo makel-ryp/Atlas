@@ -139,7 +139,8 @@ export type RosterRow = {
   /**
    * Coach sign-off state, keyed by drill id. REAL — golf.drill_progress, written by a coach after
    * they watch the swing video in Parallax. `verifiedAt` null (or the key absent) means not yet
-   * signed off; it never means the player did not do it, which is `tickedAt` and belongs to Forge.
+   * signed off; it never means the player did not do it, which is `tickedAt` — the player's own
+   * claim, written by the player (routes/drillTicks.ts) since 2026-10-16.
    */
   drills: Record<
     string,
@@ -158,9 +159,12 @@ export type RosterRow = {
       videoRef: string | null
       verifyNote: string | null
       /**
-       * THE PLAYER'S OWN CLAIM that they did the rep. Read-only here — `atlas_app` holds SELECT on
-       * this column and no INSERT or UPDATE (verified live 2026-09-15: only `neondb_owner` can
-       * write it). It belongs to the player's app; Atlas may look at it and must never set it.
+       * THE PLAYER'S OWN CLAIM that they did the rep. ⚠️ NO LONGER READ-ONLY, 2026-10-16. This
+       * note used to say `atlas_app` held SELECT and no INSERT or UPDATE and that "only
+       * neondb_owner can write it" — true then, and the reason the build screen told every player
+       * "0 of 23 drills completed" from a column nothing filled. The player writes it now, through
+       * POST /api/drills/:id/tick. It is still never written on a COACH's path: the trigger
+       * `app_private.drill_progress_column_owner()` raises 42501 if coach.ts ever tries.
        *
        * Why it travels: `ticked_at` set with `verified_at` null is a player WAITING ON THEIR
        * COACH. Without it the sign-off list renders that case identically to a drill nobody has
@@ -169,13 +173,13 @@ export type RosterRow = {
        */
       tickedAt: string | null
       /**
-       * The player watched the demo. Same ownership and the same read-only rule as `tickedAt`.
+       * The player opened the demo video. Same ownership and the same trigger-enforced rule as
+       * `tickedAt`.
        *
-       * ⚠️ SHIPPED AND READ BY NOTHING (checked 2026-09-21). The prototype's `watched` state is
-       * per-session — it marks demos opened in THIS tab, and is deliberately seeded empty so the
-       * "not watched yet" dot is honest on load. Nothing consumes this column. Kept because it is
-       * one field on a query that already selects its siblings, and because wiring `watched` to it
-       * is the obvious next step if the dot should persist; delete it if that is decided against.
+       * ⚠️ READ BY NOTHING UNTIL 2026-10-16 — "shipped and read by nothing (checked 2026-09-21)"
+       * was the honest state while the prototype's `watched` list was per-session React state,
+       * reset on every load. It is now seeded from this column, so the gold "not watched yet" dot
+       * survives a reload, and POST /api/drills/:id/watched is what fills it.
        */
       watchedAt: string | null
     }
@@ -504,11 +508,15 @@ function resolveSubmitted(args: {
   /**
    * `golf.drill_review_requests.requested_at` for this student, keyed by drill_id.
    *
-   * ⚠️ THE FIRST SOURCE HERE ATLAS CAN ACTUALLY WRITE, added 2026-09-25. Until now the only
-   * 'drill' trigger was `ticked_at`, which belongs to forge_app — so `submitted` could only ever
+   * ⚠️ THE FIRST SOURCE HERE ATLAS CAN ACTUALLY WRITE, added 2026-09-25. Until then the only
+   * 'drill' trigger was `ticked_at`, which belonged to forge_app — so `submitted` could only ever
    * be populated by an app that has not shipped, and the entire "waiting on you" machinery (the
    * coach's queue, the per-step counts, the badges) had no way to fire for a real golfer. That is
    * the mechanism behind Makel's *"This information is not relayed to the coach."*
+   *
+   * ⚠️ STILL THE ONLY SOURCE FOR A PLAN DRILL, even though Atlas can now write `ticked_at` too.
+   * See the `case 'drill'` branch below for why that is a deliberate narrowing and not an
+   * oversight.
    */
   reviewRequests: Record<string, string>
 }): Record<string, string> {
@@ -522,16 +530,24 @@ function resolveSubmitted(args: {
         /**
          * The PLAYER's claim that this rep is ready to be looked at.
          *
-         * TWO sources, and the order is deliberate. `requested_at` is Atlas's own — written by the
-         * player through POST /api/drills/:id/review-request — and it means "I have filmed this,
-         * please watch it". `ticked_at` is FORGE's and means "I did the rep"; Atlas reads it and
-         * can never write it (no column grant, 42501).
+         * `requested_at` means "I have filmed this, please watch it" — the player pressing a
+         * button that says so. `ticked_at` means "I did the rep", which is a weaker and different
+         * statement. Atlas's own request always wins where both exist.
          *
-         * Atlas's own wins when both exist, because it is the more specific claim and the one the
-         * player made most recently by hand. Forge's is kept as a fallback so the seeded history
-         * and, later, real Forge ticks still raise a review.
+         * ⚠️ NARROWED 2026-10-16 TO NON-PLAN IDS, and the narrowing is the whole point. This read
+         * `reviewRequests[id] ?? drills[id]?.tickedAt` unconditionally, which was free while
+         * NOTHING could write `ticked_at` on a plan drill. Atlas's new tick route can, on all 23
+         * of them — so left alone, every tick on a camera drill would have appeared in the coach's
+         * queue as "waiting on you", silently converting a progress checkbox into a submission the
+         * player never made. That is a product change to a surface a coach reads, and it is not
+         * one this change is entitled to make.
+         *
+         * The fallback survives only where no request path produced the row: the legacy
+         * assessment ticks written by `neondb_owner` (`Avery Lane / chip20`, 2026-09-08). Dropping
+         * it outright would make a real outstanding submission vanish from the queue.
          */
-        const t = args.reviewRequests[item.id] ?? args.drills[item.id]?.tickedAt
+        const req = args.reviewRequests[item.id]
+        const t = item.group === 'plan' ? req : (req ?? args.drills[item.id]?.tickedAt)
         if (t) out[item.id] = t
         break
       }

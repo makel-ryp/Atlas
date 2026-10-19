@@ -1047,6 +1047,8 @@
         <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:#66717f; white-space:nowrap;">Whole build</div>
         <div style="flex:1 1 200px; height:4px; border-radius:3px; background:rgba(255,255,255,0.07); overflow:hidden;"><div style="height:100%; background:linear-gradient(90deg,#7fa8c9,#c8a05e); width: {{ buildPct }};"></div></div>
         <div style="font-family:'Archivo'; font-weight:700; font-size:15px; color:#ece7db; white-space:nowrap;">{{ buildRead }}</div>
+        <!-- A tick that silently failed is the thing this screen was rebuilt to stop doing. -->
+        <div style="display: {{ buildErrShow }}; font-family:'Newsreader',serif; font-size:14px; color:#d9885e; flex:1 1 100%;">{{ buildErr }}</div>
         <!-- "Coach view" toggle — HIDDEN 2026-09-17. It flipped `coachMode`, whose only consumer
              surfaced `toggleVerify` on each drill: the COACH's judgement, editable from the
              player's own browser. `build` is PLAYER_ONLY, so the only person who could ever press
@@ -3345,14 +3347,22 @@ class Component extends DCLogic {
     // item is 'plan:2-P1'. Step completions are 'plan:step-N'. So this is a prefix, not a mapping
     // table that could drift.
     //
-    //   ticked   ← tickedAt   the PLAYER'S OWN CLAIM that the rep happened. Read-only here: the
-    //                         column belongs to forge_app and `atlas_app` holds no write grant
-    //                         (42501, verified live 2026-09-15). Atlas may show it, never set it.
-    //   verified ← verifiedAt the COACH'S judgement, written by the verify route.
+    //   ticked   ← tickedAt   the PLAYER'S OWN CLAIM that the rep happened. ⚠️ WRITABLE SINCE
+    //                         2026-10-16 — see `tickPlanDrill`. This used to read "read-only: the
+    //                         column belongs to forge_app and atlas_app holds no write grant
+    //                         (42501)", which was true and was the whole defect: the count below
+    //                         was rendered off a column NOTHING in the system could fill, so every
+    //                         player read "0 of 23" as a measurement. T-105 removed the foreign
+    //                         app and the column is Atlas's now.
+    //   verified ← verifiedAt the COACH'S judgement, written by the verify route. STILL read-only
+    //                         here, and now enforced by a trigger rather than by a missing grant —
+    //                         the player's tick needed the grant widened. See drillTicks.ts.
     //   signed   ← the same field on 'plan:step-N', so a step reads Completed only when the coach
     //                         actually signed the step off.
-    //   watched  ← [] — "have you opened the demo video", genuine per-session UI state. Seeding it
-    //                         from DONE suppressed the gold "not watched yet" dot on 12 drills.
+    //   watched  ← watchedAt  "have you opened the demo video". ⚠️ WAS `[]`, per-session state
+    //                         reset on every load, which is why a player who had watched every
+    //                         demo still saw twelve gold "not watched yet" dots after a refresh.
+    //                         Seeded from the column now, and `openDemo` writes it.
     //   openStep ← the first step not yet signed off, rather than the literal 3.
     //
     // Empty stays empty: a player with no drill rows reads 0 of 23 and "Not started", which is the
@@ -3381,11 +3391,16 @@ class Component extends DCLogic {
       return {
         ticked: refs(d => d && d.tickedAt),
         verified: refs(d => d && d.verifiedAt),
+        // ⚠️ MOVED INSIDE THE IIFE 2026-10-16, and the position is the bug it fixes: `watched: []`
+        // sat on the line AFTER this spread, so an object key written here would have been
+        // silently overwritten by the empty literal. A seed that loses to a later key is
+        // indistinguishable from a seed that never ran.
+        watched: refs(d => d && d.watchedAt),
         signed: signed,
         openStep: Math.min(open, 5),
       };
     })(),
-    watched: [], coachMode: false, demo: null,
+    tickBusy: '', tickErr: '', coachMode: false, demo: null,
     // ── SEEDED FROM THE GOLFER'S OWN ANSWER, 2026-09-17 ──────────────────────────────────────
     // Was `tier: 'builder', phase: 2` — literals every player got, and load-bearing ones:
     // TIERS[tier].phases[phase] decides the weekly floor, the prescribed week the calendar draws
@@ -4353,36 +4368,157 @@ class Component extends DCLogic {
     };
   }
 
-  // ⚠️ DEAD AS OF 2026-09-17 AND IT MUST STAY DEAD. Both call sites were removed when `ticked`
-  // and `verified` were wired to golf.drill_progress. Do not re-attach it:
-  //   · `atlas_app` has NO write grant on ticked_at (42501) — a local tick can never persist.
-  //   · it also mutated `verified`, the COACH's judgement, from the player's own browser. Over the
-  //     old demo literals that was harmless; over real data it would let a player show themselves
-  //     a verification their coach never gave.
-  // A real "send for review" needs a producer that owns ticked_at — see TASKS.md.
-  toggleDrill = key => () => {
-    const t = this.state.ticked;
-    const off = t.indexOf(key) > -1;
+  // `toggleDrill` DELETED 2026-10-16 and REPLACED by `tickPlanDrill` below, which is a different
+  // function and not a rename. It had been disarmed since 2026-09-17 for two reasons; only one of
+  // them expired:
+  //   · "atlas_app has NO write grant on ticked_at (42501) — a local tick can never persist."
+  //     EXPIRED. T-105 made the column Atlas's and the grant was widened; the replacement persists.
+  //   · it ALSO mutated `verified` — the COACH's judgement — from the player's own browser.
+  //     NOT EXPIRED, and now the dangerous half: the same role that serves this page holds the
+  //     UPDATE grant on verified_at, so an un-disarmed version of this function pointed at the new
+  //     route would be an attempt to forge a sign-off. The database refuses it
+  //     (app_private.drill_progress_column_owner raises 42501), and `tickPlanDrill` never touches
+  //     `verified` at all. Deleting the old body is the disarm that cannot be undone by accident.
+
+  /**
+   * THE PLAYER'S TICK — Makel's alpha finding #6, *"can't check off Construction drills"*.
+   *
+   * ⚠️ OPTIMISTIC WITH ROLLBACK, then RECONCILED FROM THE RESPONSE. The optimism is for a player
+   * standing at a range mat; the reconcile is because what the server stored is the only thing
+   * that is true. `ticked_at` is set to `now()` server-side, never to a clock this browser owns.
+   *
+   * ⚠️ IT RECONCILES `ATLAS_ME.drills` TOO, not just `ticked`. That object is what the state seed
+   * reads, and leaving it stale would make the count jump back on the next re-seed — the exact
+   * "after a revisit to the page my progress is erased" complaint, reintroduced one level down.
+   */
+  tickPlanDrill = (key, on) => () => {
+    if (this.state.tickBusy) return;
+    const before = this.state.ticked;
+    const id = 'plan:' + key;
     this.setState({
-      ticked: off ? t.filter(k => k !== key) : t.concat([key]),
-      verified: off ? this.state.verified.filter(k => k !== key) : this.state.verified
+      ticked: on ? before.concat([key]) : before.filter(k => k !== key),
+      tickBusy: key, tickErr: ''
+    });
+
+    fetch('/api/drills/' + encodeURIComponent(id) + '/tick', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticked: !!on })
+    }).then(r => r.json().catch(() => null).then(j => {
+      if (!r.ok) {
+        throw new Error(j && j.error === 'verified_cannot_untick'
+          ? 'Your coach has already signed this one off, so it cannot be unticked. Message them if that is wrong.'
+          : 'Could not save that. Nothing was recorded.');
+      }
+      return j;
+    })).then(row => {
+      // The server's row wins over the guess above — including `verifiedAt`, so a drill the coach
+      // signed off between page load and this click stops rendering as merely ticked.
+      const all = ATLAS_ME.drills || (ATLAS_ME.drills = {});
+      const prev = all[id] || (all[id] = { verifiedAt: null, signedOffAt: null, videoRef: null, verifyNote: null, tickedAt: null, watchedAt: null });
+      prev.tickedAt = row ? row.ticked_at : null;
+      prev.watchedAt = row ? row.watched_at : prev.watchedAt;
+      prev.verifiedAt = row ? row.verified_at : prev.verifiedAt;
+      const rest = this.state.ticked.filter(k => k !== key);
+      const vRest = this.state.verified.filter(k => k !== key);
+      this.setState({
+        ticked: prev.tickedAt ? rest.concat([key]) : rest,
+        verified: prev.verifiedAt ? vRest.concat([key]) : vRest,
+        tickBusy: '', tickErr: ''
+      });
+    }).catch(err => {
+      // Roll back to EXACTLY what was on screen before the click. A tick that stays lit after a
+      // failed write is the lie this whole change exists to stop telling.
+      this.setState({ ticked: before, tickBusy: '', tickErr: err.message || 'Could not save that.' });
     });
   };
   // `toggleVerify` DELETED 2026-09-21. It wrote `verified` — the COACH's judgement — from the
   // player's own browser. Its only call site was behind a `false &&` guard, which is the weakest
   // possible disarm in a file no linter or typechecker ever reads: deleting two characters
   // re-armed it. Removing the function is the disarm that cannot be undone by accident.
+  /**
+   * Open the demo video, and record that it was opened.
+   *
+   * ⚠️ ONLY PLAN ROWS REACH THIS. `buildImpactOpp` has its own inline handler that sets
+   * `demo: { n: 'IO', ... }` and never touches `watched` — which matters, because an 'IO' ref is
+   * not a `plan:` id and would be refused by the route as `unknown_drill`.
+   *
+   * ⚠️ FIRE-AND-FORGET, DELIBERATELY, and it is the one write on this page that is. The local
+   * state change is what the player sees (the gold dot goes out) and it is correct whether or not
+   * the POST lands; the column is write-once server-side (`coalesce(watched_at, now())`), so a
+   * failed call costs the persistence of a fact the next click re-asserts. Opening a video is not
+   * a claim a coach acts on, so an error banner here would be noise on top of a playing video.
+   * ⚠️ If `watched_at` ever becomes something a coach READS, this must grow the same rollback and
+   * reconcile `tickPlanDrill` has.
+   */
   openDemo = (n, ref) => () => {
     const key = n + '-' + ref, w = this.state.watched;
     this.setState({ demo: { n: n, ref: ref }, watched: w.indexOf(key) > -1 ? w : w.concat([key]) });
+    if (w.indexOf(key) > -1) return;
+    fetch('/api/drills/' + encodeURIComponent('plan:' + key) + '/watched', {
+      method: 'POST', credentials: 'same-origin'
+    }).then(r => r.ok ? r.json().catch(() => null) : null).then(row => {
+      if (!row) return;
+      const all = ATLAS_ME.drills || (ATLAS_ME.drills = {});
+      const prev = all['plan:' + key] || (all['plan:' + key] = { verifiedAt: null, signedOffAt: null, videoRef: null, verifyNote: null, tickedAt: null, watchedAt: null });
+      prev.watchedAt = row.watched_at;
+    }).catch(() => {});
   };
   toggleStep = n => () => this.setState({ openStep: this.state.openStep === n ? 0 : n });
   // `requestSignOff` DELETED 2026-09-21, same reason: it appended to `signed`, which since
-  // f6089e0 means "the coach signed this step off". A real request path needs a producer that
-  // owns golf.drill_progress.ticked_at — `atlas_app` holds no write grant on it (42501).
+  // f6089e0 means "the coach signed this step off".
+  // ⚠️ 2026-10-16 — the old closing sentence ("a real request path needs a producer that owns
+  // ticked_at, and atlas_app holds no write grant on it") is obsolete, and it is NOT the reason
+  // this stays deleted. Atlas owns ticked_at now and `tickPlanDrill` writes it. A step completion
+  // is still not a thing a player can ask for: it is DERIVED, signing itself off when every plan
+  // drill in the step is verified (routes/coach.ts), and a hand-written `plan:step-N` is refused
+  // 409 `step_is_automatic`. Ticking the drills IS the request.
 
   stepDrills(st) {
     return st.variants ? st.variants[this.state.pivot].drills : st.drills;
+  }
+
+  /**
+   * WHICH DRILLS COUNT AS COMPLETED — one rule, one place, 2026-10-19.
+   *
+   * Every count on the build screen reads this: "N of 23 drills completed", the progress bar, the
+   * step ladder's `n / m`, and each step's "Ready to complete". They used to read `s.ticked`
+   * directly, and that was wrong in two ways that pointed in opposite directions.
+   *
+   * ── 🔴 A COACH-VERIFIED DRILL COUNTS, even if the player never ticked it ───────────────────
+   * `verified_at` is a coach saying the rep happened — STRICTLY STRONGER evidence than the
+   * player's own `ticked_at`, not weaker. Counting only `ticked` meant Avery Lane's screen showed
+   * FOUR green verified checks above the words "0 of 23 drills completed", and the player could
+   * not fix it: the row's own onClick is inert once `vd` is true. That is the same
+   * count-contradicts-the-green-ticks symptom the tick route was built to remove, so fixing the
+   * writer without fixing this would have left the headline defect on screen.
+   *
+   * ── 🔴 AND IT IS BUILT FROM THE PLAN, NOT FROM THE ROWS ────────────────────────────────────
+   * It walks STEPS → stepDrills and asks the row about each key, rather than filtering the rows.
+   * That direction is the fix for the other half: `drill_id` is unbounded text with no FK, so a
+   * row whose id was later dropped from `shared/drills.ts` used to pass the page's `plan:` prefix
+   * filter and inflate the NUMERATOR — pushing "24 of 23" onto a screen whose whole purpose is an
+   * honest count, with no way for the player to clear it (the tick route 400s on an id it no
+   * longer knows). Built this way an unknown key cannot enter and the result cannot exceed the
+   * denominator, because both come from the same list.
+   *
+   * ⚠️ NOT a replacement for `s.ticked`, which stays the PLAYER'S OWN CLAIM and is what the
+   * checkbox renders and what `tickPlanDrill` sends. A coach's verification is not something the
+   * player can untick, and merging the two would offer them a control that 409s.
+   */
+  completedKeys() {
+    const s = this.state, out = [];
+    STEPS.forEach(st => this.stepDrills(st).forEach(d => {
+      const key = st.n + '-' + d.ref;
+      if (s.ticked.indexOf(key) > -1 || s.verified.indexOf(key) > -1) out.push(key);
+    }));
+    return out;
+  }
+
+  /** The denominator — the 23 plan drills, from the same list `completedKeys` walks. */
+  planDrillCount() {
+    return STEPS.reduce((a, st) => a + this.stepDrills(st).length, 0);
   }
 
   buildImpactOpp() {
@@ -4417,11 +4553,13 @@ class Component extends DCLogic {
 
   buildSteps() {
     const s = this.state, ticked = s.ticked, signed = s.signed, ver = s.verified;
+    // `complete` counts; `ticked` renders the checkbox. See completedKeys() for why they differ.
+    const complete = this.completedKeys();
     return STEPS.map((st, i) => {
       const drills = this.stepDrills(st);
       const prevSigned = i === 0 || signed.indexOf(STEPS[i - 1].n) > -1;
       const isSigned = signed.indexOf(st.n) > -1;
-      const done = drills.filter(d => ticked.indexOf(st.n + '-' + d.ref) > -1).length;
+      const done = drills.filter(d => complete.indexOf(st.n + '-' + d.ref) > -1).length;
       const camPending = drills.filter(d => d.cam && ver.indexOf(st.n + '-' + d.ref) < 0).length;
       const all = done === drills.length && camPending === 0;
       const locked = !prevSigned;
@@ -4476,13 +4614,24 @@ class Component extends DCLogic {
             std: vd ? 'Verified' : pending ? 'Awaiting review' : on ? 'Completed' : d.std,
             camTag: d.cam ? '· Parallax' : '',
             why: whyFor(st.n, d.ref, d.name),
-            // READ-ONLY. `ticked` now mirrors golf.drill_progress.ticked_at, and `atlas_app` has
-            // no write grant on that column (42501) — so a toggle here could only ever change the
-            // pixel and lose it on reload, while the row says "Mark done — send for review". A
-            // control that cannot do what it says is worse over real data than over demo data.
-            // The player's claim belongs to the app that owns the column; Atlas displays it.
-            onClick: () => {},
-            cursor: 'default',
+            // ── LIVE AGAIN 2026-10-16. This read "READ-ONLY … atlas_app has no write grant on
+            // that column (42501), so a toggle here could only ever change the pixel and lose it
+            // on reload" — correct then, and the reason the whole build screen read "0 of 23".
+            // `tickPlanDrill` writes golf.drill_progress.ticked_at through POST
+            // /api/drills/plan:<key>/tick and reconciles from the response.
+            //
+            // ⚠️ THREE STATES, NOT TWO, and only one of them is clickable:
+            //   · frozen (locked step, or the coach has signed the step off) — inert, as before.
+            //   · verified — inert. The coach watched this rep and recorded a judgement about it;
+            //     retracting the claim underneath it would leave a row that says "Verified" and
+            //     counts as not-done. The ROUTE refuses it too (409 verified_cannot_untick), so
+            //     this is a matching affordance and not the enforcement.
+            //   · otherwise — a real toggle.
+            // `tickBusy` suppresses a second click while one is in flight: the unique key is
+            // (user_id, drill_id), so two racing upserts are harmless to the database, but the
+            // rollback of the LOSER would stamp a stale value over the winner on screen.
+            onClick: frozen || vd || s.tickBusy ? () => {} : this.tickPlanDrill(key, !on),
+            cursor: frozen || vd ? 'default' : s.tickBusy ? 'progress' : 'pointer',
             openDemo: this.openDemo(st.n, d.ref),
             thumbBorder: locked ? 'rgba(255,255,255,0.06)' : 'rgba(200,160,94,0.22)',
             playColor: locked ? '#4d5765' : 'rgba(200,160,94,0.9)',
@@ -4514,10 +4663,13 @@ class Component extends DCLogic {
         signBg: 'transparent',
         signBorder: isSigned ? 'rgba(127,168,201,0.4)' : 'rgba(255,255,255,0.12)',
         signCursor: 'default',
-        // INERT. `signed` now means "the coach signed this step off" (golf.drill_progress on
-        // 'plan:step-N'). Letting the player append to it locally would paint a green ✓ and
-        // "Completed" over a step no coach has seen — on a screen whose own copy says the coach
-        // sees the same page. The real request path needs a producer that owns ticked_at.
+        // INERT, AND PERMANENTLY SO. `signed` means "the coach signed this step off"
+        // (golf.drill_progress on 'plan:step-N'). Letting the player append to it locally would
+        // paint a green ✓ and "Completed" over a step no coach has seen — on a screen whose own
+        // copy says the coach sees the same page. ⚠️ This used to end "the real request path needs
+        // a producer that owns ticked_at"; that producer now exists and it changes NOTHING here,
+        // because a step is derived from its drills being verified, never requested. See
+        // `requestSignOff` above.
         signOff: () => {}
       };
     });
@@ -4755,9 +4907,12 @@ class Component extends DCLogic {
       // 2026-09-08 with no way to see it was outstanding.
       //
       // ⚠️ THE PAGE DOES NOT DECIDE THIS. `SUBMITTED` is one server-side map covering every
-      // source (server/protoData.ts `resolveSubmitted`) — a drill's trigger is
+      // source (server/protoData.ts `resolveSubmitted`) — a PLAN drill's trigger is
+      // golf.drill_review_requests.requested_at, a legacy assessment tick's is
       // golf.drill_progress.ticked_at, the intake's is atlas.intake_submissions.completed_at, and
-      // the next one will be its own column. Deriving it here from `tickedAt` worked only while
+      // the next one will be its own column. (That first line said `ticked_at` for every drill
+      // until 2026-10-16; see `resolveSubmitted` for why a tick stopped counting as a submission
+      // the moment Atlas gained the ability to write one.) Deriving it here from `tickedAt` worked only while
       // every reviewable thing happened to be a drill; anything else would have needed a second
       // rule in the client, and two rules meaning the same thing are how a submission goes unseen.
       //
@@ -4783,9 +4938,10 @@ class Component extends DCLogic {
         shots: (item.detail || '') + (item.group === 'plan' && item.review ? ' \u00b7 Parallax' : ''),
         on,
         // A tick is a coach's judgement with a date on it. Unticked says "not signed off", NOT
-        // "the player did not do it" — that claim is ticked_at, which is Forge's column and which
-        // atlas_app has no grant to write. Same for watched_at, despite this feature being called
-        // "have you watched": the write below lands on verified_at.
+        // "the player did not do it" — that claim is ticked_at, the PLAYER's column. The write
+        // below still lands on verified_at and must: atlas_app holds the grant on ticked_at since
+        // 2026-10-16, so what stops a coach stamping a player's claim is no longer a missing
+        // privilege but `app_private.drill_progress_column_owner()`, which raises 42501.
         waiting,
         // Three states, three sentences. 'Awaiting your review' is addressed to the coach because
         // that is whose action is missing; the player's side of the same row reads differently below.
@@ -5580,11 +5736,13 @@ class Component extends DCLogic {
    * relayed to the coach."* It was not, because there was no table a player could write to. Now
    * there is: `golf.drill_review_requests`, whose only writer is the subject themselves.
    *
-   * ── This is NOT the disarmed tick, and must not be confused with it ─────────────────────────
-   * `ticked_at` (Forge's column, which Atlas cannot write) means "I did the rep". This means "I
-   * have put a video up for you to watch". Two different claims, which is exactly why the design
-   * note rejected reusing that column. The controls around this one are still inert on purpose —
-   * so this one is given a real fill and a pointer, and they keep neither.
+   * ── This is NOT the tick, and must not be confused with it ─────────────────────────────────
+   * `ticked_at` means "I did the rep". This means "I have put a video up for you to watch". Two
+   * different claims, which is why the design note rejected reusing that column — and that half of
+   * the reasoning survived 2026-10-16 intact even though the other half (that ticked_at belonged
+   * to an app we did not own) did not. ⚠️ The surrounding controls are NO LONGER inert: the build
+   * screen's tick went live in the same change, so "this one has a fill and a pointer, they keep
+   * neither" no longer distinguishes them. What distinguishes them is the sentence above.
    *
    * Optimistic, with rollback, same as `tickDrill` below: a player at the range gets an immediate
    * response, and a request that silently failed is worse than one that visibly did — because the
@@ -6717,10 +6875,15 @@ class Component extends DCLogic {
       /**
        * ── A LIVE CONTROL, 2026-09-25 — and the only one on this screen ────────────────────────
        *
-       * It does NOT write `ticked_at` ("I did the rep", Forge's column, still unwritable by Atlas
-       * and still shown as a statement above). It writes a REVIEW REQUEST: "I have filmed this,
-       * please watch it." That is a different claim, in a different table, whose only writer is
-       * the player — see server/routes/review.ts.
+       * ⚠️ "AND THE ONLY ONE ON THIS SCREEN" EXPIRED 2026-10-16 — the build screen's tick is live
+       * now too (`tickPlanDrill`). This one is still a different thing.
+       *
+       * It does NOT write `ticked_at` ("I did the rep", shown as a statement above and written on
+       * the build screen). It writes a REVIEW REQUEST: "I have filmed this, please watch it." A
+       * different claim, in a different table whose only writer is the player — see
+       * server/routes/review.ts. ⚠️ And ticking a drill does NOT raise one: `protoData.ts` was
+       * narrowed in the same change so a plan drill reaches the coach's queue only through this
+       * control, deliberately, rather than every tick becoming a submission.
        *
        * Offered ONLY on filmed drills (`d.cam`). There is nothing for a coach to watch on a drill
        * that is not filmed, so a request against one would sit in their queue with nothing that
@@ -6728,9 +6891,15 @@ class Component extends DCLogic {
        * spent.
        */
       onTick: (d.cam && !vd && !signedStep) ? () => this.requestReview(drillKey, !req) : () => {},
+      // ⚠️ `vd` IS TESTED BEFORE `!d.cam`, AND THE ORDER IS THE BUG IT FIXES (2026-10-19).
+      // It read `!d.cam` first, so a drill the coach had verified but the player had never ticked
+      // — which is three of Step 1's four, because their `cam` flags are false — rendered
+      // "Not yet marked done" directly under `status: 'Verified by your coach'`, and the build
+      // screen counted it as done. Three surfaces, two answers. Verification is the strongest
+      // thing that can be true of a drill, so it is read first whether or not it was filmed.
       tickLabel: signedStep ? 'Locked — step completed'
-        : !d.cam ? (on ? 'You marked this done' : 'Not yet marked done')
         : vd ? 'Your coach has signed this off'
+        : !d.cam ? (on ? 'You marked this done' : 'Not yet marked done')
         : req ? 'Sent — waiting on your coach' : 'Send for review',
       /**
        * AFFORDANCE FOLLOWS CAPABILITY — the rule this screen learned the hard way.
@@ -6738,7 +6907,8 @@ class Component extends DCLogic {
        * When the ticked_at control was disarmed, the LABELS were made statements but the styling
        * was not: the row kept the page's primary cream fill and a pointer on every unticked drill,
        * so a comment reading "the button is inert and must not advertise an action" sat directly
-       * above a button still advertising one.
+       * above a button still advertising one. (That control was re-armed 2026-10-16 on the build
+       * screen, where it now does what it says; the rule it taught is what this block keeps.)
        *
        * So the split here is strict. A filmed drill that can still be sent gets the real cream
        * fill and a pointer, because it genuinely writes. Everything else — an unfilmed drill, one
@@ -6822,6 +6992,10 @@ class Component extends DCLogic {
      */
     const dmBlocked = !!ATLAS_ME.dmBlocked;
     const s = this.state, log = s.log, sel = s.sel, view = s.view;
+    // The build screen's numerator and denominator, bound once so the headline, the bar and the
+    // step ladder cannot drift apart. `buildDone` is ticked-OR-verified, intersected with the
+    // plan by construction — see completedKeys().
+    const buildDone = this.completedKeys(), buildTotal = this.planDrillCount();
     // Is there ANY practice logged at all? Nothing writes `log` — SEED is {} and no producer
     // exists — so without this every total below renders a measured-looking zero. See the
     // dash-vs-zero rule the team card already follows.
@@ -7191,7 +7365,7 @@ class Component extends DCLogic {
       stepLadder: STEPS.map(st => {
         const dr = this.stepDrills(st);
         const isSigned = s.signed.indexOf(st.n) > -1;
-        const done = dr.filter(d => s.ticked.indexOf(st.n + '-' + d.ref) > -1).length;
+        const done = dr.filter(d => buildDone.indexOf(st.n + '-' + d.ref) > -1).length;
         const locked = st.n > 1 && s.signed.indexOf(st.n - 1) < 0;
         return {
           n: 'Step ' + st.n, title: st.title,
@@ -7201,8 +7375,26 @@ class Component extends DCLogic {
           stateColor: isSigned ? BLUE : locked ? '#4d5765' : GOLD
         };
       }),
-      buildPct: (s.ticked.length / STEPS.reduce((a, st) => a + this.stepDrills(st).length, 0) * 100) + '%',
-      buildRead: s.ticked.length + ' of ' + STEPS.reduce((a, st) => a + this.stepDrills(st).length, 0) + ' drills completed',
+      buildPct: (buildDone.length / buildTotal * 100) + '%',
+      /**
+       * ⚠️ A TRUE ZERO, NOT A DASH, AND THAT IS A DECISION TAKEN 2026-10-16.
+       *
+       * This file's own `weekRead` convention renders a DASH where there is no data ("— of 2 this
+       * week"), because a zero asserts a measurement. Until today this line broke that rule: it
+       * printed "0 of 23 drills completed" off `ticked_at`, a column NO CODE IN ANY APP COULD
+       * WRITE — so the zero was not a measurement, it was the absence of a writer, and it was
+       * Makel's alpha finding #6.
+       *
+       * A writer exists now. A player who has ticked nothing really has completed nothing, and
+       * that zero is measured — so it stays a zero, and the dash would now be the dishonest one.
+       * The two conventions are not in conflict: `weekRead` dashes because nothing has asked the
+       * player yet; this counts because the question is on the screen under it.
+       */
+      buildRead: buildDone.length + ' of ' + buildTotal + ' drills completed',
+      // A failed tick has to be visible somewhere, and this is the one line on the build screen
+      // that is always on screen. Same shape as `savedRead` on the practice log.
+      buildErr: s.tickErr || '',
+      buildErrShow: s.tickErr ? 'block' : 'none',
       toggleCoach: () => this.setState({ coachMode: !s.coachMode }),
       coachLabel: s.coachMode ? 'Coach view · on' : 'Coach view',
       coachColor: s.coachMode ? '#0E141B' : '#8d99a8',

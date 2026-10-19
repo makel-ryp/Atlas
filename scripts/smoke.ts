@@ -583,9 +583,17 @@ async function main() {
 
   // The payload half: submitted must have an Atlas-writable source, or the coach's whole
   // "waiting on you" machinery can only ever be fired by an app that has not shipped.
+  // ⚠️ NARROWED 2026-10-16 WITH THE TICK ROUTE, and the old assertion is kept in the message
+  // because it is the thing a later edit will want to "restore". It used to require
+  // `reviewRequests[item.id] ?? args.drills[item.id]?.tickedAt` UNCONDITIONALLY, which was free
+  // while nothing could write ticked_at on a plan drill. Atlas can now, on all 23 — so the
+  // unconditional fallback would turn every tick into a submission in the coach's queue.
   check('submitted resolves from the player’s own review request',
-    /reviewRequests\[item\.id\] \?\? args\.drills\[item\.id\]\?\.tickedAt/.test(protoDataSrc),
-    'Atlas’s own source must win over Forge’s unwritable one')
+    /const req = args\.reviewRequests\[item\.id\]/.test(protoDataSrc),
+    'the explicit request is the claim a coach acts on')
+  check('a PLAN drill’s tick is not a submission',
+    /item\.group === 'plan' \? req : \(req \?\? args\.drills\[item\.id\]\?\.tickedAt\)/.test(protoDataSrc),
+    'a tick means "I did the rep"; only a review request means "please watch it"')
   check('both payload paths query the requests',
     (protoDataSrc.match(/golfDrillReviewRequests/g) ?? []).length >= 4,
     'the player path and the roster path each need it')
@@ -603,6 +611,184 @@ async function main() {
     /catch\(err => \{[\s\S]{0,200}before === undefined \? delete sub\[drillId\]/.test(PROTO)
       || PROTO.includes('if (before === undefined) delete sub[drillId]; else sub[drillId] = before;'),
     'a request that silently failed is worse than one that visibly did')
+
+  // ── N2. THE PLAYER'S TICK — "N of 23 drills completed" ───────────────────────────────────────
+  // Makel's alpha finding #6. The build screen rendered that count, its progress bar and every
+  // per-step `n / m` off `golf.drill_progress.ticked_at` — A COLUMN NOTHING IN ANY APP WROTE. So
+  // every player was shown "0 of 23" as if it were a measurement. These are the static halves;
+  // the database half is the falsification block in eco's sql/rls_core.sql, which must be run
+  // against a database that has the policies AND the trigger.
+  section('N2. the player can tick a drill, and only a drill')
+
+  const tickSrc = readFileSync(join(import.meta.dirname, '..', 'server', 'routes', 'drillTicks.ts'), 'utf8')
+
+  // 🔴 THE ONE THAT MATTERS. `atlas_app` is ONE role for players and coaches, so widening the
+  // column grant put `verified_at` inside reach of the player's own row. Nothing in THIS repo can
+  // close that — `app_private.drill_progress_column_owner()` does — so what is asserted here is
+  // that the route does not even name the coach's columns, and that the reason is written down.
+  check('the tick route never names a coach column',
+    !/verified_at\s*=|signed_off_at\s*=|verified_by_user_id\s*=|verify_note\s*=/.test(tickSrc),
+    'a player’s claim and a coach’s judgement share a row; only the trigger separates them')
+  check('the trigger is cited where someone would otherwise "simplify" the route',
+    tickSrc.includes('drill_progress_column_owner'),
+    'if this guard is not named here, the next reader thinks the grant is the protection')
+  check('the player router is still separate from review.ts',
+    !reviewSrc.includes('golfDrillProgress') && tickSrc.includes('golfDrillProgress'),
+    'review.ts’s header guarantees it cannot reach drill_progress — folding these together deletes that')
+
+  // The denominator. `isReviewItemId` also admits assessments, the intake and plan:step-N, and
+  // drill_id is unbounded text with no FK — so the wrong gate lets a legitimate-looking id inflate
+  // the very count this feature exists to make honest.
+  // ⚠️ `isReviewItemId` is NAMED in that file's comments as the gate it is NOT, so this matches a
+  // CALL (`isReviewItemId(`) rather than the bare word — a substring check here would fail on the
+  // explanation of why the gate is narrow, which is the one thing that must stay written down.
+  check('only the 23 plan drills are tickable',
+    /isPlanDrillId\(/.test(tickSrc) && !/isReviewItemId\(/.test(tickSrc),
+    'a step is derived and an assessment is a scored test; neither is a rep you tick')
+  check('the id gate reads the one shared list',
+    /REVIEW_ITEMS\.some\(\(d\) => d\.id === id && d\.group === 'plan'\)/.test(
+      readFileSync(join(import.meta.dirname, '..', 'shared', 'drills.ts'), 'utf8')),
+    'client and server must not keep two copies of which ids exist')
+
+  check('the subject is the caller, never the body', tickSrc.includes('${me.id}'))
+  check('ticking is an upsert, because the coach may have made the row first',
+    tickSrc.includes('on conflict (user_id, drill_id) do update set'))
+  check('unticking is a null, never a DELETE',
+    !/\bdelete from\b/i.test(tickSrc),
+    'no role holds DELETE here — the row carries the coach’s judgement too')
+  check('a verified drill cannot be unticked',
+    tickSrc.includes("error: 'verified_cannot_untick'") && tickSrc.includes('verified_at is null'),
+    'a row that says "Verified" and counts as not-done is a contradiction a coach cannot resolve')
+  check('a zero-row write is not reported as success',
+    /if \(!out\.row\)[\s\S]{0,500}403/.test(tickSrc),
+    'an RLS-filtered write matches nothing and throws nothing')
+  // ⚠️ THREE outcomes, not two. Zero rows from the untick means verified (409), no row at all
+  // (200 — nothing to clear), or RLS (403). Collapsing the middle one into 403 makes an honest
+  // no-op look like a refusal; collapsing it into the 200 hides a real RLS failure.
+  check('unticking something never ticked is a 200, not a refusal',
+    /if \(out\.absent\)[\s\S]{0,240}res\.json\(/.test(tickSrc),
+    'there was nothing to clear, so the caller\u2019s desired state is already the state')
+  check('untick never INSERTS a row',
+    /: await db\.execute\(sql`\s*update golf\.drill_progress set ticked_at = null/.test(tickSrc),
+    'writing tick and untick as one on-conflict statement created an all-null row out of nothing')
+  check('watched is write-once, so re-opening a demo does not rewrite history',
+    tickSrc.includes('coalesce(golf.drill_progress.watched_at, now())'))
+
+  // The page half.
+  check('the prototype posts the tick',
+    PROTO.includes("'/api/drills/' + encodeURIComponent(id) + '/tick'"))
+  check('the disarmed toggle is gone, not renamed',
+    !/\btoggleDrill\s*=/.test(PROTO),
+    'it also mutated `verified`, which is now a grant the same role holds')
+  check('the drill row is live again',
+    /onClick: frozen \|\| vd \|\| s\.tickBusy \? \(\) => \{\} : this\.tickPlanDrill\(key, !on\)/.test(PROTO),
+    'affordance follows capability, in both directions')
+  check('a failed tick rolls back and is shown',
+    PROTO.includes('ticked: before, tickBusy:') && PROTO.includes('{{ buildErr }}'),
+    'a tick that stays lit after a failed write is the lie this change exists to stop telling')
+  check('the tick reconciles ATLAS_ME, not just the local list',
+    /prev\.tickedAt = row \? row\.ticked_at : null/.test(PROTO),
+    'a stale seed object makes the count jump back on the next re-seed')
+  check('watched is seeded from the column, not from an empty literal',
+    /watched: refs\(d => d && d\.watchedAt\)/.test(PROTO) && !/\n\s*watched: \[\],/.test(PROTO),
+    'it sat AFTER the seeding spread and silently overwrote it')
+  check('the count stays a true zero, not weekRead’s dash',
+    PROTO.includes("buildRead: buildDone.length + ' of ' + buildTotal + ' drills completed'"),
+    'a writer exists now, so 0 is measured — the dash would be the dishonest one')
+
+  // ── The two counting defects, 2026-10-19. Giving ticked_at a writer did not by itself make
+  // the headline honest, and both of these were live on real rows.
+  check('a coach-verified drill COUNTS as completed',
+    /if \(s\.ticked\.indexOf\(key\) > -1 \|\| s\.verified\.indexOf\(key\) > -1\) out\.push\(key\)/.test(PROTO),
+    'Avery Lane had FOUR drills verified and none ticked, so the screen read "0 of 23" under four green checks \u2014 and the row\u2019s onClick is inert once verified, so the player could not fix it')
+  check('the numerator is built FROM THE PLAN, so an orphan id cannot inflate it',
+    /completedKeys\(\) \{[\s\S]{0,260}STEPS\.forEach\(st => this\.stepDrills\(st\)\.forEach/.test(PROTO),
+    'drill_id is unbounded text with no FK \u2014 filtering the ROWS instead let a dropped id read "24 of 23", with no way to clear it')
+  check('no count reads s.ticked directly any more',
+    !/s\.ticked\.length/.test(PROTO) && !/\bticked\.indexOf\(st\.n/.test(PROTO),
+    '`ticked` is the player\u2019s own claim and renders the checkbox; it is not the count')
+  check('the bar, the headline and the ladder read the same two numbers',
+    PROTO.includes("buildPct: (buildDone.length / buildTotal * 100) + '%'")
+      && /const done = dr\.filter\(d => buildDone\.indexOf/.test(PROTO)
+      && /const done = drills\.filter\(d => complete\.indexOf/.test(PROTO),
+    'a bar that disagrees with the words under it is the same defect twice')
+
+  /**
+   * ⚠️ AND NOW EXECUTE IT, because every check above is a regex over source text and a regex
+   * cannot tell correct code from code that merely still contains the string it matches.
+   * Demonstrated: hardcoding `buildTotal` to 23, or regressing `all` to `ticked.length ===
+   * drills.length`, both leave every assertion above passing. So the real `stepDrills`,
+   * `completedKeys` and `planDrillCount` are lifted out of the prototype and RUN against
+   * fixtures. `.dc.html` is invisible to tsc, so this is the only thing that compiles them.
+   */
+  const stepsSrc = PROTO.match(/const STEPS = \[[\s\S]*?\n\s*\];/)?.[0] ?? ''
+  const countMethod = (name: string): string => {
+    const start = PROTO.indexOf(`\n  ${name}(`)
+    if (start === -1) return ''
+    const open = PROTO.indexOf('{', start)
+    if (open === -1) return ''
+    let depth = 0
+    for (let k = open; k < PROTO.length; k++) {
+      if (PROTO[k] === '{') depth++
+      else if (PROTO[k] === '}') { depth--; if (depth === 0) return PROTO.slice(start + 1, k + 1).trim() }
+    }
+    return ''
+  }
+  const countSrc = ['stepDrills', 'completedKeys', 'planDrillCount'].map(countMethod)
+  check('the counting functions and STEPS are extractable',
+    !!stepsSrc && countSrc.every(Boolean),
+    'if this fails the five checks above are the only cover, and they pass on broken code')
+
+  if (stepsSrc && countSrc.every(Boolean)) {
+    const countOf = new Function(`
+      ${stepsSrc}
+      const api = {
+        ${countSrc.map((f) => f.trim().replace(/^(\w+)\(/, '$1: function(')).join(',\n')}
+      };
+      return (ticked, verified, pivot) => {
+        const self = Object.assign({ state: { ticked: ticked, verified: verified, pivot: pivot } }, api);
+        return { done: api.completedKeys.call(self), total: api.planDrillCount.call(self) };
+      };
+    `)() as (t: string[], v: string[], p: string) => { done: string[]; total: number }
+
+    const PIVOT = 'cannon'
+    check('the denominator is the plan, computed — not the literal 23',
+      countOf([], [], PIVOT).total === 23,
+      'hardcoding 23 passes every source-text check; only running it catches that')
+    check('a coach-verified drill counts even when never ticked',
+      countOf([], ['1-1a', '1-1b', '1-2', '1-3'], PIVOT).done.length === 4,
+      'Avery Lane: four green verified ticks above the words "0 of 23"')
+    check('a drill both ticked and verified counts ONCE',
+      countOf(['1-1a'], ['1-1a'], PIVOT).done.length === 1,
+      'a union, not a sum')
+    check('an id that is not in the plan cannot inflate the count',
+      countOf(['9-ZZ', 'plan:1-1a', '', '1-1a'], [], PIVOT).done.length === 1,
+      'drill_id is unbounded text with no FK; a dropped id must not read "24 of 23"')
+    const flooded = countOf(
+      Array.from({ length: 60 }, (_, i) => `9-JUNK${i}`).concat(['1-1a']), [], PIVOT)
+    check('the count can never exceed the denominator',
+      flooded.done.length <= flooded.total && flooded.done.length === 1,
+      `${flooded.done.length} of ${flooded.total}`)
+    check('switching the Step 1 variant does not change the count',
+      countOf(['1-1a', '2-P1'], ['1-3'], 'cannon').done.length ===
+        countOf(['1-1a', '2-P1'], ['1-3'], 'anchor').done.length,
+      'stepDrills reads state.pivot, so the two variants must expose the same refs')
+    check('both Step 1 variants expose the same drill refs',
+      JSON.stringify(countOf([], [], 'cannon').done) === JSON.stringify(countOf([], [], 'anchor').done)
+        && countOf([], [], 'cannon').total === countOf([], [], 'anchor').total,
+      'if a ref ever diverges, ticks under the old one silently drop out of the numerator')
+  }
+
+  // The regress-to-`ticked` mutation that the string checks above do NOT catch: `all` drives
+  // "Ready to complete", and it must be derived from `done` rather than recomputed from `ticked`.
+  check('"Ready to complete" is derived from the same count as everything else',
+    /const all = done === drills\.length && camPending === 0/.test(PROTO),
+    'recomputing it from `ticked` leaves a step at 4/4 that never offers to complete')
+  check('the denominator is bound from planDrillCount, not a literal',
+    /buildTotal = this\.planDrillCount\(\)/.test(PROTO))
+  check('a verified drill never reads "Not yet marked done"',
+    /tickLabel: signedStep \? 'Locked — step completed'\s*\n\s*: vd \?/.test(PROTO),
+    'three of Step 1’s four drills are unfilmed, so testing !d.cam first contradicted both the status line above it and the count on the build screen')
 
   // ── O. THE PRACTICE LOG, AND THE DAY-OF-MONTH REMAP ──────────────────────────────────────────
   // Behaviour is proven by `npm run e2e:practice`. These guard the REMAP, which is the part that

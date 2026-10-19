@@ -20,12 +20,12 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-10-15 10:35 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-10-19 09:40 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | forge-port | **3 file(s)** | pushed |
-| eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | forge-port-design | clean | pushed |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | forge-port | clean | **1 ahead** |
+| eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | forge-port-design | clean | **1 ahead** |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
 | locker-room | `~/Desktop/ATR/apps/locker-room` | makel-ryp/locker-room | feature | clean | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-10-15 10:35 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.29.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.29.0.tgz`
-- **Atlas HEAD:** `a1ba584 A private #atlas-feedback channel, and the Slack app setup`
+- **Atlas HEAD:** `9656816 The player can tick a drill, and the count stops contradicting the coach`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -70,10 +70,11 @@ Each line here was observed working. Do not rebuild any of it.
 | **No profile answer refuses an account** | ✅ verified live | 9 and 95 year olds, 38 mph, a 60 and a 108 handicap, plus handicaps and "I don't have one" all save |
 | Google sign-in on the login screen | ✅ live | domain authorised; popup path accepted |
 | **Coach view, bifurcated by role** | ✅ verified | coach lands on the roster with a 2-item rail (Profile, Roster); player keeps their own 12-view app. One list per role — `HIDDEN_FOR_COACH` / `HIDDEN_FOR_PLAYER` |
-| **`golf.drill_progress` + coach sign-off** | ✅ verified | 17 assertions + a leak test. Per-COLUMN grants proven: `atlas_app` gets `42501` writing `ticked_at` |
+| **`golf.drill_progress` — the player's tick AND the coach's sign-off** | ✅ verified on `alpha` 2026-10-19 | 17 assertions + a leak test, plus **13/13 falsification cases as a real `atlas_app` login** (`BYPASSRLS=false`, trigger visible, transaction rolled back, 0 rows left). ⚠️ **The old "`atlas_app` gets 42501 writing `ticked_at`" proof is RETIRED ON PURPOSE** (D-35): nothing in any app wrote that column, so the build screen rendered "0 of 23" off it for every player. Atlas owns it now. The refusal moved from a missing grant to the trigger `app_private.drill_progress_column_owner()`, which raises 42501 in **both** directions — observed: a player cannot set `verified_at` on their own row, and a coach cannot forge their student's tick. `user_id`/`drill_id` stay off the UPDATE grant, so re-pointing a row is `permission denied for table`. **`main` is deliberately NOT changed** — no trigger, 3 policies, the old 6-column grant. |
 | **Three demo entry points** | ✅ verified | `/?as=<email>` — intake / player dashboard / coach dashboard, all three ready after one `npm run seed`. ⚠️ **Re-verified 2026-09-21 after the consent gate:** the seed now writes a date of birth for all four demo accounts, or every entry point would land on the DOB screen instead of the thing it exists to show. Confirmed in the DB: four demo accounts `ok`, real accounts still `dob_required` — real people's birthdays are deliberately NOT invented |
 | **Sign-out ends the server session** | ✅ verified | `/proto/dashboard` answers `missing_session` afterwards; it used to serve the previous coach's roster |
-| **Ticking a Parallax video in the browser** | ✅ verified | NOT SIGNED OFF → ✓ SIGNED OFF, persisted, `verified_by` = the coach, `ticked_at` still null |
+| **Ticking a Parallax video in the browser** | ✅ verified | NOT SIGNED OFF → ✓ SIGNED OFF, persisted, `verified_by` = the coach, `ticked_at` still null. ✅ **That last clause was re-proven 2026-10-19 under the widened grant** (D-35 case 12): a coach writing `ticked_at` is refused 42501 by the trigger, not by a missing grant. |
+| **The build screen counts honestly** | ✅ verified in a browser 2026-10-19 | On Avery Lane's real alpha data the headline reads **"4 of 23 drills completed"** with Step 1 at **4/4** — it read "0 of 23" and 0/4 before D-35, because four coach-verified drills were excluded from a count that sat under four green verified ticks. A real click on the real tick control emits `POST /api/drills/plan%3A2-F1/tick` `{"ticked":true}` and the headline moves to **"5 of 23"**; the live route answers that request 200 with a persisted row. The numerator is built from STEPS→stepDrills, so an id dropped from `shared/drills.ts` cannot read "24 of 23". |
 | **Luke's design IS the app now** | ✅ live | sign-in lands on `Dashboard.dc.html`, fed from ryp-core. Not a React rebuild |
 | Plus handicaps store and display | ✅ verified | `-2.1` stored, `+2.1` shown; was written to neither golf table before |
 | Intake trimmed to 3 sections | ✅ live | 23 answers, not 100 — Tiers 1B/2/3 cut from the flow |
@@ -173,7 +174,7 @@ same three parts, and only the third is shared:
 | **(1) the student's claim** | a student-owned column. `ReviewItem.source` says which one: `drill` → `golf.drill_progress.ticked_at`, `intake` → `atlas.intake_submissions.completed_at`. |
 | **(2) the coach's view of it** | `resolveSubmitted()` in protoData.ts — the ONE place that knows how to read each source, emitting a single `submitted` map per student. The page reads it and decides nothing. |
 | **(3) the coach's resolution** | always `golf.drill_progress.verified_at`. `drill_id` is free text, so a non-drill review item needs no migration and no second mechanism. |
-| **what a student can actually raise today** | ⚠️ **Not a drill.** `golf.drill_progress` has only `drill_progress_coach_insert`/`_coach_update` — **no self-insert policy** — and `atlas_app` holds no column grant on `ticked_at`; the rows carrying it were written by `neondb_owner`. Nor a message: `coaching_notes_insert` requires `coaches(subject_user_id)` and nobody coaches themselves. **The intake is the one path**, hence the `intake:practice-dna` review item. The read side is complete and lights up when the owning app writes. |
+| **what a student can actually raise today** | The intake, and a **review request** (`golf.drill_review_requests`, live 2026-09-25). ⚠️ **A TICK IS STILL NOT A SUBMISSION, and that is now a decision rather than a limitation.** T-131 gives the player `ticked_at`, so the unconditional `?? tickedAt` fallback in `resolveSubmitted` would have put every tick on a camera drill into the coach's queue; it was narrowed to non-plan ids instead. **Needs Makel's call.** The older note here — *"not a drill: no self-insert policy, and atlas_app holds no column grant on ticked_at; the rows carrying it were written by neondb_owner"* — was true until 2026-10-16. |
 | **surfaced at the roster** | a gold "N waiting on you" chip, a gold row edge outranking the silence flag, and a new default sort. The old default keyed on `p.days`, which has no producer, so it never ordered anything; the blurb now describes the sort actually running. |
 
 ### 🟢 The coach can see what the player sees — 2026-09-15
@@ -188,7 +189,7 @@ the plan actually asks for.
 | **`answers` never leaves the server** | The view strips IPIP01–20 but **not** ATTN01/02, so the raw column is read, scored and dropped inside one function. Verified by string-scanning the **actual wire payload** for a real 5-student roster — clean, both audiences. |
 | **A fabrication caught before shipping** | The first guard on "their time %" tested `zoneIntensity > 0`. That is never false: `getAlloc` (scoring.ts:262) falls back to `{25,25,25,25}` and the volume factor floors at 0.4, so an unanswered run reads ≈0.16 on every zone and four invented 25%s would have printed beside a real recommendation. The signal has to come from the **input**; proved by scoring one real run twice, with and without volume/alloc — dashes, not 25s. |
 | **Sign-off widened 3 → 34** | Was three ids hardcoded in the page, of the six `DRILL_DEFS` defines and none of the 23 the plan defines. Now `shared/drills.ts`: 6 assessments (bare ids kept, so no live sign-off is orphaned) + 23 plan drills (`plan:<step>-<ref>`) + 5 step completions (`plan:step-N`), replacing `state.signed = [1,2]` — a literal array local to the browser tab. 14 items need a coach's judgement. **No migration**: `drill_id` is unbounded `text`, no CHECK, no FK. |
-| **Still `verified_at`, not `watched_at`** | Despite the feature being called "have you watched", `atlas_app` holds no column grant on `watched_at` or `ticked_at` — the player's own claim, forge_app's to write. |
+| **Still `verified_at`, not `watched_at`** | Despite the feature being called "have you watched", a coach's sign-off lands on `verified_at`. ⚠️ **The REASON changed 2026-10-16 (T-131)**: `atlas_app` now holds the grant on `watched_at` / `ticked_at` because the PLAYER writes them, so what stops the coach's route touching them is the trigger `app_private.drill_progress_column_owner()`, not an absent privilege. |
 | **Fold-down bars** | Folded by default, and the **closed** bar carries the whole progress: the step's sign-off pill plus `n / m signed off`. Five bars place the player without a click. The bar folds, the pill inside it ticks and stops the event, or one click would do both. |
 | **A hole the widening opened** | The verify route took `:drillId` straight from the path into the INSERT — any string in a URL became a permanent row. Now checked against the **same list the page renders from**, injected as `AtlasData.reviewItems` rather than hardcoded, because two lists drift. |
 | **Verified** | Live tick+untick of `plan:2-P1` through `withRls` as the coach succeeded; the same write against a `pending` student was refused **42501**. Both views driven in a browser: 0 unbound bindings, fold opens to 7 drills with the others folded, the step pill leaves the bar open and surfaces a failed write rather than a false sign-off. ⚠️ The independent refutation pass did **not** run — all six agents died on the org monthly spend limit. |

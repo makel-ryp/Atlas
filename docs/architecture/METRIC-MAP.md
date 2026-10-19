@@ -419,7 +419,10 @@ A metric appearing in more than one app belongs in a shared schema by definition
 
 **Apps:** forge, atlas, locker_room
 
-**Verdict:** NEW golf.drill_progress (user_id, drill_id, ticked_at, watched_at, verified_at, verified_by_user_id, signed_off_at). Per-COLUMN writers: forge_app writes ticked/watched, atlas_app and lr_app write verified/signed. Parallax video stays an external videoRef string, not modelled.
+**Verdict:** NEW golf.drill_progress (user_id, drill_id, ticked_at, watched_at, verified_at, verified_by_user_id, signed_off_at). Per-COLUMN writers: **ATLAS** writes ticked/watched, atlas_app and lr_app write verified/signed. Parallax video stays an external videoRef string, not modelled.
+
+> ⚠️ **AMENDED 2026-10-19 (T-131).** This said *"forge_app writes ticked/watched"*, and it was correct when written. **T-105** moved FORGE onto ryp-core inside Atlas's own Express server, so there is no foreign app whose contract a grant could fork; **T-119** settled that a FORGE rep is not coach-verified, and the delivered FORGE package produces no tick or watch anywhere. The column therefore had no writer and no future producer, and the build screen rendered **"0 of 23 drills completed"** off it for every player. `ticked_at` / `watched_at` are Atlas's, written by the player on the build screen.
+> 🔴 **And "per-COLUMN writers" is not a grant.** `atlas_app` is ONE role serving both players and coaches, and a grant is per ROLE — so the split between the player's claim and the coach's judgement is carried by the BEFORE INSERT OR UPDATE trigger `app_private.drill_progress_column_owner()`, which raises 42501 in both directions. See the `golf.drill_progress` block of eco's `sql/rls_core.sql`.
 
 
 > **Conflict:** The player ticks and watches (Forge); the coach verifies and signs off (Atlas coach Dashboard / Locker Room). The build plan puts it in forge.*, which would require Atlas to write another app's private schema — a direct rule-1 violation.

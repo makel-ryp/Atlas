@@ -30,11 +30,14 @@
  *
  * ⚠️ NO MIGRATION. `drill_id` is free text; adding ids adds rows, not columns.
  *
- * ⚠️ SIGN-OFF IS WRITTEN TO `verified_at`, NOT `watched_at`. Despite the feature being called
- * "have you watched", `atlas_app` holds NO column grant on `watched_at` or `ticked_at` — those are
- * the PLAYER's own claim and belong to forge_app. Column privileges confirmed on the live DB:
- * atlas_app has INSERT+UPDATE on signed_off_at / verified_at / verified_by_user_id / verify_note /
- * video_ref / updated_at only. Writing `watched_at` would raise 42501.
+ * ⚠️ SIGN-OFF IS WRITTEN TO `verified_at`, NOT `watched_at`, AND THAT HAS NOT CHANGED — only the
+ * reason has. It used to be a privilege: `atlas_app` held no column grant on `watched_at` or
+ * `ticked_at` because those belonged to forge_app. Since 2026-10-16 it holds both (T-105 removed
+ * the foreign app; see server/routes/drillTicks.ts), so the rule is now a MEANING rule and the
+ * database enforces it with a trigger rather than a missing grant:
+ * `watched_at` is the PLAYER saying "I opened the demo" and `ticked_at` is the PLAYER saying "I
+ * did the rep". A coach writing either would be forging somebody else's claim, and
+ * `app_private.drill_progress_column_owner()` raises 42501 if the coach's verify route tries.
  */
 
 export type DrillGroup = 'assessment' | 'plan' | 'step' | 'intake'
@@ -99,12 +102,13 @@ export type ReviewItem = {
    *   'drill'  → golf.drill_progress.ticked_at   (the player's claim that they did the rep)
    *   'intake' → atlas.intake_submissions.completed_at
    *
-   * ⚠️ NO ATLAS WRITER EXISTS FOR 'drill' TODAY. `golf.drill_progress` has only
-   * `drill_progress_coach_insert` / `_coach_update` — there is no self-insert policy — and
-   * `atlas_app` holds no column grant on `ticked_at`. A student therefore cannot raise a drill for
-   * review from inside Atlas; the rows that carry `ticked_at` today were written by
-   * `neondb_owner`. The READ side below is complete and will light up the moment the owning app
-   * writes. Recorded rather than hidden: see docs/TASKS.md.
+   * ✅ THE 'drill' WRITER EXISTS AS OF 2026-10-16 — `POST /api/drills/:drillId/tick`, in
+   * server/routes/drillTicks.ts. This note used to read: *"NO ATLAS WRITER EXISTS FOR 'drill'
+   * TODAY. golf.drill_progress has only `_coach_insert` / `_coach_update` — there is no
+   * self-insert policy — and atlas_app holds no column grant on ticked_at … the rows that carry
+   * ticked_at today were written by neondb_owner."* All three of those are now false: the two
+   * `drill_progress_self_*` policies exist, the grant covers `ticked_at` / `watched_at`, and the
+   * player writes their own rows. The READ side below was complete all along and lights up with it.
    */
   source?: 'drill' | 'intake'
 }
@@ -239,6 +243,23 @@ export const REVIEW_ITEM_IDS: ReadonlySet<string> = new Set(REVIEW_ITEMS.map((d)
 /** True when this id is something a coach is allowed to sign off. */
 export function isReviewItemId(id: string): boolean {
   return REVIEW_ITEM_IDS.has(id)
+}
+
+/**
+ * True for the 23 PLAN DRILLS, and nothing else — the exact set a player may tick.
+ *
+ * ⚠️ NARROWER THAN `isReviewItemId` ON PURPOSE, and the difference is the denominator of "N of 23
+ * drills completed". That function also admits the six assessments (scored tests, not reps you
+ * tick), the intake, and `plan:step-N` (DERIVED — a step signs itself off when its drills are
+ * verified, so a hand-written tick on one is refused for the same reason the coach's is). Using it
+ * as the tick route's gate would let a legitimate-looking id inflate the numerator of the count
+ * this whole feature exists to make honest.
+ *
+ * The same shape as `isStepCompletionId` deliberately: both read `group` off the one list, so a
+ * drill moved between groups cannot leave two gates disagreeing.
+ */
+export function isPlanDrillId(id: string): boolean {
+  return REVIEW_ITEMS.some((d) => d.id === id && d.group === 'plan')
 }
 
 /**

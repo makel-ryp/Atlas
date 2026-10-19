@@ -208,7 +208,13 @@ coachRouter.get('/coach/students', ...identityChain, async (req, res, next) => {
  *
  * ⚠️ The writes below use EXPLICIT-COLUMN SQL, not db.insert()/db.update(). `atlas_app` holds
  * column-level grants here — it may write the verified / signed_off / video_ref / verify_note columns and must
- * NEVER write ticked_at/watched_at, which are the player's own claim and belong to forge_app.
+ * NEVER write ticked_at/watched_at, which are the PLAYER's own claim.
+ * ⚠️ "MUST NEVER" BECAME AN ENFORCED RULE ON 2026-10-16 AND USED TO BE A CONVENTION. Until then
+ * atlas_app simply held no grant on those two columns (they were forge_app's), so a stray SET
+ * raised 42501 by accident. The player's tick route now needs that grant, so the refusal moved to
+ * `app_private.drill_progress_column_owner()` — a trigger that raises 42501 when a caller who is
+ * not the subject changes ticked_at or watched_at. A coach forging a player's claim fails here
+ * exactly as loudly as it did before; it just fails for a different reason.
  * Drizzle names every column of a table in an INSERT, passing `default` for unset ones, which
  * with column grants is refused as `42501 permission denied for table drill_progress`. That is
  * the bug that 403'd every call to /api/intake/start on 2026-09-01.
