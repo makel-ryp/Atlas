@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-10-19 09:40 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-10-19 10:53 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | forge-port | clean | **1 ahead** |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | forge-port | **4 file(s)** | **1 ahead** |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | forge-port-design | clean | **1 ahead** |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-10-19 09:40 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.29.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.29.0.tgz`
-- **Atlas HEAD:** `9656816 The player can tick a drill, and the count stops contradicting the coach`
+- **Atlas HEAD:** `d5341e1 The player can tick a drill, and the count stops contradicting the coach`
 <!-- AUTO:END -->
 
 Regenerate the block above with:

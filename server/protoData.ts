@@ -514,9 +514,9 @@ function resolveSubmitted(args: {
    * coach's queue, the per-step counts, the badges) had no way to fire for a real golfer. That is
    * the mechanism behind Makel's *"This information is not relayed to the coach."*
    *
-   * ⚠️ STILL THE ONLY SOURCE FOR A PLAN DRILL, even though Atlas can now write `ticked_at` too.
-   * See the `case 'drill'` branch below for why that is a deliberate narrowing and not an
-   * oversight.
+   * ⚠️ NOT the only source for a plan drill since 2026-10-19: ticking a FILMED plan drill
+   * (`review: true`) now raises the submission too, because the build screen already shows the
+   * player "Awaiting review" when they do. See the `case 'drill'` branch below.
    */
   reviewRequests: Record<string, string>
 }): Record<string, string> {
@@ -534,20 +534,34 @@ function resolveSubmitted(args: {
          * button that says so. `ticked_at` means "I did the rep", which is a weaker and different
          * statement. Atlas's own request always wins where both exist.
          *
-         * ⚠️ NARROWED 2026-10-16 TO NON-PLAN IDS, and the narrowing is the whole point. This read
-         * `reviewRequests[id] ?? drills[id]?.tickedAt` unconditionally, which was free while
-         * NOTHING could write `ticked_at` on a plan drill. Atlas's new tick route can, on all 23
-         * of them — so left alone, every tick on a camera drill would have appeared in the coach's
-         * queue as "waiting on you", silently converting a progress checkbox into a submission the
-         * player never made. That is a product change to a surface a coach reads, and it is not
-         * one this change is entitled to make.
+         * ⚠️ GATED ON `review`, 2026-10-19 — MAKEL'S CALL, and it reverses a narrowing made three
+         * days earlier. The history matters because both directions are defensible and the
+         * deciding fact is on the player's own screen.
          *
-         * The fallback survives only where no request path produced the row: the legacy
-         * assessment ticks written by `neondb_owner` (`Avery Lane / chip20`, 2026-09-08). Dropping
-         * it outright would make a real outstanding submission vanish from the queue.
+         * This read `reviewRequests[id] ?? drills[id]?.tickedAt` unconditionally, which was free
+         * while NOTHING could write `ticked_at` on a plan drill. The tick route changed that on
+         * all 23, so it was narrowed to non-plan ids rather than silently turn a progress
+         * checkbox into a submission on a surface a COACH reads.
+         *
+         * Makel's answer: a tick SHOULD raise the request — because the build screen already
+         * tells the player it did. `pending = d.cam && on && !vd` renders a ticked filmed drill
+         * as **"Awaiting review"** to the player's face. Under the narrowing the coach's queue
+         * never heard about it, which is exactly the *"this information is not relayed to the
+         * coach"* complaint this machinery exists to answer. Two screens, two answers, and the
+         * player's was the one making a promise.
+         *
+         * 🔴 FILMED DRILLS ONLY (`item.review`, the plan's `cam: true` — 9 of the 23). There is
+         * nothing for a coach to WATCH on an unfilmed drill, so a request against one would sit
+         * in their queue with nothing that could ever clear it. That is the same rule the demo
+         * overlay's own control already follows (`onTick` is offered only when `d.cam`), so this
+         * makes the two agree rather than inventing a third policy.
+         *
+         * An explicit request still wins where both exist, and the fallback still covers the
+         * legacy assessment ticks written by `neondb_owner` (`Avery Lane / chip20`, 2026-09-08).
          */
         const req = args.reviewRequests[item.id]
-        const t = item.group === 'plan' ? req : (req ?? args.drills[item.id]?.tickedAt)
+        const unfilmedPlanDrill = item.group === 'plan' && !item.review
+        const t = unfilmedPlanDrill ? req : (req ?? args.drills[item.id]?.tickedAt)
         if (t) out[item.id] = t
         break
       }

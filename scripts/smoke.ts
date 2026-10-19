@@ -583,17 +583,22 @@ async function main() {
 
   // The payload half: submitted must have an Atlas-writable source, or the coach's whole
   // "waiting on you" machinery can only ever be fired by an app that has not shipped.
-  // ⚠️ NARROWED 2026-10-16 WITH THE TICK ROUTE, and the old assertion is kept in the message
-  // because it is the thing a later edit will want to "restore". It used to require
-  // `reviewRequests[item.id] ?? args.drills[item.id]?.tickedAt` UNCONDITIONALLY, which was free
-  // while nothing could write ticked_at on a plan drill. Atlas can now, on all 23 — so the
-  // unconditional fallback would turn every tick into a submission in the coach's queue.
+  // ⚠️ 2026-10-19, MAKEL'S CALL: ticking a FILMED plan drill DOES raise the submission, because
+  // the build screen already renders it as "Awaiting review" to the player (`pending = d.cam &&
+  // on && !vd`). Under the 2026-10-16 narrowing the coach's queue never heard about it — two
+  // screens, two answers, and the player's was the one making a promise. The gate is `review`
+  // (the plan's `cam: true`), NOT `group === 'plan'`: an unfilmed drill has nothing for a coach
+  // to watch, so a request against one would sit in the queue with nothing that could clear it.
   check('submitted resolves from the player’s own review request',
     /const req = args\.reviewRequests\[item\.id\]/.test(protoDataSrc),
     'the explicit request is the claim a coach acts on')
-  check('a PLAN drill’s tick is not a submission',
-    /item\.group === 'plan' \? req : \(req \?\? args\.drills\[item\.id\]\?\.tickedAt\)/.test(protoDataSrc),
-    'a tick means "I did the rep"; only a review request means "please watch it"')
+  check('ticking a FILMED plan drill raises the submission',
+    /const unfilmedPlanDrill = item\.group === 'plan' && !item\.review/.test(protoDataSrc)
+      && /const t = unfilmedPlanDrill \? req : \(req \?\? args\.drills\[item\.id\]\?\.tickedAt\)/.test(protoDataSrc),
+    'the player is already told "Awaiting review" when they tick one — the coach has to hear it too')
+  check('ticking an UNFILMED plan drill does not',
+    /item\.group === 'plan' && !item\.review/.test(protoDataSrc),
+    'nothing for a coach to watch, so the queue item could never clear')
   check('both payload paths query the requests',
     (protoDataSrc.match(/golfDrillReviewRequests/g) ?? []).length >= 4,
     'the player path and the roster path each need it')

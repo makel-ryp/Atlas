@@ -6881,9 +6881,11 @@ class Component extends DCLogic {
        * It does NOT write `ticked_at` ("I did the rep", shown as a statement above and written on
        * the build screen). It writes a REVIEW REQUEST: "I have filmed this, please watch it." A
        * different claim, in a different table whose only writer is the player — see
-       * server/routes/review.ts. ⚠️ And ticking a drill does NOT raise one: `protoData.ts` was
-       * narrowed in the same change so a plan drill reaches the coach's queue only through this
-       * control, deliberately, rather than every tick becoming a submission.
+       * server/routes/review.ts. ⚠️ CORRECTED 2026-10-19 — this said ticking a drill does NOT
+       * raise one. It does now, on FILMED drills, by Makel's decision: the build screen already
+       * shows a ticked filmed drill as "Awaiting review" (`pending`), so the coach's queue has to
+       * agree with what the player was told. This control remains the EXPLICIT ask, and it still
+       * wins where both exist — it is a stronger statement, not a different queue.
        *
        * Offered ONLY on filmed drills (`d.cam`). There is nothing for a coach to watch on a drill
        * that is not filmed, so a request against one would sit in their queue with nothing that
