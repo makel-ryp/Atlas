@@ -93,15 +93,32 @@ lost**.
 Each report carries: who (display name and email), the path they were on, the viewport, the user
 agent, their note, and the screenshot.
 
-## Two things to watch on the first real send
+## ✅ Exercised against the live workspace — 2026-10-19
 
-Neither has been exercised against a live workspace, and both are in `server/slackFeedback.ts`:
+Both of the open questions below are now **answered**. A real report was sent through the deployed
+Testing app (`POST /api/feedback`, a 480×160 PNG) and came back:
 
-1. Whether `files.completeUploadExternal` accepts the `files` parameter form-encoded as JSON.
-2. Whether it returns a permalink. We call `chat.getPermalink` on the report message instead, which
-   does not depend on the answer.
+```json
+{"ok":true,"permalink":"https://rypgolf.slack.com/archives/C0C93BY2JBH/p1792432084221159?thread_ts=…",
+ "screenshot":"attached","threaded":true}
+```
 
-If the first send posts the note but not the image, that is where to look.
+1. `files.completeUploadExternal` **does** accept the `files` parameter form-encoded as JSON —
+   `screenshot: "attached"`.
+2. Threading works — `threaded: true`, and the channel shows the parent carrying its
+   `[fb:<userId>:<date>]` marker with replies under it. So `groups:history` is the right scope and
+   it is granted.
+
+If a future send posts the note but not the image, that is still where to look.
+
+## ⚠️ The member list does NOT show the bot — do not read that as "not invited"
+
+`conversations.members` through the Slack connector returned **1 member (@makel)** on 2026-10-15 and
+again on 2026-10-19, on a channel the bot had already joined on 2026-10-15 (its join message is in
+the history). The listing omits bot users. That reading cost a round trip and nearly cost a second
+one: **check the channel HISTORY for the bot's join message, or just send a test report** —
+`not_in_channel` comes back as `{"error":"slack_failed","reason":"not_in_channel"}` with a 502, which
+is unambiguous. The member count is not evidence either way.
 
 ## Checking it from the outside
 
