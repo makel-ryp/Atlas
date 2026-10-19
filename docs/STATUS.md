@@ -20,12 +20,12 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-10-19 10:53 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-10-19 12:28 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | forge-port | **4 file(s)** | **1 ahead** |
-| eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | forge-port-design | clean | **1 ahead** |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | forge-port | **2 file(s)** | pushed |
+| eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | forge-port-design | clean | pushed |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
 | locker-room | `~/Desktop/ATR/apps/locker-room` | makel-ryp/locker-room | feature | clean | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-10-19 10:53 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.29.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.29.0.tgz`
-- **Atlas HEAD:** `d5341e1 The player can tick a drill, and the count stops contradicting the coach`
+- **Atlas HEAD:** `cf0c8b4 Makel's call: ticking a FILMED drill does raise the coach's review`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
@@ -74,7 +74,7 @@ Each line here was observed working. Do not rebuild any of it.
 | **Three demo entry points** | ✅ verified | `/?as=<email>` — intake / player dashboard / coach dashboard, all three ready after one `npm run seed`. ⚠️ **Re-verified 2026-09-21 after the consent gate:** the seed now writes a date of birth for all four demo accounts, or every entry point would land on the DOB screen instead of the thing it exists to show. Confirmed in the DB: four demo accounts `ok`, real accounts still `dob_required` — real people's birthdays are deliberately NOT invented |
 | **Sign-out ends the server session** | ✅ verified | `/proto/dashboard` answers `missing_session` afterwards; it used to serve the previous coach's roster |
 | **Ticking a Parallax video in the browser** | ✅ verified | NOT SIGNED OFF → ✓ SIGNED OFF, persisted, `verified_by` = the coach, `ticked_at` still null. ✅ **That last clause was re-proven 2026-10-19 under the widened grant** (D-35 case 12): a coach writing `ticked_at` is refused 42501 by the trigger, not by a missing grant. |
-| **The build screen counts honestly** | ✅ verified in a browser 2026-10-19 | On Avery Lane's real alpha data the headline reads **"4 of 23 drills completed"** with Step 1 at **4/4** — it read "0 of 23" and 0/4 before D-35, because four coach-verified drills were excluded from a count that sat under four green verified ticks. A real click on the real tick control emits `POST /api/drills/plan%3A2-F1/tick` `{"ticked":true}` and the headline moves to **"5 of 23"**; the live route answers that request 200 with a persisted row. The numerator is built from STEPS→stepDrills, so an id dropped from `shared/drills.ts` cannot read "24 of 23". |
+| **The build screen counts honestly** | ✅ verified in a browser, and LIVE on Testing 2026-10-19 | On Avery Lane's real alpha data the headline reads **"4 of 23 drills completed"** with Step 1 at **4/4** — it read "0 of 23" and 0/4 before D-35, because four coach-verified drills were excluded from a count that sat under four green verified ticks. A real click on the real tick control emits `POST /api/drills/plan%3A2-F1/tick` `{"ticked":true}` and the headline moves to **"5 of 23"**; the live route answers that request 200 with a persisted row. The numerator is built from STEPS→stepDrills, so an id dropped from `shared/drills.ts` cannot read "24 of 23". |
 | **Luke's design IS the app now** | ✅ live | sign-in lands on `Dashboard.dc.html`, fed from ryp-core. Not a React rebuild |
 | Plus handicaps store and display | ✅ verified | `-2.1` stored, `+2.1` shown; was written to neither golf table before |
 | Intake trimmed to 3 sections | ✅ live | 23 answers, not 100 — Tiers 1B/2/3 cut from the flow |
