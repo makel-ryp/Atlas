@@ -7249,9 +7249,33 @@ class Component extends DCLogic {
       setsRead: s.sets.filter(Boolean).length + ' of 4 sets logged',
       resetSets: () => this.setState({ sets: [false, false, false, false] }),
       todayLogLabel: (log[dayKey(TODAY)] && log[dayKey(TODAY)].m) ? 'Logged ✓' : 'Log today',
+      /**
+       * 🔴 THE WRITE WAS REMOVED 2026-10-21, AND THE NUMBER IT WROTE IS THE REASON.
+       *
+       * This was:
+       *     const mm = 15 + s.sets.filter(Boolean).length * 5;
+       *     this.patch(TODAY, Object.assign({}, log[dayKey(TODAY)], { m: mm, b: 'Construction' }));
+       *
+       * Nobody timed anything. `15 + sets * 5` is a FORMULA STANDING IN FOR A MEASUREMENT: tapping
+       * four set chips filed "35 minutes of Construction" into `atlas.practice_days`, and the
+       * coach then read it on their roster as "Last logged · Today" — under a UI line that says
+       * *"Saved · your coach can see this."* An invented number a coach acts on is the single
+       * worst class of defect in this product, and it was the only one left that WROTE.
+       *
+       * Two further faults in the same four lines: the button kept its onClick while reading
+       * "Logged ✓", and `Object.assign` spread the existing row first — so a real clocked
+       * 50-minute Calibration session was overwritten by 15 minutes of Construction on the next
+       * tap.
+       *
+       * It still navigates. "Log today" now opens today in the calendar, where minutes and a zone
+       * are entered by the person who did the practice. The set chips stay exactly as they were:
+       * they are a within-session tally, and `setsRead` reports them honestly without claiming
+       * they are time.
+       *
+       * ⚠️ Do not restore the write to "make the button do something" — the clock-in path
+       * (`stopClock`) is the producer for practice minutes and it measures them.
+       */
       logFromToday: () => {
-        const mm = 15 + s.sets.filter(Boolean).length * 5;
-        this.patch(TODAY, Object.assign({}, log[dayKey(TODAY)], { m: mm, b: 'Construction' }));
         this.setState({ view: 'cal', sel: TODAY });
       },
       tempoLabel: s.tempo + ' seconds',

@@ -791,6 +791,32 @@ async function main() {
     'recomputing it from `ticked` leaves a step at 4/4 that never offers to complete')
   check('the denominator is bound from planDrillCount, not a literal',
     /buildTotal = this\.planDrillCount\(\)/.test(PROTO))
+  // ⚠️ MATCHES THE FUNCTION BODY, NOT THE FILE. The first version of this check tested the file
+  // for `const mm = 15 + s.sets` — and failed, because that formula still appears in the COMMENT
+  // recording its removal. A regex over a whole file cannot tell live code from a comment about
+  // dead code, which is the same trap the N2 checks hit. So: isolate the arrow body and assert
+  // what is IN it.
+  const logFromTodayBody = (() => {
+    const i = PROTO.indexOf('logFromToday: () => {')
+    if (i === -1) return ''
+    const open = PROTO.indexOf('{', i)
+    let depth = 0
+    for (let k = open; k < PROTO.length; k++) {
+      if (PROTO[k] === '{') depth++
+      else if (PROTO[k] === '}') { depth--; if (depth === 0) return PROTO.slice(open, k + 1) }
+    }
+    return ''
+  })()
+  check('"Log today" does not invent practice minutes',
+    !!logFromTodayBody && !logFromTodayBody.includes('this.patch(') && !/15 \+/.test(logFromTodayBody),
+    'it filed 15 + sets*5 minutes of Construction that nobody timed, and the coach read it as "Last logged \u00b7 Today"')
+  check('"Log today" still navigates to the day',
+    logFromTodayBody.includes("view: 'cal'") && logFromTodayBody.includes('sel: TODAY'),
+    'removing the write must not leave a button that does nothing')
+  check('the set chips still report themselves honestly',
+    PROTO.includes("setsRead: s.sets.filter(Boolean).length + ' of 4 sets logged'"),
+    'a within-session tally is fine; calling it time is not')
+
   check('a verified drill never reads "Not yet marked done"',
     /tickLabel: signedStep \? 'Locked — step completed'\s*\n\s*: vd \?/.test(PROTO),
     'three of Step 1’s four drills are unfilmed, so testing !d.cam first contradicted both the status line above it and the count on the build screen')

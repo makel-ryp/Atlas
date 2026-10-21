@@ -20,11 +20,11 @@ Work items live in **[TASKS.md](TASKS.md)**.
 ## 1. Repo state
 
 <!-- AUTO:START -->
-_Regenerated 2026-10-19 12:28 CDT by `docs/refresh-status.sh`._
+_Regenerated 2026-10-21 12:11 CDT by `docs/refresh-status.sh`._
 
 | repo | path | remote | branch | uncommitted | unpushed |
 | --- | --- | --- | --- | --- | --- |
-| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | forge-port | **2 file(s)** | pushed |
+| atlas | `~/dev/ATR/atlas` | makel-ryp/Atlas | forge-port | **5 file(s)** | pushed |
 | eco | `~/dev/ATR/eco` | RYPGolf/ryp-eco | forge-port-design | clean | pushed |
 | tgt | `~/Desktop/ATR/websites/tgt` | makel-ryp/TGT | dna | clean | pushed |
 | RYP-RED | `~/Desktop/ATR/apps/RYP-RED` | makel-ryp/RYP-RED | mac | **1 file(s)** | pushed |
@@ -34,7 +34,7 @@ _Regenerated 2026-10-19 12:28 CDT by `docs/refresh-status.sh`._
 | inventory | `~/Desktop/ATR/apps/inventory` | **not a git repo** | — | — | — |
 
 - **@ryp/eco version:** `0.29.0`  •  **pinned in Atlas as:** `file:vendor/ryp-eco-0.29.0.tgz`
-- **Atlas HEAD:** `cf0c8b4 Makel's call: ticking a FILMED drill does raise the coach's review`
+- **Atlas HEAD:** `516932b Luke coaches all eight players, and the private note stayed private`
 <!-- AUTO:END -->
 
 Regenerate the block above with:
