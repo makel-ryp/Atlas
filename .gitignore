@@ -5,3 +5,12 @@ dist
 .DS_Store
 .env.bak.*
 .env.*.local
+
+# Service-account key files. A downloaded Firebase adminsdk JSON holds a LIVE private key,
+# and nothing else here was catching it — .env* only covers env files. Added 2026-10-22 while
+# rotating the rypstick-ios key, with the file sitting in Downloads.
+*serviceAccount*.json
+*service-account*.json
+*-adminsdk-*.json
+*firebase-adminsdk*.json
+gha-creds-*.json
