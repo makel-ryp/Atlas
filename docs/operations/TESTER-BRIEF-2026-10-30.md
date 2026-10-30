@@ -11,11 +11,15 @@ assumed. The short version to send is at the bottom.
 
 | Who | Address | What you get |
 | --- | --- | --- |
-| Luke | `luke@rypgolf.com` | **Coach.** Lands on the Roster, 9 students |
+| Luke | `luke@rypgolf.com` | **Coach.** Lands on the Roster, 8 students |
 | Luke | `luke.benoit@gmail.com` | **Player.** Your own empty account, for driving the flows |
+| Mike | `mike@rypgolf.com` | **Coach.** Lands on the Roster |
 | Mike | `eisele.mike@gmail.com` | **Player.** On Luke's roster and Makel's |
 
-Sign in with **Google** or email + password — both work on all three.
+Sign in with **Google** or email + password — both work on all four.
+
+⚠️ **You each have two accounts and they are separate people to the system.** The coach one sees a
+roster; the player one is your own golf. Each needs its own date of birth and its own intake.
 
 ⚠️ This is the **Testing** environment, not production. It runs on its own copy of the database, so
 nothing either of you does can affect live data.
@@ -101,8 +105,8 @@ loses it.
 
 ## For a populated screen
 
-Both of your own accounts are **deliberately empty**. To see the product with data in it, open a
-student from Luke's roster:
+Your own player accounts are **deliberately empty**, and **Mike's coach roster holds only his own
+player account**. To see the product with data in it, open a student from **Luke's** roster:
 
 - **Avery Lane** — 4 of 23 drills, four coach-verified. The best all-round example.
 - **Casey Flint (TEST)** — 18 drill rows and 3 coaching notes. The fullest.
@@ -115,14 +119,17 @@ Do not try to sign in *as* them — open them from the roster.
 
 > Atlas is ready for you both: **https://atlas-testing.up.railway.app**
 >
-> Luke — you have two logins. `luke@rypgolf.com` is your **coach** account (9 students on the
-> roster), and `luke.benoit@gmail.com` is a **player** account so you can drive the player side
-> yourself. Mike — `eisele.mike@gmail.com`, player account. Google sign-in or email/password, both
-> work.
+> You each have **two** logins — a coach one and a player one — and the system treats them as
+> separate people, so each needs its own setup.
 >
-> **Please sign in and get through the setup before we meet.** You will hit a date-of-birth screen
-> and then the full Practice DNA intake before you see anything else — about ten minutes. Type the
-> date of birth carefully, it can't be changed yet.
+> Luke: `luke@rypgolf.com` (coach, 8 students) and `luke.benoit@gmail.com` (player).
+> Mike: `mike@rypgolf.com` (coach) and `eisele.mike@gmail.com` (player).
+>
+> Google sign-in or email/password, both work on all four.
+>
+> **Please sign in and get through the setup before we meet — on both accounts.** Each one hits a
+> date-of-birth screen and then the full Practice DNA intake before you see anything else, about ten
+> minutes apiece. Type the date of birth carefully, it can't be changed yet.
 >
 > **Use the feedback button, bottom-left on every page, for everything.** It grabs a screenshot and
 > sends it straight through with your note — it is the fastest way to tell me something and it
