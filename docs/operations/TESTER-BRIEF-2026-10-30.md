@@ -13,7 +13,7 @@ assumed. The short version to send is at the bottom.
 | --- | --- | --- |
 | Luke | `luke@rypgolf.com` | **Coach.** Lands on the Roster, 8 students |
 | Luke | `luke.benoit@gmail.com` | **Player.** Your own empty account, for driving the flows |
-| Mike | `mike@rypgolf.com` | **Coach.** Lands on the Roster |
+| Mike | `mike@rypgolf.com` | **Coach.** Lands on the Roster, 8 students |
 | Mike | `eisele.mike@gmail.com` | **Player.** On Luke's roster and Makel's |
 
 Sign in with **Google** or email + password — both work on all four.
@@ -105,8 +105,8 @@ loses it.
 
 ## For a populated screen
 
-Your own player accounts are **deliberately empty**, and **Mike's coach roster holds only his own
-player account**. To see the product with data in it, open a student from **Luke's** roster:
+Your own player accounts are **deliberately empty**. Both coach accounts carry the **same 8
+students**, so either of you can open a populated one:
 
 - **Avery Lane** — 4 of 23 drills, four coach-verified. The best all-round example.
 - **Casey Flint (TEST)** — 18 drill rows and 3 coaching notes. The fullest.
@@ -123,7 +123,7 @@ Do not try to sign in *as* them — open them from the roster.
 > separate people, so each needs its own setup.
 >
 > Luke: `luke@rypgolf.com` (coach, 8 students) and `luke.benoit@gmail.com` (player).
-> Mike: `mike@rypgolf.com` (coach) and `eisele.mike@gmail.com` (player).
+> Mike: `mike@rypgolf.com` (coach, 8 students) and `eisele.mike@gmail.com` (player).
 >
 > Google sign-in or email/password, both work on all four.
 >
@@ -141,8 +141,8 @@ Do not try to sign in *as* them — open them from the roster.
 > for the same reason. The Team screen and the Fitness programme are sample content, ignore them.
 > **FORGE is not wired into any screen in this build** — the API is live but nothing calls it yet.
 >
-> Your own accounts are empty on purpose. For a populated view, open **Avery Lane** or **Casey
-> Flint** from Luke's roster.
+> Your player accounts are empty on purpose. Both coach accounts carry the same 8 students — for a
+> populated view open **Avery Lane** (4 of 23, four coach-verified) or **Casey Flint** (18 drills).
 >
 > One thing: the session expires after 8 hours and does not say so — if saves start failing, reload
 > and sign in again.
