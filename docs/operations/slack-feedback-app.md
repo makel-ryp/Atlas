@@ -111,6 +111,51 @@ Testing app (`POST /api/feedback`, a 480×160 PNG) and came back:
 
 If a future send posts the note but not the image, that is still where to look.
 
+## 🔴 An INCOMING WEBHOOK token is an `xoxb-` token, and it passes our own boot check
+
+**2026-10-30, and this cost about an hour.** The app was reinstalled after the Railway incident and
+every send came back **502**. `auth.test` gave the answer:
+
+```json
+{"ok":false,"error":"missing_scope","needed":"chat:write:bot","provided":"incoming-webhook"}
+```
+
+The token had been issued by the **Incoming Webhook** flow. Such a token:
+
+- **starts with `xoxb-`**, so `feedbackConfig`'s `token.startsWith('xoxb-')` check PASSES,
+- which means the router **mounts** and `GET /api/feedback` answers **401, not 503**,
+- so every outward sign says the feature is configured — and then every send fails.
+
+A webhook token can post to one preset channel through its webhook URL and nothing else. It cannot
+call `chat.postMessage`, cannot upload a file, cannot read history.
+
+### Three things that make this hard to see
+
+1. **`provided` describes the TOKEN YOU SENT, not the app's current settings.** Adding scopes in the
+   app config does not alter an already-issued token. If `auth.test` still says
+   `provided: incoming-webhook` after you added scopes, you are testing the old token — a reinstall
+   mints a new one, and the new one is at **OAuth & Permissions → Bot User OAuth Token**.
+2. **`needed: "chat:write:bot"` is a CLASSIC-app scope name.** Modern apps use `chat:write`. Seeing
+   the `:bot` suffix means the app is on the classic/webhook path, where the granular bot scopes you
+   just added may never apply however many times you reinstall.
+3. **The fix that actually worked was a NEW app from the manifest above**, not repairing the old
+   one. A new app means a **new bot user**, which is **not in the channel** — `/invite` is mandatory,
+   not a formality.
+
+### Isolate it before touching Railway
+
+```bash
+curl -s -H "Authorization: Bearer xoxb-YOUR-TOKEN" https://slack.com/api/auth.test
+```
+
+`"ok":true` with a `bot_id` means the token is good. Anything else names the fault
+(`invalid_auth`, `token_revoked`, `missing_scope` + what it has). Thirty seconds, and it skips the
+whole deploy-and-click loop.
+
+**Current app: `Atlas Feedback 2`, bot `U0CDMDT3G82`, installed and invited 2026-10-30.**
+✅ Verified end to end that day: note posted, threaded under the `[fb:…]` parent, and
+`feedback.png` (315 KB) attached.
+
 ## ⚠️ The member list does NOT show the bot — do not read that as "not invited"
 
 `conversations.members` through the Slack connector returned **1 member (@makel)** on 2026-10-15 and
