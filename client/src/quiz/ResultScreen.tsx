@@ -592,6 +592,33 @@ export function ResultScreen({
         </button>
       )}
 
+      {/*
+        ── 🔴 THE WAY OUT, ADDED 2026-11-05 — THIS SCREEN WAS A DEAD END ──────────────────────
+
+        Reported by Mike Eisele from a real session: *"there's no way out of the Practice DNA
+        results page"*. He was right, and it was not a missing style — NOTHING rendered.
+
+        Two guards, and on the final read they BOTH fail:
+          · the top section is `isBaseline && …`     — false on any later level
+          · the button just above is `nextLabel && …` — null once there is no next level
+
+        So a golfer finishing the Full Diagnosis got a result page with no link, no button and no
+        back. The only escape was a reload, which nothing on screen told them about.
+
+        The rule the file already follows is ONE CTA PER SCREEN, not none — so this renders exactly
+        when the other two do not, and never alongside them. `onEnterAtlas` is optional, so the
+        standalone Practice DNA build (which has no Atlas to return to) is unaffected.
+      */}
+      {!isBaseline && !nextLabel && onEnterAtlas && (
+        <button
+          type="button"
+          onClick={onEnterAtlas}
+          className="mb-8 w-full rounded-lg bg-ink px-5 py-3 font-medium text-paper"
+        >
+          Go to my Atlas →
+        </button>
+      )}
+
       {/* "Keep a copy" (a PDF download button) dropped here — see the import comment above.
           Nothing replaces it: the run is already a permanent row on this golfer's account. */}
 

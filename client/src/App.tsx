@@ -178,8 +178,26 @@ function useSignoutParam(logout: () => Promise<void>, active: boolean): boolean 
 function Routes() {
   const { status, error, me, logout } = useAuth()
   const [tab, setTab] = useState<'profile' | 'admin'>('profile')
-  const [intakeGate, satisfyIntakeGate] = useIntakeGate(status === 'signed_in')
   const [consentGate, setConsentGate] = useConsentGate(status === 'signed_in')
+  /**
+   * ⚠️ WAITS FOR CONSENT TO RESOLVE, AND THE ORDER OF THESE TWO LINES IS THE FIX (2026-11-05).
+   *
+   * These fired together, and `/api/intake/me` sits behind `requireConsent()` while
+   * `/api/users/me` does not (`server/routes/intake.ts`, `requireConsent.ts`). So on a fresh
+   * sign-in the intake call could answer **403 before consent had resolved**, which is not
+   * "no intake owed" — but it left the gate `'unknown'`, and `'unknown'` used to route a player
+   * straight past the intake to the dashboard. That is how Mike Eisele reached Today on
+   * 2026-10-30 without ever being asked, and then got sent to the quiz by the "← Atlas" link:
+   * one bug, reported twice.
+   *
+   * `!== 'checking'` rather than `=== 'ok'` ON PURPOSE. `useConsentGate` fails OPEN to
+   * `'unknown'` by design, and waiting for a state it may never reach would trade a skipped
+   * intake for a permanent spinner. Every consent state except `'checking'` either lets the
+   * player through or returns its own screen above this one.
+   */
+  const [intakeGate, satisfyIntakeGate] = useIntakeGate(
+    status === 'signed_in' && consentGate !== 'checking',
+  )
   const signingOut = useSignoutParam(logout, status === 'signed_in')
   // `?home=1` — the prototype banner's "← Atlas" link, asking to stay in the SPA rather than be
   // bounced straight back to the dashboard.
@@ -265,7 +283,23 @@ function Routes() {
       if (isPlayer && intakeGate === 'checking') {
         return <main className="shell"><p className="muted">Loading…</p></main>
       }
-      if (isPlayer && intakeGate === 'needed') {
+      /**
+       * 🔴 `'unknown'` GOES TO THE QUIZ, NOT PAST IT — changed 2026-11-05.
+       *
+       * It used to fall through to `CoachDashboardRedirect` below, so any failure reading
+       * `/api/intake/me` — a 403, a 500, a dropped connection — silently granted a player the
+       * dashboard they had not earned. A gate that opens when it cannot see is not a gate.
+       *
+       * Sending them to the quiz instead is SAFE AND SELF-CORRECTING: `useQuizRun` re-fetches,
+       * auto-starts a run only when none exists, and a golfer who had in fact finished lands on
+       * their result screen — which, since the same day, has a way out of it.
+       *
+       * ⚠️ This is deliberately the OPPOSITE of `useConsentGate`'s fail-open, and the asymmetry
+       * is the point. Date of birth is write-once, so trapping someone in front of a form they
+       * already answered is unrecoverable. The intake reopens exactly at the stage a run still
+       * owes, so the worst case here is one extra screen.
+       */
+      if (isPlayer && (intakeGate === 'needed' || intakeGate === 'unknown')) {
         return <IntakeShell api={intakeApi} onEnterAtlas={enterAtlas} />
       }
 

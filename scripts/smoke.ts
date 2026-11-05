@@ -1144,6 +1144,39 @@ async function main() {
   // fabrication class". It was not. The Tomorrow card on Today — the most-seen screen in the
   // product — printed a strokes-gained leak and a session built from it, for every golfer, off the
   // same hardcoded `state.forge` seed that got Transfer and Performance hidden.
+  // ── T. THE TWO GATES A PLAYER MEETS BEFORE THE APP ──────────────────────────────────────────
+  // ⚠️ FIRST CHECKS IN THIS FILE THAT READ `client/src`. Everything above reads the server and the
+  // prototype, which is why both bugs below shipped: the React shell was outside the suite's reach
+  // entirely, and a tester found them instead.
+  section('T. the gates a player meets before the app')
+
+  const client = (rel: string) =>
+    readFileSync(join(import.meta.dirname, '..', 'client', 'src', rel), 'utf8')
+  const resultSrc = client('quiz/ResultScreen.tsx')
+  const appSrc = client('App.tsx')
+
+  // Mike Eisele, 2026-10-30: "there's no way out of the Practice DNA results page". Two guards
+  // (`isBaseline` at the top, `nextLabel` at the foot) both fail on the final read, so NOTHING
+  // rendered — no link, no button, no back. Only a reload escaped, and nothing said so.
+  check('the result screen always offers a way out',
+    /!isBaseline && !nextLabel && onEnterAtlas && \(/.test(resultSrc),
+    'on the Full Diagnosis both other CTAs are false — without this the screen is a dead end')
+  check('and never two CTAs at once',
+    /\{!isBaseline && nextLabel && \(/.test(resultSrc) && /\{isBaseline && \(nextLabel \|\| onEnterAtlas\) && \(/.test(resultSrc),
+    'the three blocks are mutually exclusive by construction, which is the rule this file follows')
+
+  // The same tester reached Today without ever being asked for the intake, then was sent to the
+  // quiz by the "\u2190 Atlas" link. One bug: the gate failed OPEN and `unknown` routed onward.
+  check('an unreadable intake gate sends the player to the quiz, not past it',
+    /intakeGate === 'needed' \|\| intakeGate === 'unknown'/.test(appSrc),
+    'a gate that opens when it cannot see is not a gate')
+  check('the intake gate waits for consent to resolve',
+    /status === 'signed_in' && consentGate !== 'checking'/.test(appSrc),
+    '/api/intake/me sits behind requireConsent(); firing both at once made a 403 look like "nothing owed"')
+  check('consent is still allowed to fail OPEN',
+    /setGate\('unknown'\)/.test(client('components/ConsentGate.tsx')),
+    'date of birth is write-once, so trapping someone at that form is unrecoverable \u2014 the asymmetry with intake is deliberate')
+
   section('S. Today invents nothing')
 
   check('the Tomorrow card is gated', /tomorrowShow: 'none'/.test(PROTO),
