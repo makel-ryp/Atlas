@@ -43,6 +43,63 @@ recover in six months.
 
 Ask for it while he is building, not when he is done.
 
+## ✅ AMENDED 2026-11-09 — he gets his own DATABASE too, not just his own schema
+
+The developer has a name — **Paul** — and the app is **Golf Tracker**.
+
+**Makel, 2026-11-09:** *"I dont want him to conform to our schema if he doesnt have to. Id like to
+learn how hes moving data and then we can adapt."*
+
+That is a sharper version of the 30 October decision and it changes the delivery, so the "all his
+builds are local only" line above is **superseded**:
+
+| | |
+| --- | --- |
+| **Project** | **Golf Tracker** — `divine-scene-09465448` |
+| Default branch | `main` — `br-shiny-resonance-bc27mdw7` |
+| Database / role | `neondb` / `neondb_owner` |
+| Region / version | `aws-us-east-1`, Postgres **17.11** |
+| Contents | **0 tables.** He designs everything in it. |
+
+Same region as `ryp-core` on purpose, so moving data between them later is cheap.
+
+### 🔴 Why a SEPARATE PROJECT and not a branch of ryp-core
+
+A branch was created (`tracker-dev`, `br-dry-heart-auicqqq6`) and **deleted the same hour**, once the
+requirement above was clear. Recording why, because "give him a sister copy of the DB" sounds like a
+branch and a branch is the wrong instrument:
+
+**A Neon branch copies the DATA, not the schema.** That branch contained, verified by query:
+
+- **10 real (non-demo) accounts** — Makel's four, Mike's two, Luke's two
+- **9 stored dates of birth**
+- **10 intake submissions** — which carry injuries, surgeries and the free-text *"why you are here"*
+- **3 coaching notes, one of them private-tier**
+- 10 player profiles, 31 drill rows, 21 populated tables
+
+All of it handed to a developer whose app reads **none** of it. A branch would also sit those tables
+physically beside his work, where one mistaken grant exposes them. There is no upside to that when
+he is not querying them.
+
+His own project gives him owner rights on an empty database, zero exposure to ours, and — because it
+is in the same Neon account — **we can still read his model whenever we like.** That is the whole
+point: we learn how he moves data without his build touching anything of ours.
+
+### What this does NOT change
+
+- He still designs his own model. We still convert at integration time.
+- **T-137 is still the instrument** for "learn how he's moving data" — a data dictionary written
+  while he builds, one line per field: meaning, **units**, and where in GSPro it came from. A
+  database shows the columns; only the dictionary shows what they mean.
+- Conversion remains a one-off script between two databases, which is easier than untangling his
+  tables from ours would have been.
+
+### What Makel does next
+
+Give Paul access to the **Golf Tracker** project only — either as a member on that project in the
+Neon console, or just the connection string. ⚠️ **Not** an account-wide invitation: `ryp-core` lives
+in the same account, and project-scoped access is the thing keeping these separate.
+
 ## What we need from him at integration time
 
 1. The schema itself (DDL or an ORM definition).
