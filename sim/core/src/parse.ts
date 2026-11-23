@@ -28,6 +28,9 @@ export interface ShotRecord {
 
 const STRING_FIELDS = ['ShotID', 'UserGuid', 'PlayerName', 'CourseKey'] as const;
 const INTEGER_FIELDS = ['RoundID', 'Hole', 'HoleShot', 'HolePar', 'HoleResult', 'ShotResult'] as const;
+// Beyond being safe integers, these two must sit in a plausible range. Refuse, never clamp.
+// RoundID has no limit here: it may be negative (the practice range).
+const INTEGER_LIMITS: Partial<Record<string, readonly [number, number]>> = { Hole: [0, 99], HoleShot: [1, 999] };
 // Checked in this order, so "the first missing or mistyped field" is well defined.
 const CHECK_ORDER = [
   'ShotID',
@@ -69,8 +72,13 @@ export function parseRoundFile(text: string): ShotRecord[] {
         if (typeof v !== 'string' || (field === 'ShotID' && v === '')) {
           throw new UnknownLayoutError(`record ${i}: field ${field} is missing or not ${field === 'ShotID' ? 'a non-empty string' : 'a string'}`);
         }
-      } else if (!(INTEGER_FIELDS as readonly string[]).includes(field) || !Number.isInteger(v)) {
+      } else if (!(INTEGER_FIELDS as readonly string[]).includes(field) || !Number.isSafeInteger(v)) {
         throw new UnknownLayoutError(`record ${i}: field ${field} is missing or not an integer`);
+      } else {
+        const limit = INTEGER_LIMITS[field];
+        if (limit && ((v as number) < limit[0] || (v as number) > limit[1])) {
+          throw new UnknownLayoutError(`record ${i}: field ${field} is out of range (${limit[0]} to ${limit[1]})`);
+        }
       }
     }
   });

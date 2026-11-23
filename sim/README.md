@@ -10,8 +10,16 @@ The hole number is `Hole + 1`. A hole is finished when a record for that round, 
 `HoleResult` 7, and its score is that record's `HoleShot`; otherwise it is in play and shows the
 highest `HoleShot` seen so far. Records are never counted, and `isHoled` and `isGimme` are never
 read. A player's total is the finished holes only. Records with a negative `RoundID` (the practice
-range) belong to no round. Players are kept per round and never merged across rounds. This rule
-matches GSPro's own scorecard for the recorded round.
+range) belong to no round. Players are kept per round and never merged across rounds; inside a
+round a player is identified by `UserGuid`, so two ids with one name are two players, and one id
+with two names is one player, shown under the name on the first record seen. Two finishing records
+for one hole that disagree report the higher and set `needsReview`. This rule matches GSPro's own
+scorecard for the recorded round.
+
+The reader refuses (with `UnknownLayoutError`, naming the field) any integer field that is not a safe
+integer, a `Hole` outside 0 to 99 and a `HoleShot` outside 1 to 999. The text formatter replaces
+control characters in names and course keys with spaces and cuts them to 64 characters; `rounds()`
+returns them exactly as the file had them.
 
 ## Commands
 
