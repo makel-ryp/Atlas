@@ -14,7 +14,7 @@ function readText(p: string): string {
 }
 
 function replay(book: RoundBook, upTo = copies.length) {
-  const counts: Array<{ added: number; revised: number; unchanged: number }> = [];
+  const counts: Array<{ added: number; revised: number; unchanged: number; conflicts: number }> = [];
   for (const c of copies.slice(0, upTo)) counts.push(book.ingest(c.records));
   return counts;
 }
@@ -88,7 +88,7 @@ test('3. feeding one copy twice changes nothing', () => {
   const snapshot = structuredClone(book.rounds());
   const second = book.ingest(c.records);
   assert.equal(first.added, c.records.length);
-  assert.deepEqual(second, { added: 0, revised: 0, unchanged: c.records.length });
+  assert.deepEqual(second, { added: 0, revised: 0, unchanged: c.records.length, conflicts: 0 });
   assert.deepEqual(book.rounds(), snapshot);
 });
 
@@ -146,7 +146,7 @@ test('8. a record re-sent with a different HoleShot is revised and replaces the 
   book.ingest([rec]);
   const changed = { ...rec, HoleShot: rec.HoleShot + 3 };
   const counts = book.ingest([changed]);
-  assert.deepEqual(counts, { added: 0, revised: 1, unchanged: 0 });
+  assert.deepEqual(counts, { added: 0, revised: 1, unchanged: 0, conflicts: 0 });
   const h = holeOf(book.rounds()[0]!.players[0]!, rec.Hole + 1);
   assert.equal(h.strokesSoFar, rec.HoleShot + 3);
 });

@@ -2,6 +2,8 @@
 
 export const MAX_TEXT_CHARS = 50_000_000;
 export const MAX_RECORDS = 20_000;
+/** A record is level 1; anything nested deeper than this is refused. */
+export const MAX_DEPTH = 32;
 
 /** Thrown when the text is not a layout this reader knows. It never guesses. */
 export class UnknownLayoutError extends Error {
@@ -45,6 +47,20 @@ const CHECK_ORDER = [
   'ShotResult',
 ] as const;
 
+/**
+ * Refuses a value nested more than MAX_DEPTH levels deep (the value itself is level 1).
+ * Walks with its own stack, never by recursion, so it cannot overflow however deep the input is.
+ */
+export function assertShallow(value: unknown, where: string): void {
+  const stack: Array<[unknown, number]> = [[value, 1]];
+  while (stack.length > 0) {
+    const [v, depth] = stack.pop()!;
+    if (v === null || typeof v !== 'object') continue;
+    if (depth > MAX_DEPTH) throw new UnknownLayoutError(`${where} is nested more than ${MAX_DEPTH} levels deep`);
+    for (const child of Object.values(v)) stack.push([child, depth + 1]);
+  }
+}
+
 export function parseRoundFile(text: string): ShotRecord[] {
   if (typeof text !== 'string') throw new UnknownLayoutError('round file text must be a string');
   if (text.length > MAX_TEXT_CHARS) {
@@ -65,6 +81,7 @@ export function parseRoundFile(text: string): ShotRecord[] {
     if (item === null || typeof item !== 'object' || Array.isArray(item)) {
       throw new UnknownLayoutError(`record ${i} is not an object`);
     }
+    assertShallow(item, `record ${i}`);
     const rec = item as Record<string, unknown>;
     for (const field of CHECK_ORDER) {
       const v = rec[field];
