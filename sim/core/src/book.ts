@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
-import { assertShallow } from './parse.js';
+import { validateRecord } from './parse.js';
+import { normalisedName } from './text.js';
 import type { ShotRecord } from './parse.js';
 
 /** GSPro's HoleResult value that marks the hole as finished. */
@@ -38,6 +39,8 @@ export interface HoleScore {
 }
 
 export interface PlayerScore {
+  /** 1, 2, ... in the order the players were first seen in the round. */
+  playerNumber: number;
   userGuid: string;
   name: string;
   holes: HoleScore[];
@@ -54,7 +57,7 @@ export interface RoundScore {
   /** Every distinct course key seen in the round, in the order first seen. */
   courseKeys: string[];
   /**
-   * True when any player is flagged, the records name more than one course, two players share a name,
+   * True when any player is flagged, the records name more than one course, two players share a name (by normalisedName),
    * or the book refused a record that touched this round.
    */
   needsReview: boolean;
@@ -80,7 +83,7 @@ export class RoundBook {
     const firstInCall = new Map<string, ShotRecord>();
     const found: Array<{ issue: BookIssue; rounds: number[] }> = [];
     for (const [i, rec] of records.entries()) {
-      assertShallow(rec, `record ${i}`);
+      validateRecord(rec, `record ${i}`);
       const first = firstInCall.get(rec.ShotID);
       if (first !== undefined) {
         if (isDeepStrictEqual(first, rec)) {
@@ -196,9 +199,9 @@ export class RoundBook {
           });
         let total = 0;
         for (const h of holes) if (h.strokes !== null) total += h.strokes;
-        players.push({ userGuid, name: p.name, holes, total, needsReview: p.namesDisagree || holes.some((h) => h.needsReview) });
+        players.push({ playerNumber: players.length + 1, userGuid, name: p.name, holes, total, needsReview: p.namesDisagree || holes.some((h) => h.needsReview) });
       }
-      const names = players.map((p) => p.name);
+      const names = players.map((p) => normalisedName(p.name));
       out.push({
         roundId,
         courseKey: round.courseKeys[0]!,

@@ -99,7 +99,7 @@ test('R7. the formatter cuts a name and a course key to 64 characters', () => {
   const [roundLine, playerLine] = formatScorecard(b).split('\n');
   assert.ok(roundLine!.startsWith(`Round 1  ${'C'.repeat(64)}`));
   assert.ok(!roundLine!.includes('C'.repeat(65)));
-  assert.ok(playerLine!.startsWith(`${'N'.repeat(64)}  `));
+  assert.ok(playerLine!.startsWith(`P1 ${'N'.repeat(64)}  `));
   assert.ok(!playerLine!.includes('N'.repeat(65)));
 });
 

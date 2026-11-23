@@ -186,7 +186,7 @@ test('formatter prints the example lines', () => {
   const text = formatScorecard(replayed());
   assert.match(text, /^Round 18 {2}bluejack_gsp$/m);
   assert.match(text, /^Round 19 {2}bluejack_gsp$/m);
-  assert.match(text, /^ZZTEST-A {2}hole 3: 6 {2}hole 12: 4 {2}hole 15: 8 {2}total 18$/m);
-  assert.match(text, /^ZZTEST-B {2}hole 3: 5 {2}hole 12: 5 {2}hole 15: 10 {2}total 20$/m);
+  assert.match(text, /^P1 ZZTEST-A {2}hole 3: 6 {2}hole 12: 4 {2}hole 15: 8 {2}total 18$/m);
+  assert.match(text, /^P2 ZZTEST-B {2}hole 3: 5 {2}hole 12: 5 {2}hole 15: 10 {2}total 20$/m);
   assert.match(text, /hole 1: in play \(1 stroke\)/);
 });

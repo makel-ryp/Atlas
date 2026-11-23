@@ -112,33 +112,3 @@ test('T6. an identical repeat in one call is no conflict and no flag; it is coun
   assert.deepEqual(c.ingest(records([five, five])), { added: 0, revised: 0, unchanged: 2, conflicts: 0 });
   assert.equal(c.rounds()[0]!.needsReview, false);
 });
-
-test('S1. two same-name players whose ids share their last four characters still print different lines', () => {
-  const b = new RoundBook();
-  b.ingest(records([rec({ ShotID: 'a', UserGuid: 'xx-1234' }), rec({ ShotID: 'b', UserGuid: 'yy-1234' })]));
-  const [, l1, l2] = formatScorecard(b).split('\n');
-  assert.notEqual(l1, l2);
-  // the ends "-1234" clash, so the suffix grows by one character
-  assert.ok(l1!.startsWith('ZZTEST-A [x-1234]'), l1);
-  assert.ok(l2!.startsWith('ZZTEST-A [y-1234]'), l2);
-});
-
-test('S2. ids that share their last twelve characters grow the suffix until they differ; ids that differ in four characters keep four', () => {
-  const tail = 'abcdefghijkl';
-  const b = new RoundBook();
-  b.ingest(records([rec({ ShotID: 'a', UserGuid: `1${tail}` }), rec({ ShotID: 'b', UserGuid: `2${tail}` })]));
-  const [, l1, l2] = formatScorecard(b).split('\n');
-  assert.notEqual(l1, l2);
-  assert.ok(l1!.startsWith(`ZZTEST-A [1${tail}]`), l1);
-  assert.ok(l2!.startsWith(`ZZTEST-A [2${tail}]`), l2);
-  const short = new RoundBook();
-  short.ingest(records([rec({ ShotID: 'a', UserGuid: 'guid-aaaa1111' }), rec({ ShotID: 'b', UserGuid: 'guid-bbbb2222' })]));
-  const lines = formatScorecard(short).split('\n');
-  assert.ok(lines[1]!.startsWith('ZZTEST-A [1111]'), lines[1]);
-  assert.ok(lines[2]!.startsWith('ZZTEST-A [2222]'), lines[2]);
-  // one id is the end of the other: the whole shorter id is printed
-  const nest = new RoundBook();
-  nest.ingest(records([rec({ ShotID: 'a', UserGuid: '1234' }), rec({ ShotID: 'b', UserGuid: 'xx1234' })]));
-  const n = formatScorecard(nest).split('\n');
-  assert.notEqual(n[1], n[2]);
-});

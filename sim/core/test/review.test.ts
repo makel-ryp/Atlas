@@ -123,7 +123,7 @@ test('A4. one UserGuid under two names flags the player and the round; the first
   assert.match(line, /total 7 \(needs review\)$/);
 });
 
-test('A5. two players with the same name flag the round only, and the formatter tells them apart by the last four characters of the id', () => {
+test('A5. two players with the same name flag the round only, and the lines are told apart by the player number', () => {
   const b = book([
     rec({ ShotID: 'a', UserGuid: 'guid-aaaa1111', PlayerName: 'ZZTEST-A', HoleShot: 3, HoleResult: 7 }),
     rec({ ShotID: 'b', UserGuid: 'guid-bbbb2222', PlayerName: 'ZZTEST-A', HoleShot: 5, HoleResult: 7 }),
@@ -134,9 +134,9 @@ test('A5. two players with the same name flag the round only, and the formatter 
   assert.equal(r.players.every((p) => !p.needsReview), true);
   const lines = formatScorecard(b).split('\n');
   assert.match(lines[0]!, /\(needs review\)$/);
-  assert.match(lines[1]!, /^ZZTEST-A .*1111.* {2}hole 1: 3 {2}total 3$/);
-  assert.match(lines[2]!, /^ZZTEST-A .*2222.* {2}hole 1: 5 {2}total 5$/);
-  assert.ok(!lines[1]!.includes('guid-aaaa'), 'only the last four characters');
+  assert.equal(lines[1], 'P1 ZZTEST-A  hole 1: 3  total 3');
+  assert.equal(lines[2], 'P2 ZZTEST-A  hole 1: 5  total 5');
+  assert.ok(!lines[1]!.includes('guid-aaaa'), 'no part of an id is printed');
   // two different names: no id is printed
   const diff = book([
     rec({ ShotID: 'a', UserGuid: 'guid-aaaa1111', PlayerName: 'ZZTEST-A' }),
@@ -164,7 +164,7 @@ test('A7. the formatter prints the review mark after a flagged hole, after a fla
   ]);
   const [heading, line] = formatScorecard(b).split('\n');
   assert.match(heading!, /^Round 1 {2}test_course {2}\(needs review\)$/);
-  assert.equal(line, 'ZZTEST-A  hole 1: 9 (needs review)  hole 2: 3  total 12 (needs review)');
+  assert.equal(line, 'P1 ZZTEST-A  hole 1: 9 (needs review)  hole 2: 3  total 12 (needs review)');
   // a flagged in-play hole is marked too
   const play = formatScorecard(book([rec({ ShotID: 'a', HolePar: 3 }), rec({ ShotID: 'b', HolePar: 5, HoleShot: 2 })]));
   assert.match(play.split('\n')[1]!, /hole 1: in play \(2 strokes\) \(needs review\)/);
@@ -468,7 +468,7 @@ test('F1. the formatter turns TAB, ESC and other control characters into one spa
   const b = book([rec({ PlayerName: name, CourseKey: 'x\ty' })]);
   const [heading, line] = formatScorecard(b).split('\n');
   assert.equal(heading, 'Round 1  x y');
-  assert.ok(line!.startsWith('a b c d e  hole 1'), line);
+  assert.ok(line!.startsWith('P1 a b c d e  hole 1'), line);
   assert.equal(b.rounds()[0]!.players[0]!.name, name, 'rounds() keeps the file text');
 });
 
@@ -486,7 +486,7 @@ test('F2. the formatter replaces format characters and line and paragraph separa
   for (const [ch, label] of marks) {
     const b = book([rec({ PlayerName: `P${ch}Q`, CourseKey: `C${ch}D` })]);
     const text = formatScorecard(b);
-    assert.ok(text.startsWith('Round 1  C D\nP Q  hole 1'), `${label}: ${JSON.stringify(text)}`);
+    assert.ok(text.startsWith('Round 1  C D\nP1 P Q  hole 1'), `${label}: ${JSON.stringify(text)}`);
     assert.equal(text.split('\n').length, 2, label);
     assert.equal(b.rounds()[0]!.players[0]!.name, `P${ch}Q`, label);
   }
@@ -496,10 +496,10 @@ test('F3. the cut is at 64 code points, so a surrogate pair is never split', () 
   const emoji = '\u{1F600}';
   const name = 'A'.repeat(63) + emoji + 'B'.repeat(10);
   const [, line] = formatScorecard(book([rec({ PlayerName: name })])).split('\n');
-  assert.ok(line!.startsWith('A'.repeat(63) + emoji + '  hole 1'), 'cut after the pair');
+  assert.ok(line!.startsWith('P1 ' + 'A'.repeat(63) + emoji + '  hole 1'), 'cut after the pair');
   const many = emoji.repeat(100);
   const [heading, line2] = formatScorecard(book([rec({ PlayerName: many, CourseKey: many })])).split('\n');
-  assert.ok(line2!.startsWith(emoji.repeat(64) + '  hole 1'));
+  assert.ok(line2!.startsWith('P1 ' + emoji.repeat(64) + '  hole 1'));
   assert.equal(Array.from(heading!.slice('Round 1  '.length)).length, 64);
   // no lone surrogate anywhere
   assert.ok(!/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(`${heading}\n${line2}`));
@@ -560,7 +560,7 @@ test('G3. the command still prints a readable file', () => {
     writeFileSync(file, JSON.stringify([rec({ HoleShot: 4, HoleResult: 7 })]));
     const res = runCli(file);
     assert.equal(res.status, 0, res.stderr);
-    assert.equal(res.stdout.trim(), 'Round 1  test_course\nZZTEST-A  hole 1: 4  total 4');
+    assert.equal(res.stdout.trim(), 'Round 1  test_course\nP1 ZZTEST-A  hole 1: 4  total 4');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

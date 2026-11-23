@@ -25,9 +25,15 @@ hole is, or when one `UserGuid` arrived under two names in the round. A round is
 player is, when its records name two courses, when two players in it share a name, or when the book
 refused a record that touched it (below). `rounds()` returns the mark at all three levels. The
 formatter prints ` (needs review)` after a marked hole, after a marked player's total and on a
-marked round's heading, and when two players in a round share a name it adds the last four
-characters of each one's `UserGuid` after the name, or more of the end if those four clash, up to
-the whole id, so two different ids never print identical lines.
+marked round's heading.
+
+"Share a name" is decided by `normalisedName`: the name cleaned as the formatter cleans it (control,
+format and separator characters to spaces), Unicode compatibility normalisation (NFKC), runs of
+spaces collapsed, trimmed and lower-cased. Letters from different alphabets that only look alike are
+not detected. That is why every player line starts with the player's number in the round, `P1`, `P2`
+and so on in the order the players were first seen (`playerNumber` in `rounds()`): two lines in one
+round are never identical, whatever the names or ids are, and no part of an id is printed. For
+example `P1 ZZTEST-A  hole 3: 6  hole 12: 4  hole 15: 8  total 18`.
 
 A shot never changes owner. If a record arrives whose `ShotID` the book already holds under another
 `UserGuid` or another `RoundID`, it is not applied: `ingest` counts it in `conflicts`, and `issues()`
@@ -35,18 +41,23 @@ lists it (a kind, the round id and the shot id, nothing else from the file). Ins
 every repeat of a `ShotID` is judged against the first record with that `ShotID` in the same call,
 never against the book: a repeat with different content is a conflict and is not applied, and an
 identical repeat changes nothing and is counted as `unchanged`. Only the first one in the call is
-compared with the book. So reading the same file twice gives the same scores and flags both times. A later record with the same `ShotID`, owner and round and
-different content is a revision.
+compared with the book. So reading the same file twice gives the same scores and flags both times.
+A later record with the same `ShotID`, owner and round and different content is a revision.
 
 ## Limits on what is read and printed
 
 The reader refuses (with `UnknownLayoutError`, naming the field) any integer field that is not a safe
-integer, a `Hole` outside 0 to 99 and a `HoleShot` outside 1 to 999, and any record nested more than
-32 levels deep (the record itself is level 1). `ingest` checks the nesting too and works in two
-passes: a call that throws leaves the book as it was. The text formatter replaces control, format
+integer, a `Hole` outside 0 to 99 and a `HoleShot` outside 1 to 999, a `ShotID` or `UserGuid` longer
+than 128 characters, a `PlayerName` or `CourseKey` longer than 256, and any record nested more than
+32 levels deep (the record itself is level 1) or containing itself. One validator does all of this,
+and `ingest` runs it on every record it is given, so a record passed straight in (not through the
+parser) is checked the same way. `ingest` works in two passes: a call that throws leaves the book as
+it was. The text formatter replaces control, format
 and line or paragraph separator characters (Unicode classes Cc, Cf, Zl, Zp) in names and course
 keys with a space and cuts them to 64 code points; `rounds()` returns them exactly as the file had
-them. The command refuses a file over 50,000,000 bytes without reading it.
+them. The command refuses a file over 50,000,000 bytes without reading it. After the rounds it
+prints one line when the book refused anything, for example
+`Issues: 2 (duplicate_shot_in_copy 1, shot_owner_changed 1)`: the count of each kind, fixed words only.
 
 ## What the book does not do
 
@@ -55,6 +66,9 @@ them. The command refuses a file over 50,000,000 bytes without reading it.
   older copy fed after a newer one rolls that shot back.
 - A round stays in the book after GSPro empties its file.
 - Duplicate keys inside one record follow JSON's rule: the last one wins.
+- A single corrupt or crafted copy can flag many rounds, earlier ones included, for the life of the
+  book, because a conflict flags both the round that keeps the shot and the round that claimed it.
+  The server card decides how to treat a bay whose file is corrupt.
 - What GSPro does to the file on a mulligan, an edit, a concede or a resume is not yet known. The
   server card decides how whole copies replace each other once a recording shows it.
 
@@ -70,7 +84,8 @@ npm run sim:scorecard -- path/to/currentRound.dat   # prints one file
 
 `sim/core/src/index.ts` exports `parseRoundFile(text)` (refuses a layout it does not know, with
 `UnknownLayoutError`), `RoundBook` (`ingest(records)`, `rounds()`, `issues()`, `rangeShots`),
-`formatScorecard` and `loadRecording(dir)`.
+`formatScorecard`, `normalisedName`, `runScorecard` (the command's work, with the file access passed
+in) and `loadRecording(dir)`.
 
 ## The recording
 
