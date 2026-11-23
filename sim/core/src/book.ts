@@ -76,19 +76,28 @@ export class RoundBook {
   ingest(records: readonly ShotRecord[]): IngestCounts {
     const counts: IngestCounts = { added: 0, revised: 0, unchanged: 0, conflicts: 0 };
     const staged = new Map<string, ShotRecord>();
+    // The first record with each ShotID in this call. Every repeat is judged against it, never against the book.
+    const firstInCall = new Map<string, ShotRecord>();
     const found: Array<{ issue: BookIssue; rounds: number[] }> = [];
     for (const [i, rec] of records.entries()) {
       assertShallow(rec, `record ${i}`);
-      const inCall = staged.get(rec.ShotID);
-      const held = inCall ?? this.shots.get(rec.ShotID);
+      const first = firstInCall.get(rec.ShotID);
+      if (first !== undefined) {
+        if (isDeepStrictEqual(first, rec)) {
+          counts.unchanged++;
+        } else {
+          found.push({ issue: { kind: 'duplicate_shot_in_copy', roundId: rec.RoundID, shotId: rec.ShotID }, rounds: [first.RoundID, rec.RoundID] });
+          counts.conflicts++;
+        }
+        continue;
+      }
+      firstInCall.set(rec.ShotID, rec);
+      const held = this.shots.get(rec.ShotID);
       if (held === undefined) {
         staged.set(rec.ShotID, rec);
         counts.added++;
       } else if (isDeepStrictEqual(held, rec)) {
         counts.unchanged++;
-      } else if (inCall !== undefined) {
-        found.push({ issue: { kind: 'duplicate_shot_in_copy', roundId: rec.RoundID, shotId: rec.ShotID }, rounds: [held.RoundID, rec.RoundID] });
-        counts.conflicts++;
       } else if (held.UserGuid !== rec.UserGuid || held.RoundID !== rec.RoundID) {
         found.push({ issue: { kind: 'shot_owner_changed', roundId: rec.RoundID, shotId: rec.ShotID }, rounds: [held.RoundID, rec.RoundID] });
         counts.conflicts++;

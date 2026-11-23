@@ -11,6 +11,15 @@ function safeText(s: string): string {
   return Array.from(s.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ')).slice(0, 64).join('');
 }
 
+/** The last n code points of id, n starting at 4 and growing until the printed tails of all ids differ (at most the whole id). */
+function idTail(id: string, ids: string[]): string {
+  const longest = Math.max(...ids.map((x) => Array.from(x).length));
+  const tail = (x: string, n: number) => safeText(Array.from(x).slice(-n).join(''));
+  let n = 4;
+  while (n < longest && new Set(ids.map((x) => tail(x, n))).size < new Set(ids).size) n++;
+  return tail(id, n);
+}
+
 function holeText(h: HoleScore): string {
   const mark = h.needsReview ? REVIEW : '';
   if (h.status === 'in_play') {
@@ -29,9 +38,9 @@ export function formatScorecard(source: RoundBook | readonly RoundScore[]): stri
     for (const [i, p] of r.players.entries()) {
       const parts = p.holes.map(holeText);
       parts.push(`total ${p.total}${p.needsReview ? REVIEW : ''}`);
-      // two players with one name: the last four characters of the id tell the lines apart
-      const sameName = shown.filter((n) => n === shown[i]).length > 1;
-      const name = sameName ? `${shown[i]} [${safeText(Array.from(p.userGuid).slice(-4).join(''))}]` : shown[i];
+      // two players with one name: the end of each UserGuid tells the lines apart (four characters, more if those clash)
+      const group = r.players.filter((_, j) => shown[j] === shown[i]);
+      const name = group.length > 1 ? `${shown[i]} [${idTail(p.userGuid, group.map((g) => g.userGuid))}]` : shown[i];
       lines.push(`${name}  ${parts.join('  ')}`);
     }
   }

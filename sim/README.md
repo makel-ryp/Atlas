@@ -26,13 +26,16 @@ player is, when its records name two courses, when two players in it share a nam
 refused a record that touched it (below). `rounds()` returns the mark at all three levels. The
 formatter prints ` (needs review)` after a marked hole, after a marked player's total and on a
 marked round's heading, and when two players in a round share a name it adds the last four
-characters of each one's `UserGuid` after the name.
+characters of each one's `UserGuid` after the name, or more of the end if those four clash, up to
+the whole id, so two different ids never print identical lines.
 
 A shot never changes owner. If a record arrives whose `ShotID` the book already holds under another
 `UserGuid` or another `RoundID`, it is not applied: `ingest` counts it in `conflicts`, and `issues()`
-lists it (a kind, the round id and the shot id, nothing else from the file). The same `ShotID` twice
-in one call with different content keeps the first and counts the second as a conflict; with
-identical content it is `unchanged`. A later record with the same `ShotID`, owner and round and
+lists it (a kind, the round id and the shot id, nothing else from the file). Inside one call
+every repeat of a `ShotID` is judged against the first record with that `ShotID` in the same call,
+never against the book: a repeat with different content is a conflict and is not applied, and an
+identical repeat changes nothing and is counted as `unchanged`. Only the first one in the call is
+compared with the book. So reading the same file twice gives the same scores and flags both times. A later record with the same `ShotID`, owner and round and
 different content is a revision.
 
 ## Limits on what is read and printed
