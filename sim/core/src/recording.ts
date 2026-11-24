@@ -39,7 +39,8 @@ export function loadRecording(dir: string): Copy[] {
     if (raw.records < 0 || raw.records > final.length) {
       throw new UnknownLayoutError(`capture ${raw.number} claims ${raw.records} records, the round file holds ${final.length}`);
     }
-    copies.push({ number: raw.number, time: raw.time, round: raw.round, records: final.slice(0, raw.records) });
+    // each capture owns its records: no object is shared with another capture
+    copies.push({ number: raw.number, time: raw.time, round: raw.round, records: final.slice(0, raw.records).map((r) => structuredClone(r)) });
   }
   return copies;
 }

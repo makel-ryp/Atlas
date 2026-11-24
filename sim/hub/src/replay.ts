@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { formatScorecard, issuesLine, loadRecording, type BookIssue, type RoundScore } from '../../core/src/index.js';
@@ -26,20 +27,38 @@ export async function runReplay(baseUrl: string): Promise<string> {
   return lines.join('\n');
 }
 
-const argv = process.argv.slice(2);
-let url = 'http://127.0.0.1:5077';
-const at = argv.indexOf('--url');
-if (at >= 0) {
-  const v = argv[at + 1];
-  if (v === undefined) {
-    console.error('--url needs a value');
+/** The command: reads --url, runs the replay, prints the scorecard. Exits 1 with one line when it fails. */
+async function main(argv: string[]): Promise<void> {
+  let url = 'http://127.0.0.1:5077';
+  const at = argv.indexOf('--url');
+  if (at >= 0) {
+    const v = argv[at + 1];
+    if (v === undefined) {
+      console.error('--url needs a value');
+      process.exit(1);
+    }
+    url = v;
+  }
+  try {
+    console.log(await runReplay(url));
+  } catch (e) {
+    console.error(`replay failed: ${e instanceof Error ? e.message : 'unknown error'}`);
     process.exit(1);
   }
-  url = v;
 }
-try {
-  console.log(await runReplay(url));
-} catch (e) {
-  console.error(`replay failed: ${e instanceof Error ? e.message : 'unknown error'}`);
-  process.exit(1);
+
+/** True when this file is the one node was started with: real paths on both sides, so a link to its folder does not hide it. */
+function isTheCommand(): boolean {
+  if (process.argv[1] === undefined) return false;
+  try {
+    const norm = (p: string): string => (process.platform === 'win32' ? p.toLowerCase() : p);
+    return norm(realpathSync(fileURLToPath(import.meta.url))) === norm(realpathSync(process.argv[1]));
+  } catch {
+    return false;
+  }
+}
+
+// It runs only as the command, never when another file imports it.
+if (isTheCommand()) {
+  await main(process.argv.slice(2));
 }

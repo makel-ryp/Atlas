@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
-import { UnknownLayoutError, checkRecordFields, plainCopy, readList } from './parse.js';
+import { UnknownLayoutError, checkRecordFields, newValueBudget, plainCopy, readList } from './parse.js';
 import { normalisedName } from './text.js';
 import type { ShotRecord } from './parse.js';
 
@@ -42,11 +42,12 @@ export interface PlayerScore {
   /** 1, 2, ... in the order the players were first seen in the round. */
   playerNumber: number;
   userGuid: string;
+  /** The name of the first record the book accepted for this player in this round, whatever later reads did. */
   name: string;
   holes: HoleScore[];
   /** Sum of finished holes only. */
   total: number;
-  /** True when any hole is flagged, or the same UserGuid arrived under two names in the round. */
+  /** True when any hole is flagged, or a record under another name than the first one seen for the player was ever accepted. */
   needsReview: boolean;
 }
 
@@ -71,6 +72,11 @@ export class RoundBook {
   private readonly issueList: BookIssue[] = [];
   private readonly issueKeys = new Set<string>();
   private readonly conflictRounds = new Set<number>();
+  /**
+   * For each player of each round: the name of the first record the book accepted for that player, and whether a record
+   * with another name was accepted since. Set only in the second pass of `ingest`; kept for as long as the book lives.
+   */
+  private readonly firstNames = new Map<number, Map<string, { name: string; renamed: boolean }>>();
 
   /**
    * Two passes: first decide what every record would do (this is where anything can throw), then change the book.
@@ -88,10 +94,12 @@ export class RoundBook {
     const copies: ShotRecord[] = [];
     try {
       const entries = readList(records, 'records');
+      // one running total of counted values over the whole call, carried from record to record
+      const budget = newValueBudget('call');
       for (let i = 0; i < entries.length; i++) {
         // the book keeps its own plain copy, checked like a file record; the caller's object is never stored.
         // Each record has its own walk: the same object may appear as two records of one call.
-        const copy = plainCopy(entries[i], `record ${i}`, new Set<object>());
+        const copy = plainCopy(entries[i], `record ${i}`, new Set<object>(), budget);
         checkRecordFields(copy, `record ${i}`);
         copies.push(copy);
       }
@@ -126,7 +134,18 @@ export class RoundBook {
       }
     }
 
-    for (const [id, rec] of staged) this.shots.set(id, rec);
+    for (const [id, rec] of staged) {
+      this.shots.set(id, rec);
+      if (rec.RoundID < 0) continue;
+      let players = this.firstNames.get(rec.RoundID);
+      if (!players) {
+        players = new Map();
+        this.firstNames.set(rec.RoundID, players);
+      }
+      const known = players.get(rec.UserGuid);
+      if (known === undefined) players.set(rec.UserGuid, { name: rec.PlayerName, renamed: false });
+      else if (known.name !== rec.PlayerName) known.renamed = true;
+    }
     for (const { issue, rounds } of found) {
       const key = `${issue.kind}\u0000${issue.roundId}\u0000${issue.shotId}`;
       if (!this.issueKeys.has(key)) {
@@ -159,7 +178,7 @@ export class RoundBook {
     }
     interface PlayerAcc {
       name: string;
-      namesDisagree: boolean;
+      renamed: boolean;
       holes: Map<number, HoleAcc>;
     }
     interface RoundAcc {
@@ -177,10 +196,10 @@ export class RoundBook {
       if (!round.courseKeys.includes(r.CourseKey)) round.courseKeys.push(r.CourseKey);
       let player = round.players.get(r.UserGuid);
       if (!player) {
-        player = { name: r.PlayerName, namesDisagree: false, holes: new Map() };
+        // the name and the mark come from the book's own record of the first name accepted, not from this record
+        const first = this.firstNames.get(r.RoundID)!.get(r.UserGuid)!;
+        player = { name: first.name, renamed: first.renamed, holes: new Map() };
         round.players.set(r.UserGuid, player);
-      } else if (player.name !== r.PlayerName) {
-        player.namesDisagree = true;
       }
       let hole = player.holes.get(r.Hole);
       if (!hole) {
@@ -215,7 +234,7 @@ export class RoundBook {
           });
         let total = 0;
         for (const h of holes) if (h.strokes !== null) total += h.strokes;
-        players.push({ playerNumber: players.length + 1, userGuid, name: p.name, holes, total, needsReview: p.namesDisagree || holes.some((h) => h.needsReview) });
+        players.push({ playerNumber: players.length + 1, userGuid, name: p.name, holes, total, needsReview: p.renamed || holes.some((h) => h.needsReview) });
       }
       const names = players.map((p) => normalisedName(p.name));
       out.push({
