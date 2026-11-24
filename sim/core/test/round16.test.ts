@@ -183,3 +183,21 @@ test('Z19. a closed handle never acts on another file, whether or not the system
     });
   }
 });
+
+test('Z20. close() really releases the descriptor: the next open is given the number the closed one had', () => {
+  inTempDir((dir) => {
+    const one = join(dir, 'one.dat');
+    writeFileSync(one, pattern(5));
+    // the number the system hands out next, with nothing of ours left open
+    const probe = openSync(one, 'r');
+    closeSync(probe);
+    const f = nodeFiles.open(one);
+    f.close();
+    const after = openSync(one, 'r');
+    try {
+      assert.equal(after, probe, 'a handle that was closed holds no descriptor');
+    } finally {
+      closeSync(after);
+    }
+  });
+});
