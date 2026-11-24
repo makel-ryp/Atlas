@@ -61,20 +61,39 @@ integer, a `Hole` outside 0 to 99 and a `HoleShot` outside 1 to 999, a `ShotID` 
 than 128 characters, a `PlayerName` or `CourseKey` longer than 256, and any record nested more than
 32 levels deep (the record itself is level 1). One validator does all of this, and `ingest` runs it
 on every record it is given, so a record passed straight in (not through the parser) is checked the
-same way. `ingest` first walks each record it is given, refusing any object reached a second time
-inside that record (a shared reference or a cycle; records read from a file never share objects; the
-same object as two records of one call, or a sub-object shared between two records, is not refused,
-because each record is walked and copied by itself), an array of more than 100,000 entries, an array
-with holes, and a record with more than 250,000 values in all. The walk looks inside a value only if
-it is a true array or a plain object (its prototype is exactly `Array.prototype`, `Object.prototype`
-or null); any other object (a typed array or other view of a buffer, a boxed string, number or
-boolean, a `Map`, a `Set`, a `Date`, an instance of a class) is refused at once, before its keys or
-length are read. Everything `JSON.parse` returns is a true array or a plain object, so nothing from a
-file is refused by this. For arrays and plain objects, lengths and counts are read before the value
-is expanded. It then stores its own plain copy (converted to JSON text and back) and checks
-the copy, so a getter, a prototype field, a symbol key or a later change by the caller cannot alter
-what the book holds. Anything that throws while a record is walked, copied or checked is an
-`UnknownLayoutError`. It works in two passes: a call that throws leaves the book as it was. Each
+same way.
+
+What `ingest` does with a record it is given, in one pass that builds the book's own plain copy as it
+goes (the copy is what is checked, stored and compared). Nothing of the caller's is ever called, and
+each value is read once:
+
+- A null, string, boolean or number is copied as JSON writes it (a number that is not finite becomes
+  null, minus zero becomes zero). A bigint is refused. A function, a symbol or undefined is left out
+  of an object and becomes null in an array.
+- An object is looked inside only if it passes these tests, in this order, none of which runs any
+  code of the caller's: it is not a proxy (every proxy is refused, whatever it wraps); it is not a
+  view of a buffer, a buffer, a boxed primitive or a module namespace object (these look at what the
+  value really is, so a swapped prototype does not fool them); it is a true array (prototype exactly
+  `Array.prototype`) or an object whose prototype is exactly `Object.prototype` or null. Anything
+  else (a typed array, a `Map`, a `Set`, a `Date`, an instance of a class, an object from another
+  realm) is refused with `UnknownLayoutError`.
+- A true array: its length is read, refused over 100,000 entries and counted against the 250,000
+  values a record may hold, all before any entry is touched; it may carry no own enumerable key that
+  is not an index; each entry is read through its own property descriptor, and a hole, a getter or a
+  setter is refused.
+- A plain object: its own enumerable string keys are counted against the 250,000 values, then each is
+  read through its own property descriptor (a getter or a setter is refused). Symbol keys and
+  non-enumerable keys are ignored. A property named `toJSON` is like any other property: it is never
+  called.
+- Also refused: more than 32 levels, and any object reached a second time inside one record (a shared
+  reference or a cycle; records read from a file never share objects; the same object as two records
+  of one call, or a sub-object shared between two records, is not refused, because each record is
+  walked and copied by itself).
+
+Everything `JSON.parse` returns is a true array, a plain object or a primitive, so nothing from a file
+is refused by these tests; the parser's records go through the same rules (without building a copy).
+`JSON.stringify` is not applied to anything the caller gave. Every refusal is an `UnknownLayoutError`,
+and anything that throws while a record is read is turned into one. `ingest` works in two passes: a call that throws leaves the book as it was. Each
 record is checked twice per read (once by the parser, once by `ingest`), so a crafted file near the
 size limit can take several seconds. The text formatter replaces control, format
 and line or paragraph separator characters (Unicode classes Cc, Cf, Zl, Zp) in names and course
