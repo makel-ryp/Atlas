@@ -1,12 +1,12 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, statSync, writeSync, ftruncateSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, appendFileSync, existsSync, statSync, writeSync, ftruncateSync, fsyncSync, symlinkSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { request } from 'node:http';
-import { connect } from 'node:net';
-import { execFile } from 'node:child_process';
+import { connect, createServer as createNetServer } from 'node:net';
+import { execFile, execFileSync } from 'node:child_process';
 import { createHub, type Hub, type HubOptions } from '../src/server.js';
 import { loadRecording, type Copy } from '../../core/src/index.js';
 
@@ -449,16 +449,15 @@ test('13b. after a restart a copy the book already holds adds nothing to the jou
 });
 
 /** The live answer and the answer of a hub started on the same folder afterwards. */
-async function assertRestartEqualsLive(dir: string, url: string, label: string): Promise<void> {
+async function assertRestartEqualsLive(dir: string, hub: Hub, url: string, label: string): Promise<void> {
   const live = await rounds(url);
-  await withHub(dir, {}, async (url2) => {
-    assert.deepEqual(await rounds(url2), live, label);
-  });
+  await hub.close(); // one hub per data folder: the first lets go before the second starts
+  assert.deepEqual(await answerOf(dir), live, label);
 }
 
 test('14. post [A], then [A, B] (B is A with HoleShot one higher): journal holds A, then A and B; a restart equals live', async () => {
   const dir = tempDir();
-  await withHub(dir, {}, async (url) => {
+  await withHub(dir, {}, async (url, hub) => {
     const a = structuredClone(copies[37]!.records[0]!) as any;
     const b = { ...structuredClone(a), HoleShot: a.HoleShot + 1 };
     const one = await post(url, [a]);
@@ -470,31 +469,31 @@ test('14. post [A], then [A, B] (B is A with HoleShot one higher): journal holds
     const live = await rounds(url);
     assert.equal(live.issues.length, 1);
     assert.equal(live.issues[0].kind, 'duplicate_shot_in_copy');
-    await assertRestartEqualsLive(dir, url, 'restart after the duplicate in one post');
+    await assertRestartEqualsLive(dir, hub, url, 'restart after the duplicate in one post');
   });
 });
 
 test('15. a changed owner posted twice: both lines are written and a restart equals live', async () => {
   const dir = tempDir();
-  await withHub(dir, {}, async (url) => {
+  await withHub(dir, {}, async (url, hub) => {
     const a = structuredClone(copies[37]!.records[0]!) as any;
     const a2 = { ...structuredClone(a), UserGuid: `${a.UserGuid}-other` };
     assert.equal((await post(url, [a])).status, 200);
     assert.deepEqual((await post(url, [a2])).body, { added: 0, revised: 0, unchanged: 0, conflicts: 1 });
     assert.deepEqual((await post(url, [a2])).body, { added: 0, revised: 0, unchanged: 0, conflicts: 1 });
     assert.deepEqual(journalLines(dir).map((l) => JSON.parse(l) as unknown[]), [[a], [a2], [a2]]);
-    await assertRestartEqualsLive(dir, url, 'restart after a changed owner');
+    await assertRestartEqualsLive(dir, hub, url, 'restart after a changed owner');
   });
 });
 
 test('16. a record that changes and later changes back is written all three times', async () => {
   const dir = tempDir();
-  await withHub(dir, {}, async (url) => {
+  await withHub(dir, {}, async (url, hub) => {
     const a = structuredClone(copies[37]!.records[0]!) as any;
     const b = { ...structuredClone(a), HoleShot: a.HoleShot + 1 };
     for (const r of [a, b, a]) assert.equal((await post(url, [r])).status, 200);
     assert.equal(journalLines(dir).length, 3);
-    await assertRestartEqualsLive(dir, url, 'restart after a change and a change back');
+    await assertRestartEqualsLive(dir, hub, url, 'restart after a change and a change back');
   });
 });
 
@@ -852,7 +851,7 @@ test('25. five posts held open at once: the fifth answers 503 busy with Retry-Af
 
 test('26. all 38 copies sent at the same moment: 38 answers 200 (a busy answer is retried) and a restart equals live', async () => {
   const dir = tempDir();
-  await withHub(dir, {}, async (url) => {
+  await withHub(dir, {}, async (url, hub) => {
     const sendOne = async (c: Copy): Promise<number> => {
       for (let attempt = 0; attempt < 400; attempt++) {
         const r = await post(url, c.records);
@@ -864,7 +863,7 @@ test('26. all 38 copies sent at the same moment: 38 answers 200 (a busy answer i
     };
     const statuses = await Promise.all(copies.map((c) => sendOne(c)));
     assert.deepEqual(statuses, copies.map(() => 200));
-    await assertRestartEqualsLive(dir, url, 'restart after 38 posts sent at once');
+    await assertRestartEqualsLive(dir, hub, url, 'restart after 38 posts sent at once');
   });
 });
 
@@ -880,4 +879,153 @@ test('27. importing the replay tool does nothing', async () => {
   });
   assert.equal(out.stdout.trim(), 'IMPORTED', out.stderr);
   assert.equal(out.code, 0);
+});
+
+// ---- round 4: a line the hub could not read back is never written; one hub per data folder ----
+
+test('28. a post whose journal line would be longer than the limit answers 413 and changes nothing; a restart equals live', async () => {
+  const dir = tempDir();
+  const rec = structuredClone(copies[37]!.records[0]!) as any;
+  const big = structuredClone(copies[37]!.records[1]!) as any;
+  // the reviewer's case: 1e20 is 4 bytes in the body and 21 bytes in the journal line
+  const text = JSON.stringify(big);
+  const LIMIT = text.length + 20000; // a normal record fits; 2000 values of 1e20 (10 KB in the body, 44 KB in the line) do not
+  const pad = Array.from({ length: 2000 }, () => '1e20').join(',');
+  const body = `{"records":[${text.slice(0, -1)},"Pad":[${pad}]}]}`;
+  assert.ok(Buffer.byteLength(body) < LIMIT, 'the body itself is inside the limit');
+  await withHub(dir, { journal: { maxLineBytes: LIMIT } }, async (url, hub) => {
+    assert.equal((await post(url, [rec])).status, 200);
+    const before = await rounds(url);
+    const size = journalSize(dir);
+    const r = await raw(url, { method: 'POST', path: '/v0/shots', headers: { 'Content-Type': 'application/json' }, body });
+    assert.deepEqual([r.status, r.body], [413, { error: 'too_large' }]);
+    assert.equal(journalSize(dir), size);
+    assert.deepEqual(await rounds(url), before);
+    // the table did not move either: the same record, small, is still written
+    assert.equal((await post(url, [{ ...rec, HoleShot: rec.HoleShot + 1 }])).status, 200);
+    await assertRestartEqualsLive(dir, hub, url, 'restart after a refused long line');
+  });
+});
+
+test('29. a second hub on the same data folder is refused and changes nothing, while the first keeps answering', async () => {
+  const dir = tempDir();
+  await withHub(dir, {}, async (url) => {
+    await postCopies(url, 0, 10);
+    // a cut-short last line, as a crash would leave it: a second hub that opened the journal first would repair it
+    appendFileSync(journalOf(dir), '[{"ShotID":"cut');
+    const size = journalSize(dir);
+    const lock = readFileSync(join(dir, 'hub.lock'), 'utf8');
+    const second = createHub({ dataDir: dir, port: 0, ...quiet });
+    try {
+      await assert.rejects(() => second.listen(), /already using this data folder/);
+      assert.equal(second.address(), undefined);
+    } finally {
+      await second.close();
+    }
+    assert.equal(journalSize(dir), size, 'the refused hub did not touch the journal');
+    assert.equal(readFileSync(join(dir, 'hub.lock'), 'utf8'), lock, 'the lock is the first hub\'s');
+    assert.equal((await fetch(`${url}/healthz`)).status, 200);
+  });
+  assert.equal(existsSync(join(dir, 'hub.lock')), false, 'close removes the lock');
+});
+
+test('30. a stale lock (its process is gone) is taken over, with one line saying so', async () => {
+  const dir = tempDir();
+  const gone = Number(execFileSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }));
+  writeFileSync(join(dir, 'hub.lock'), `${gone}\n`);
+  const said: string[] = [];
+  await withHub(dir, { warn: (l) => said.push(l) }, async (url) => {
+    assert.equal(said.length, 1);
+    assert.match(said[0]!, /stale/);
+    assert.equal(readFileSync(join(dir, 'hub.lock'), 'utf8').trim(), String(process.pid));
+    assert.equal((await fetch(`${url}/healthz`)).status, 200);
+  });
+  assert.equal(existsSync(join(dir, 'hub.lock')), false);
+});
+
+test('31. a busy port leaves the folder as it was and removes the lock', async () => {
+  const dir = tempDir();
+  await withHub(dir, {}, async (url) => {
+    await postCopies(url, 0, 5);
+  });
+  const before = readFileSync(journalOf(dir));
+  const files = readdirSync(dir).sort();
+  const blocker = createNetServer();
+  await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', () => resolve()));
+  try {
+    const port = (blocker.address() as { port: number }).port;
+    const hub = createHub({ dataDir: dir, port, ...quiet });
+    try {
+      await assert.rejects(() => hub.listen());
+    } finally {
+      await hub.close();
+    }
+    assert.deepEqual(readdirSync(dir).sort(), files);
+    assert.ok(readFileSync(journalOf(dir)).equals(before));
+  } finally {
+    await new Promise<void>((resolve) => blocker.close(() => resolve()));
+  }
+});
+
+test('32. a post the client dropped before its body ended is logged as aborted, not 500', async () => {
+  const lines: string[] = [];
+  await withHub(tempDir(), { log: (l) => lines.push(l) }, async (url) => {
+    const u = new URL(url);
+    const req = request({ host: u.hostname, port: u.port, path: '/v0/shots', method: 'POST', agent: false, headers: { 'Content-Type': 'application/json', 'Content-Length': '1000' } });
+    req.on('error', () => undefined);
+    req.write('{"records":');
+    for (let i = 0; i < 100 && !lines.some((l) => l.includes('aborted')); i++) {
+      if (i === 5) req.destroy();
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    assert.ok(lines.includes('POST /v0/shots aborted'), lines.join(' | '));
+    assert.ok(!lines.some((l) => l.includes(' 500')), 'a dropped client is not an internal error');
+  });
+});
+
+test('33. the replay tool runs as a command when started through a link to its folder', async (t) => {
+  const linkDir = tempDir();
+  const link = join(linkDir, 'src-link');
+  try {
+    symlinkSync(join(HERE, '../src'), link, 'junction');
+  } catch {
+    t.diagnostic('the OS did not allow a link or junction here: this test did not run');
+    return;
+  }
+  await withHub(tempDir(), {}, async (url) => {
+    const out = await new Promise<string>((resolve, reject) => {
+      execFile(process.execPath, ['--import', 'tsx/esm', join(link, 'replay.ts'), '--url', url], { cwd: ROOT }, (err, stdout, stderr) => {
+        if (err) reject(new Error(`replay exited with an error: ${stderr}`));
+        else resolve(stdout);
+      });
+    });
+    assert.match(out, /total 18/);
+    assertKnownAnswer(await rounds(url));
+  });
+});
+
+test('34. the journal is synced after each write and before the answer is sent', async () => {
+  const events: string[] = [];
+  const io = {
+    write: (fd: number, buf: Buffer, off: number, len: number, position: number): number => {
+      events.push('write');
+      return writeSync(fd, buf, off, len, position);
+    },
+    sync: (fd: number): void => {
+      events.push('sync');
+      fsyncSync(fd);
+    },
+  };
+  await withHub(tempDir(), { journal: { io } }, async (url) => {
+    await postCopies(url, 0, 1);
+    events.push('answer');
+    await postCopies(url, 0, 1); // nothing to write: nothing to sync
+    assert.deepEqual(events, ['write', 'sync', 'answer']);
+    const rec = structuredClone(copies[0]!.records[0]!) as any;
+    rec.HoleShot += 1;
+    events.length = 0;
+    assert.equal((await post(url, [rec])).status, 200);
+    events.push('answer');
+    assert.deepEqual(events, ['write', 'sync', 'answer']);
+  });
 });

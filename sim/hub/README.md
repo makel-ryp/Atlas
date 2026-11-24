@@ -35,6 +35,14 @@ without it. When a post has any conflict, the hub forgets every `ShotID` of that
 them in full next time. The replay test in `sim/hub/test` checks 250 seeded sequences of posts: a
 restart must answer what the live hub answered.
 
+## One hub per data folder
+
+The hub takes a lock, the file `hub.lock` in the data folder, before it opens the journal. A second hub on
+the same folder refuses to start and changes nothing; give it its own folder with `SIM_HUB_DATA`. If a
+hub was killed, its lock is stale: the next start sees the process is gone, replaces the lock and says so
+in one line. If a start ever refuses wrongly (for example the lock names a process id that now belongs to
+some other program), make sure no hub is running and delete `hub.lock` from the data folder.
+
 ## Tests
 
 `npm run test:sim` runs the library's tests and the hub's (`sim/hub/test`).

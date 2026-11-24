@@ -3,7 +3,8 @@ import type { AddressInfo } from 'node:net';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { RoundBook, UnknownLayoutError, type IngestCounts, type ShotRecord } from '../../core/src/index.js';
-import { Journal, replayFile, JOURNAL_NAME, type JournalOptions } from './journal.js';
+import { Journal, replayFile, JOURNAL_NAME, MAX_LINE_BYTES, type JournalOptions } from './journal.js';
+import { takeLock, type HeldLock } from './lock.js';
 
 export const HOST = '127.0.0.1';
 export const MAX_BODY_BYTES = 32 * 1024 * 1024;
@@ -40,6 +41,8 @@ const ROUTES = new Map<string, string>([
 ]);
 
 class BodyTooLarge extends Error {}
+/** The client dropped the connection before its body ended. */
+class ClientAborted extends Error {}
 
 function fingerprint(record: ShotRecord): string {
   return createHash('sha256').update(JSON.stringify(record)).digest('hex');
@@ -84,6 +87,8 @@ export function createHub(options: HubOptions): Hub {
   let bound: { host: string; port: number } | undefined;
   // True when a journal write failed and the file could not be cut back: no more posts until a restart.
   let unavailable = false;
+  let lock: HeldLock | undefined;
+  const maxLine = options.journal?.maxLineBytes ?? MAX_LINE_BYTES;
   let activePosts = 0;
   // Everything that changes the book runs one at a time, in arrival order.
   let chain: Promise<unknown> = Promise.resolve();
@@ -140,12 +145,13 @@ export function createHub(options: HubOptions): Hub {
       };
       const onError = (e: Error): void => {
         cleanup();
-        reject(e);
+        // a client that drops the connection mid-body makes the request fail with ECONNRESET ("aborted")
+        reject((e as NodeJS.ErrnoException).code === 'ECONNRESET' ? new ClientAborted() : e);
       };
       const onClose = (): void => {
         if (ended) return;
         cleanup();
-        reject(new Error('the connection closed before the body ended'));
+        reject(new ClientAborted());
       };
       req.on('data', onData);
       req.on('end', onEnd);
@@ -170,9 +176,38 @@ export function createHub(options: HubOptions): Hub {
     table = freshTable;
   }
 
+  /** The records of a post that the journal line holds. Runs before the library has checked them, so it trusts nothing. */
+  function keptRecords(records: ShotRecord[]): ShotRecord[] {
+    const idOf = (r: unknown): string | undefined => (typeof r === 'object' && r !== null && typeof (r as { ShotID?: unknown }).ShotID === 'string' ? (r as ShotRecord).ShotID : undefined);
+    const times = new Map<string, number>();
+    for (const r of records) {
+      const id = idOf(r);
+      if (id !== undefined) times.set(id, (times.get(id) ?? 0) + 1);
+    }
+    return records.filter((r) => {
+      const id = idOf(r);
+      return !(id !== undefined && times.get(id) === 1 && table.get(id) === fingerprint(r));
+    });
+  }
+
+  /** True when the journal line for these records would be longer than the limit the start reads. */
+  function lineTooLong(kept: ShotRecord[], limitBytes: number): boolean {
+    try {
+      return Buffer.byteLength(JSON.stringify(kept), 'utf8') > limitBytes;
+    } catch {
+      return false; // too deep to write out: the library refuses such a post
+    }
+  }
+
   /** Runs in the queue. The library's ingest and the journal write have no await between them. */
   function acceptBatch(records: ShotRecord[]): { status: number; body: unknown } {
     if (unavailable) return { status: 503, body: { error: 'journal_unavailable' } };
+    // A record is left out of the journal only when its ShotID appears once in this post and the book is known to hold
+    // exactly it: the library would count it unchanged and change nothing, so a replay cannot differ without it.
+    // The line this post would write is known now, from the post and the table alone, and it is measured before the
+    // library sees the post: the hub never writes a line it would refuse to read at the next start.
+    const kept = keptRecords(records);
+    if (kept.length > 0 && lineTooLong(kept, maxLine)) return { status: 413, body: { error: 'too_large' } };
     let counts: IngestCounts;
     try {
       counts = book.ingest(records); // a throw leaves the book as it was, and nothing is written
@@ -180,11 +215,6 @@ export function createHub(options: HubOptions): Hub {
       if (e instanceof UnknownLayoutError) return { status: 400, body: { error: 'unknown_layout' } };
       throw e;
     }
-    // A record is left out of the journal only when its ShotID appears once in this post and the book is known to hold
-    // exactly it: the library would count it unchanged and change nothing, so a replay cannot differ without it.
-    const times = new Map<string, number>();
-    for (const r of records) times.set(r.ShotID, (times.get(r.ShotID) ?? 0) + 1);
-    const kept = records.filter((r) => !(times.get(r.ShotID) === 1 && table.get(r.ShotID) === fingerprint(r)));
     if (kept.length > 0) {
       try {
         (journal as Journal).append(kept);
@@ -245,7 +275,7 @@ export function createHub(options: HubOptions): Hub {
     const wanted = ROUTES.get(path);
     // Only fixed words reach the console: never the raw path, which a client controls.
     const tag = wanted === undefined ? '-' : path;
-    let status = 500;
+    let status: number | 'aborted' = 500;
     let note = '';
     try {
       // Who is asking comes first: a web page open in a browser on this PC reaches 127.0.0.1 too, but it cannot choose
@@ -287,10 +317,16 @@ export function createHub(options: HubOptions): Hub {
           activePosts--;
         }
       }
-    } catch {
-      status = 500;
-      if (!res.headersSent) send(res, 500, { error: 'internal' });
-      else res.destroy();
+    } catch (e) {
+      if (e instanceof ClientAborted) {
+        // the client went away: not a failure of the hub, and there is nobody to answer
+        status = 'aborted';
+        res.destroy();
+      } else {
+        status = 500;
+        if (!res.headersSent) send(res, 500, { error: 'internal' });
+        else res.destroy();
+      }
     } finally {
       log(`${method === 'GET' || method === 'POST' ? method : 'other'} ${tag} ${status}${note}`);
     }
@@ -303,10 +339,12 @@ export function createHub(options: HubOptions): Hub {
       table = new Map<string, string>();
       unavailable = false;
       activePosts = 0;
-      journal = Journal.open(options.dataDir, (records) => void apply(book, table, records as ShotRecord[]), warn, options.journal);
+      // Order: the lock, then the journal is opened and replayed, then the port. A refused start touches nothing.
+      lock = takeLock(options.dataDir, warn);
       const s = createServer((req, res) => void handle(req, res));
-      server = s;
       try {
+        journal = Journal.open(options.dataDir, (records) => void apply(book, table, records as ShotRecord[]), warn, options.journal);
+        server = s;
         await new Promise<void>((resolve, reject) => {
           s.once('error', reject);
           s.listen(wantedPort, HOST, () => {
@@ -316,8 +354,10 @@ export function createHub(options: HubOptions): Hub {
         });
       } catch (e) {
         server = undefined;
-        journal.close();
+        journal?.close();
         journal = undefined;
+        lock?.release();
+        lock = undefined;
         throw e;
       }
       const a = s.address() as AddressInfo;
@@ -337,6 +377,8 @@ export function createHub(options: HubOptions): Hub {
       await chain; // let a batch in flight finish its write
       journal?.close();
       journal = undefined;
+      lock?.release();
+      lock = undefined;
     },
     address: () => bound,
   };

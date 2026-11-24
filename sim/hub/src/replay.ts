@@ -1,5 +1,6 @@
+import { realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { formatScorecard, issuesLine, loadRecording, type BookIssue, type RoundScore } from '../../core/src/index.js';
 
 const RECORDING = join(dirname(fileURLToPath(import.meta.url)), '../../fixtures/gspro-4.1.13/2026-11-23');
@@ -46,7 +47,18 @@ async function main(argv: string[]): Promise<void> {
   }
 }
 
+/** True when this file is the one node was started with: real paths on both sides, so a link to its folder does not hide it. */
+function isTheCommand(): boolean {
+  if (process.argv[1] === undefined) return false;
+  try {
+    const norm = (p: string): string => (process.platform === 'win32' ? p.toLowerCase() : p);
+    return norm(realpathSync(fileURLToPath(import.meta.url))) === norm(realpathSync(process.argv[1]));
+  } catch {
+    return false;
+  }
+}
+
 // It runs only as the command, never when another file imports it.
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isTheCommand()) {
   await main(process.argv.slice(2));
 }
