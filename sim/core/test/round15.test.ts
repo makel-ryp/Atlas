@@ -232,17 +232,37 @@ test('Z11. a file within the limit is decoded as UTF-8 and scored; exactly the l
 
 test('Z12. no record object is shared between two captures, and changing one leaves every other capture as it was', () => {
   const copies = loadRecording(RECORDING_DIR);
-  const all = copies.flatMap((c) => c.records);
-  assert.ok(all.length > 100, `found ${all.length} records`);
-  assert.equal(new Set<object>(all).size, all.length, 'no record object appears twice');
-  const arrays = copies.map((c) => c.records);
-  assert.equal(new Set<object>(arrays).size, arrays.length);
+  // every object and array reached from every record of every capture, at every depth: none may be reached twice
+  const seen = new Map<object, string>();
+  let reached = 0;
+  const walk = (v: unknown, where: string): void => {
+    if (typeof v !== 'object' || v === null) return;
+    const before = seen.get(v);
+    assert.equal(before, undefined, `an object reached from ${where} is also reached from ${before}`);
+    seen.set(v, where);
+    reached++;
+    for (const child of Object.values(v)) walk(child, where);
+  };
+  let records = 0;
+  for (const c of copies) {
+    // the walk goes through the capture's array and into every record, so two records of one capture are covered too
+    walk(c.records, `capture ${c.number}`);
+    records += c.records.length;
+  }
+  assert.ok(records > 100, `found ${records} records`);
+  assert.ok(reached > records * 2, `reached ${reached} objects: nested ones were walked`);
+  // a nested value changed in the last capture leaves every earlier capture as it was
   const snapshot = structuredClone(copies);
   const round19 = copies.filter((c) => c.round === 19);
   assert.ok(round19.length > 2);
   const last = round19.at(-1)!;
+  const first = last.records[0]! as unknown as Record<string, unknown>;
+  const nestedKey = Object.keys(first).find((k) => typeof first[k] === 'object' && first[k] !== null);
+  assert.ok(nestedKey !== undefined, 'a record holds a nested value');
+  const nested = first[nestedKey!] as Record<string, unknown>;
+  const leaf = Object.keys(nested)[0]!;
+  nested[leaf] = 'ZZTEST-B';
   last.records[0]!.HoleShot = 999;
-  last.records[0]!.PlayerName = 'ZZTEST-B';
   for (const c of round19.slice(0, -1)) {
     const s = snapshot.find((x) => x.number === c.number)!;
     assert.deepEqual(c.records, s.records, `capture ${c.number} unchanged`);
