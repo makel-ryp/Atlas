@@ -77,6 +77,52 @@ function dataValue(owner: object, key: string, where: string): unknown {
   return d.value;
 }
 
+/** True for a value that may be a proxy, tested before anything else looks at it (Array.isArray throws on a revoked one). */
+function isProxyValue(v: unknown): boolean {
+  return v !== null && typeof v === 'object' && types.isProxy(v);
+}
+
+/**
+ * A true array's own keys must be exactly `length` and the indexes from zero to one less than its length, and
+ * every index an enumerable data property. The length and value limits are checked before this is called.
+ * Returns the entries, each read once through its own property descriptor (a hole, a getter or a setter is refused).
+ */
+function arrayEntries(src: unknown[], where: string): unknown[] {
+  const length = src.length;
+  const keys = Reflect.ownKeys(src);
+  if (keys.length !== length + 1) throw new UnknownLayoutError(`${where} holds an array with holes or extra keys`);
+  const out: unknown[] = new Array(length);
+  for (let i = 0; i < length; i++) {
+    const d = Object.getOwnPropertyDescriptor(src, String(i));
+    if (d === undefined) throw new UnknownLayoutError(`${where} holds an array with holes`);
+    if (d.get !== undefined || d.set !== undefined) throw new UnknownLayoutError(`${where} holds a property that is a getter or a setter`);
+    if (d.enumerable !== true) throw new UnknownLayoutError(`${where} holds an array with a non-enumerable entry`);
+    out[i] = d.value;
+  }
+  return out;
+}
+
+/**
+ * The list of records given to `ingest`, read by the same rules as any array and with the same guarantees:
+ * the proxy test comes first (so Array.isArray never meets a revoked proxy), then the other type tests, then a
+ * true array; its length is refused over MAX_RECORDS before any entry is read; then each entry is read once
+ * through its own descriptor. Nothing of the caller's is called. Refusals are UnknownLayoutError. Returns the
+ * entries (still the caller's values: each goes through `plainCopy`).
+ */
+export function readList(list: unknown, where: string): unknown[] {
+  try {
+    if (list === null || typeof list !== 'object' || isProxyValue(list) || !mayLookInside(list) || !Array.isArray(list)) {
+      throw new UnknownLayoutError(`${where} must be a plain array`);
+    }
+    const length = list.length;
+    if (length > MAX_RECORDS) throw new UnknownLayoutError(`${where} holds too many records: more than ${MAX_RECORDS}`);
+    return arrayEntries(list, where);
+  } catch (e) {
+    if (e instanceof UnknownLayoutError) throw e;
+    throw new UnknownLayoutError(`${where} cannot be read as a plain array`);
+  }
+}
+
 interface Job {
   src: object;
   /** The plain container being filled, or undefined when only checking. */
@@ -142,9 +188,9 @@ function walk(root: object, where: string, seen: Set<object>, build: boolean): u
       if (length > MAX_ARRAY_LENGTH) throw new UnknownLayoutError(`${where} holds an array of more than ${MAX_ARRAY_LENGTH} entries`);
       values += length;
       if (values > MAX_VALUES) throw new UnknownLayoutError(`${where} holds more than ${MAX_VALUES} values`);
-      if (Object.keys(src).length !== length) throw new UnknownLayoutError(`${where} holds an array with holes`);
+      const entries = arrayEntries(src, where);
       for (let i = 0; i < length; i++) {
-        const c = convert(dataValue(src, String(i), where), depth + 1, true);
+        const c = convert(entries[i], depth + 1, true);
         if (dst !== undefined) (dst as unknown[])[i] = c.value;
       }
     } else {
@@ -178,10 +224,12 @@ export function assertShallow(value: unknown, where: string, seen: Set<object> =
  * another error type. The copy still has to pass `validateRecord`.
  */
 export function plainCopy(item: unknown, where: string, seen: Set<object>): unknown {
-  if (item === null || typeof item !== 'object' || Array.isArray(item)) {
-    throw new UnknownLayoutError(`${where} is not an object`);
-  }
   try {
+    // the proxy test comes before Array.isArray or any other look at the value
+    if (isProxyValue(item)) throw new UnknownLayoutError(`${where} holds a value that is not a plain array or object`);
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) {
+      throw new UnknownLayoutError(`${where} is not an object`);
+    }
     return walk(item, where, seen, true);
   } catch (e) {
     if (e instanceof UnknownLayoutError) throw e;
@@ -190,15 +238,14 @@ export function plainCopy(item: unknown, where: string, seen: Set<object>): unkn
 }
 
 /**
- * The one set of checks for a record, used for every record of a file and for every record given straight
- * to `ingest`: an object, not nested too deep, and each field the scorer relies on present, of the right
- * type, in range and not too long. Throws UnknownLayoutError naming the field.
+ * The field checks, for a value already known to be plain (the parser's own JSON output, or the one-pass
+ * copy): each field the scorer relies on present, of the right type, in range and not too long. Throws
+ * UnknownLayoutError naming the field. Never given a caller's object.
  */
-export function validateRecord(item: unknown, where: string): asserts item is ShotRecord {
+export function checkRecordFields(item: unknown, where: string): asserts item is ShotRecord {
   if (item === null || typeof item !== 'object' || Array.isArray(item)) {
     throw new UnknownLayoutError(`${where} is not an object`);
   }
-  assertShallow(item, where);
   const rec = item as Record<string, unknown>;
   for (const field of CHECK_ORDER) {
     const v = rec[field];
@@ -221,6 +268,48 @@ export function validateRecord(item: unknown, where: string): asserts item is Sh
   }
 }
 
+/**
+ * The one set of checks for a record given by a caller: makes the one-pass copy of what it is given (nothing
+ * of the caller's is called, each value is read once) and checks the copy, so it says exactly what `ingest`
+ * would say for the same value. Throws UnknownLayoutError; a proxy, even a revoked one, is refused first.
+ */
+export function validateRecord(item: unknown, where: string): asserts item is ShotRecord {
+  const copy = plainCopy(item, where, new Set<object>());
+  checkRecordFields(copy, where);
+}
+
+/**
+ * The same limits as `walk` (32 levels, MAX_ARRAY_LENGTH, MAX_VALUES) for what JSON.parse returned. JSON.parse
+ * can only return true arrays, plain objects and primitives, with no getters, proxies or shared objects, so
+ * the type and descriptor tests of `walk` have nothing to find here and are left out; nothing is copied.
+ */
+function assertJsonLimits(value: object, where: string): void {
+  const stack: Array<[object, number]> = [[value, 1]];
+  let values = 0;
+  while (stack.length > 0) {
+    const [v, depth] = stack.pop()!;
+    if (depth > MAX_DEPTH) throw new UnknownLayoutError(`${where} is nested more than ${MAX_DEPTH} levels deep`);
+    if (Array.isArray(v)) {
+      if (v.length > MAX_ARRAY_LENGTH) throw new UnknownLayoutError(`${where} holds an array of more than ${MAX_ARRAY_LENGTH} entries`);
+      values += v.length;
+      if (values > MAX_VALUES) throw new UnknownLayoutError(`${where} holds more than ${MAX_VALUES} values`);
+      for (let i = 0; i < v.length; i++) {
+        const c: unknown = v[i];
+        if (c !== null && typeof c === 'object') stack.push([c, depth + 1]);
+      }
+    } else {
+      const keys = Object.keys(v);
+      values += keys.length;
+      if (values > MAX_VALUES) throw new UnknownLayoutError(`${where} holds more than ${MAX_VALUES} values`);
+      const o = v as Record<string, unknown>;
+      for (const key of keys) {
+        const c = o[key];
+        if (c !== null && typeof c === 'object') stack.push([c, depth + 1]);
+      }
+    }
+  }
+}
+
 export function parseRoundFile(text: string): ShotRecord[] {
   if (typeof text !== 'string') throw new UnknownLayoutError('round file text must be a string');
   if (text.length > MAX_TEXT_CHARS) {
@@ -237,6 +326,11 @@ export function parseRoundFile(text: string): ShotRecord[] {
   if (data.length > MAX_RECORDS) {
     throw new UnknownLayoutError(`round file holds too many records: more than ${MAX_RECORDS}`);
   }
-  data.forEach((item: unknown, i: number) => validateRecord(item, `record ${i}`));
+  // what JSON.parse returned is already plain: walk it for the limits (no second copy) and check the fields
+  data.forEach((item: unknown, i: number) => {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) throw new UnknownLayoutError(`record ${i} is not an object`);
+    assertJsonLimits(item, `record ${i}`);
+    checkRecordFields(item, `record ${i}`);
+  });
   return data as ShotRecord[];
 }

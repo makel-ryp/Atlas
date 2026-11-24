@@ -59,13 +59,18 @@ A later record with the same `ShotID`, owner and round and different content is 
 The reader refuses (with `UnknownLayoutError`, naming the field) any integer field that is not a safe
 integer, a `Hole` outside 0 to 99 and a `HoleShot` outside 1 to 999, a `ShotID` or `UserGuid` longer
 than 128 characters, a `PlayerName` or `CourseKey` longer than 256, and any record nested more than
-32 levels deep (the record itself is level 1). One validator does all of this, and `ingest` runs it
-on every record it is given, so a record passed straight in (not through the parser) is checked the
-same way.
+32 levels deep (the record itself is level 1). The field checks are one internal function that is only
+given a value already known to be plain: the parser's own JSON output, or the book's copy. The exported
+`validateRecord` makes the one-pass copy of what it is given and checks the copy, so it says exactly
+what `ingest` would say for the same value (a non-enumerable field, or one that is a getter, is not part
+of the copy and is reported as missing).
 
-What `ingest` does with a record it is given, in one pass that builds the book's own plain copy as it
-goes (the copy is what is checked, stored and compared). Nothing of the caller's is ever called, and
-each value is read once:
+What `ingest` (and `validateRecord`, `plainCopy` and `assertShallow`) do with a value a caller gives
+them, in one pass that builds the book's own plain copy as it goes (the copy is what is checked, stored
+and compared). Nothing of the caller's is ever called, and each value is read once. This covers the
+list of records given to `ingest` as well as every record in it: the list is read by the same rules as
+any array (a proxy is refused first, then it must be a true array, its length is refused over 20,000
+records before any entry is read, and each entry is read once through its own descriptor).
 
 - A null, string, boolean or number is copied as JSON writes it (a number that is not finite becomes
   null, minus zero becomes zero). A bigint is refused. A function, a symbol or undefined is left out
@@ -78,9 +83,11 @@ each value is read once:
   else (a typed array, a `Map`, a `Set`, a `Date`, an instance of a class, an object from another
   realm) is refused with `UnknownLayoutError`.
 - A true array: its length is read, refused over 100,000 entries and counted against the 250,000
-  values a record may hold, all before any entry is touched; it may carry no own enumerable key that
-  is not an index; each entry is read through its own property descriptor, and a hole, a getter or a
-  setter is refused.
+  values a record may hold, all before any entry is touched; its own keys (strings and
+  symbols) must be exactly `length` and the indexes from zero to one less than the length, and every
+  index an enumerable data property; each entry is read once through its own property descriptor.
+  A hole, a getter or setter on an index, a non-enumerable index or an extra key of any kind is
+  refused.
 - A plain object: its own enumerable string keys are counted against the 250,000 values, then each is
   read through its own property descriptor (a getter or a setter is refused). Symbol keys and
   non-enumerable keys are ignored. A property named `toJSON` is like any other property: it is never
@@ -91,11 +98,21 @@ each value is read once:
   walked and copied by itself).
 
 Everything `JSON.parse` returns is a true array, a plain object or a primitive, so nothing from a file
-is refused by these tests; the parser's records go through the same rules (without building a copy).
-`JSON.stringify` is not applied to anything the caller gave. Every refusal is an `UnknownLayoutError`,
-and anything that throws while a record is read is turned into one. `ingest` works in two passes: a call that throws leaves the book as it was. Each
-record is checked twice per read (once by the parser, once by `ingest`), so a crafted file near the
-size limit can take several seconds. The text formatter replaces control, format
+is refused by these tests; the parser's records go through the same limits (32 levels, 100,000 entries, 250,000 values; no copy is
+made, and the type and descriptor tests, which JSON output cannot fail, are left out) and the field checks. `JSON.stringify` is not applied to anything the caller gave. Every refusal is an
+`UnknownLayoutError`, and anything that throws while the list or a record is read is turned into one.
+`ingest` works in two passes: a call that throws leaves the book as it was. Each record is checked twice
+per read (once by the parser, once by `ingest`), so a crafted file near the size limit can take several
+seconds.
+
+Where the rule stops: the rule above covers everything that puts data into the book (`ingest`,
+`validateRecord`, `plainCopy`, `assertShallow`). It does not cover functions that take the library's own
+output or an interface the caller supplies on purpose: `formatScorecard` and `issuesLine` print a value
+shaped like what `rounds()` or `issues()` returns (a caller who builds one by hand gets what they built),
+`runScorecard` calls the file access it is given (that is the caller's code by design), and
+`normalisedName` takes a string and returns a string.
+
+The text formatter replaces control, format
 and line or paragraph separator characters (Unicode classes Cc, Cf, Zl, Zp) in names and course
 keys with a space (a name that uses joined emoji prints with spaces between the parts) and cuts them
 to 64 code points; `rounds()` returns them exactly as the file had

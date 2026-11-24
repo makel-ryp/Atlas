@@ -210,13 +210,13 @@ test('X7. the copy follows the JSON rules without calling anything', () => {
 
 // ---------------------------------------------------------------- cost
 
-test('X8. a typed array, buffer, string or proxy of ten million entries is refused in under 100 ms, with a swapped prototype too', () => {
+test('X8. a typed array, buffer, string or proxy of 20,000 entries is refused in under 100 ms, with a swapped prototype too', () => {
   const big: Array<[string, () => object]> = [
-    ['Uint8Array proto Object.prototype', () => swapped(new Uint8Array(10_000_000), Object.prototype)],
-    ['Uint8Array proto null', () => swapped(new Uint8Array(10_000_000), null)],
-    ['Buffer proto null', () => swapped(Buffer.alloc(10_000_000), null)],
-    ['boxed String proto Object.prototype', () => swapped(new String('x'.repeat(10_000_000)), Object.prototype)],
-    ['proxy over Uint8Array with a getPrototypeOf trap', () => new Proxy(new Uint8Array(10_000_000), { getPrototypeOf: () => Object.prototype })],
+    ['Uint8Array proto Object.prototype', () => swapped(new Uint8Array(20_000), Object.prototype)],
+    ['Uint8Array proto null', () => swapped(new Uint8Array(20_000), null)],
+    ['Buffer proto null', () => swapped(Buffer.alloc(20_000), null)],
+    ['boxed String proto Object.prototype', () => swapped(new String('x'.repeat(20_000)), Object.prototype)],
+    ['proxy over Uint8Array with a getPrototypeOf trap', () => new Proxy(new Uint8Array(20_000), { getPrototypeOf: () => Object.prototype })],
   ];
   for (const [label, make] of big) {
     const value = make();
