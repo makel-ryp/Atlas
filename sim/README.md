@@ -92,6 +92,10 @@ records before any entry is read, and each entry is read once through its own de
   read through its own property descriptor (a getter or a setter is refused). Symbol keys and
   non-enumerable keys are ignored. A property named `toJSON` is like any other property: it is never
   called.
+- A running total of all the values counted this way is kept over the whole `ingest` call, and over a
+  whole parsed file, carried from record to record; more than 10,000,000 refuses the call at once. The
+  same object listed many times is counted every time it is reached, so the limit bounds what a caller
+  can make the copy cost.
 - Also refused: more than 32 levels, and any object reached a second time inside one record (a shared
   reference or a cycle; records read from a file never share objects; the same object as two records
   of one call, or a sub-object shared between two records, is not refused, because each record is
@@ -111,6 +115,10 @@ output or an interface the caller supplies on purpose: `formatScorecard` and `is
 shaped like what `rounds()` or `issues()` returns (a caller who builds one by hand gets what they built),
 `runScorecard` calls the file access it is given (that is the caller's code by design), and
 `normalisedName` takes a string and returns a string.
+
+`checkRecordFields` and `readList` are exported from `parse.ts` for the book's own use and are not part
+of the package's surface (`index.ts`). `checkRecordFields` takes a plain value only (the parser's output
+or the book's own copy) and must not be given a caller's object.
 
 The text formatter replaces control, format
 and line or paragraph separator characters (Unicode classes Cc, Cf, Zl, Zp) in names and course

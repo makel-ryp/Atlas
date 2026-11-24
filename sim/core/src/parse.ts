@@ -54,6 +54,29 @@ const CHECK_ORDER = [
 /** The longest array a record may hold, and the most values (every entry of every array and object) in one record. */
 export const MAX_ARRAY_LENGTH = 100_000;
 export const MAX_VALUES = 250_000;
+/**
+ * The most values (counted as for MAX_VALUES) in a whole `ingest` call, or in a whole parsed file, added up
+ * over every record. The same object listed many times is counted every time it is reached, so a caller cannot
+ * make the copy cost more than this. Exported from this module only.
+ */
+export const MAX_TOTAL_VALUES = 10_000_000;
+
+/** The running total of counted values over one call or one file, carried from record to record. */
+export interface ValueBudget {
+  total: number;
+  scope: 'call' | 'file';
+}
+
+export function newValueBudget(scope: 'call' | 'file'): ValueBudget {
+  return { total: 0, scope };
+}
+
+function spend(budget: ValueBudget, n: number, where: string): void {
+  budget.total += n;
+  if (budget.total > MAX_TOTAL_VALUES) {
+    throw new UnknownLayoutError(`${where}: more than ${MAX_TOTAL_VALUES} values in the whole ${budget.scope}`);
+  }
+}
 
 /**
  * Whether the walk may look inside an object. The tests run in this order and none of them runs any code of
@@ -148,7 +171,7 @@ function define(dst: Record<string, unknown>, key: string, value: unknown): void
  * any other. Also refused: more than MAX_DEPTH levels (the value itself is level 1) and an object reached a
  * second time in one record (`seen`). Own stack, no recursion. Refusals are UnknownLayoutError.
  */
-function walk(root: object, where: string, seen: Set<object>, build: boolean): unknown {
+function walk(root: object, where: string, seen: Set<object>, build: boolean, budget: ValueBudget): unknown {
   const stack: Job[] = [];
   const enter = (src: object, depth: number): unknown[] | Record<string, unknown> | undefined => {
     if (!mayLookInside(src)) throw new UnknownLayoutError(`${where} holds a value that is not a plain array or object`);
@@ -188,6 +211,7 @@ function walk(root: object, where: string, seen: Set<object>, build: boolean): u
       if (length > MAX_ARRAY_LENGTH) throw new UnknownLayoutError(`${where} holds an array of more than ${MAX_ARRAY_LENGTH} entries`);
       values += length;
       if (values > MAX_VALUES) throw new UnknownLayoutError(`${where} holds more than ${MAX_VALUES} values`);
+      spend(budget, length, where);
       const entries = arrayEntries(src, where);
       for (let i = 0; i < length; i++) {
         const c = convert(entries[i], depth + 1, true);
@@ -197,6 +221,7 @@ function walk(root: object, where: string, seen: Set<object>, build: boolean): u
       const keys = Object.keys(src);
       values += keys.length;
       if (values > MAX_VALUES) throw new UnknownLayoutError(`${where} holds more than ${MAX_VALUES} values`);
+      spend(budget, keys.length, where);
       for (const key of keys) {
         const c = convert(dataValue(src, key, where), depth + 1, false);
         if (dst !== undefined && !c.skip) define(dst as Record<string, unknown>, key, c.value);
@@ -212,9 +237,9 @@ function walk(root: object, where: string, seen: Set<object>, build: boolean): u
  * record may hold the same object. Records read from a file never share objects, so nothing from a file is
  * refused by the sharing rule.
  */
-export function assertShallow(value: unknown, where: string, seen: Set<object> = new Set()): void {
+export function assertShallow(value: unknown, where: string, seen: Set<object> = new Set(), budget: ValueBudget = newValueBudget('call')): void {
   if (value === null || typeof value !== 'object') return;
-  walk(value, where, seen, false);
+  walk(value, where, seen, false, budget);
 }
 
 /**
@@ -223,14 +248,14 @@ export function assertShallow(value: unknown, where: string, seen: Set<object> =
  * the caller's is called and each value is read once. Any failure on the way is an UnknownLayoutError, never
  * another error type. The copy still has to pass `validateRecord`.
  */
-export function plainCopy(item: unknown, where: string, seen: Set<object>): unknown {
+export function plainCopy(item: unknown, where: string, seen: Set<object>, budget: ValueBudget = newValueBudget('call')): unknown {
   try {
     // the proxy test comes before Array.isArray or any other look at the value
     if (isProxyValue(item)) throw new UnknownLayoutError(`${where} holds a value that is not a plain array or object`);
     if (item === null || typeof item !== 'object' || Array.isArray(item)) {
       throw new UnknownLayoutError(`${where} is not an object`);
     }
-    return walk(item, where, seen, true);
+    return walk(item, where, seen, true, budget);
   } catch (e) {
     if (e instanceof UnknownLayoutError) throw e;
     throw new UnknownLayoutError(`${where} cannot be read as a plain record`);
@@ -239,8 +264,9 @@ export function plainCopy(item: unknown, where: string, seen: Set<object>): unkn
 
 /**
  * The field checks, for a value already known to be plain (the parser's own JSON output, or the one-pass
- * copy): each field the scorer relies on present, of the right type, in range and not too long. Throws
- * UnknownLayoutError naming the field. Never given a caller's object.
+ * copy). It takes a plain value only and must not be given a caller's object, because it reads fields by plain
+ * access. It checks each field the scorer relies on: present, of the right type, in range and not too long.
+ * Throws UnknownLayoutError naming the field.
  */
 export function checkRecordFields(item: unknown, where: string): asserts item is ShotRecord {
   if (item === null || typeof item !== 'object' || Array.isArray(item)) {
@@ -283,7 +309,7 @@ export function validateRecord(item: unknown, where: string): asserts item is Sh
  * can only return true arrays, plain objects and primitives, with no getters, proxies or shared objects, so
  * the type and descriptor tests of `walk` have nothing to find here and are left out; nothing is copied.
  */
-function assertJsonLimits(value: object, where: string): void {
+function assertJsonLimits(value: object, where: string, budget: ValueBudget): void {
   const stack: Array<[object, number]> = [[value, 1]];
   let values = 0;
   while (stack.length > 0) {
@@ -293,6 +319,7 @@ function assertJsonLimits(value: object, where: string): void {
       if (v.length > MAX_ARRAY_LENGTH) throw new UnknownLayoutError(`${where} holds an array of more than ${MAX_ARRAY_LENGTH} entries`);
       values += v.length;
       if (values > MAX_VALUES) throw new UnknownLayoutError(`${where} holds more than ${MAX_VALUES} values`);
+      spend(budget, v.length, where);
       for (let i = 0; i < v.length; i++) {
         const c: unknown = v[i];
         if (c !== null && typeof c === 'object') stack.push([c, depth + 1]);
@@ -301,6 +328,7 @@ function assertJsonLimits(value: object, where: string): void {
       const keys = Object.keys(v);
       values += keys.length;
       if (values > MAX_VALUES) throw new UnknownLayoutError(`${where} holds more than ${MAX_VALUES} values`);
+      spend(budget, keys.length, where);
       const o = v as Record<string, unknown>;
       for (const key of keys) {
         const c = o[key];
@@ -327,9 +355,10 @@ export function parseRoundFile(text: string): ShotRecord[] {
     throw new UnknownLayoutError(`round file holds too many records: more than ${MAX_RECORDS}`);
   }
   // what JSON.parse returned is already plain: walk it for the limits (no second copy) and check the fields
+  const budget = newValueBudget('file');
   data.forEach((item: unknown, i: number) => {
     if (item === null || typeof item !== 'object' || Array.isArray(item)) throw new UnknownLayoutError(`record ${i} is not an object`);
-    assertJsonLimits(item, `record ${i}`);
+    assertJsonLimits(item, `record ${i}`, budget);
     checkRecordFields(item, `record ${i}`);
   });
   return data as ShotRecord[];
