@@ -5,11 +5,13 @@
 // applies three rules. No database, no network, no server, no file written, no environment file.
 //
 //   Rule 1  no output string contains `undefined`, `NaN` or `nulld`. A plain substring test with no
-//           exception: before the page runs, the script copies the injected data with every
-//           occurrence of those three words, inside any string value and any object key, replaced by
-//           the marker `(typed)`. The page runs on that copy and every rule reads its inputs from it,
-//           so a word cannot reach the output from the data (a note, a message, a name, an interview
-//           answer that holds one); any occurrence in the output is the page's own.
+//           exception. Before the page runs, the script copies the injected data and, in the fields
+//           that carry text a person typed (TYPED_FIELDS: display names, note and message bodies,
+//           interview answers), replaces every occurrence of those three words by the marker
+//           `(typed)`. Every other string, and every key, is left exactly as the data has it. The page
+//           runs on the copy and every rule reads its inputs from it. So a word the server wrote into
+//           any other field and the page prints is reported; a typed-text field missing from the list
+//           and holding a word fails the check until it is added (it fails closed).
 //   Rule 2  every output value built from a handicap, a target handicap, a strokes-gained number or a
 //           handicap-history value whose input is missing is exactly that field's own empty text
 //           (see RULE2_TABLE: the dash, `NA`, `No handicap on record.`, or the form's blank).
@@ -22,12 +24,13 @@
 // hcpLabel(null)), so the rules are driven by the INPUT.
 //
 // Not covered (README "What this check does not cover"): the history note when part of the history
-// is missing (T-142); a change printed from a single strokes-gained read (T-143); numbers that are
-// not a handicap, target, strokes-gained or history value; anything outside the three functions;
-// output built from what a person typed into the page since it loaded (the script never sets that
-// state); a present number being the right one (the right student's, with its plus sign), which is
-// asserted on one built-in data set only and not under --data; a page fault that depends on a text
-// being exactly one of rule 1's words.
+// is missing (T-142); a change printed from a single strokes-gained read (T-143); the mechanics
+// card's handicap for a plus player (T-144); numbers that are not a handicap, target, strokes-gained
+// or history value; anything outside the three functions; output built from what a person typed
+// into the page since it loaded (the script never sets that state); a present number being the
+// right one (the right student's, with its plus sign), asserted on one built-in data set only and
+// not under --data; a fault inside a listed typed-text field's own text, and a word the page builds
+// from pieces of typed text (for example the initials of a three-part name).
 //
 // Options:
 //   --page <path>   run this copy of the page instead of proto/Dashboard.dc.html (mutation runs
@@ -188,19 +191,59 @@ function plainResult(r) {
 const RULE1_WORDS = ['undefined', 'NaN', 'nulld']
 const MARKER = '(typed)'
 const scrub = s => RULE1_WORDS.reduce((acc, w) => acc.split(w).join(MARKER), s)
-// A copy of the injected data in which every occurrence of a rule 1 word (exact case), inside a
-// string value or an object key, is replaced by MARKER. Numbers, booleans and null are kept as they
-// are, strings without a word are unchanged, and the original is not touched. Keys are defined with
+// The fields of the injected data that carry text a person typed, and nothing else. Read from
+// server/protoData.ts (the types AtlasData, RosterRow, CoachingNoteRow); a field the server composes
+// (a status line, a label, a date, an id, a number as text) is not on the list. Only fields the
+// three functions print are listed. Pattern: dots step into an object, [] steps into each item of a list.
+const TYPED_FIELDS = [
+  // a student's display name, or their email when they set none (protoData.ts:1386; type, line 52)
+  'roster[].n',
+  // the student's email, shown when two names collide (protoData.ts:1482)
+  'roster[].dupe',
+  // the interview's five prose answers, spread from the stored interview (protoData.ts:1445; the type, lines 130-138; the page's FIELDS)
+  'roster[].file.sport', 'roster[].file.years', 'roster[].file.limits', 'roster[].file.time', 'roster[].file.goal',
+  // a coaching note's body, and its author's display name (protoData.ts:1024, 1026; type CoachingNoteRow, lines 246-249)
+  'roster[].notes[].body', 'roster[].notes[].author',
+  // a message body in the thread with a student (protoData.ts:1356; type, line 219)
+  'roster[].messages[].body',
+  // the same for the signed-in person's own row (protoData.ts:1133, 1138, 1146)
+  'meRow.n',
+  'meRow.file.sport', 'meRow.file.years', 'meRow.file.limits', 'meRow.file.time', 'meRow.file.goal',
+  'meRow.notes[].body', 'meRow.notes[].author',
+  // the signed-in person's own display name, as they typed it (protoData.ts:886)
+  'me.displayName',
+]
+// A copy of the injected data. Structure, keys and every string are as the data has them, except the
+// values at TYPED_FIELDS, in which every occurrence of a rule 1 word (exact case) is replaced by
+// MARKER. Numbers, booleans and null are kept; the original is not touched. Keys are defined with
 // defineProperty so that a key such as __proto__ stays a plain own key.
-function sanitize(v) {
-  if (typeof v === 'string') return scrub(v)
+function cloneData(v) {
   if (v === null || typeof v !== 'object') return v
-  if (Array.isArray(v)) return v.map(sanitize)
+  if (Array.isArray(v)) return v.map(cloneData)
   const o = {}
   Object.keys(v).forEach(k => {
-    Object.defineProperty(o, scrub(k), { value: sanitize(v[k]), enumerable: true, writable: true, configurable: true })
+    Object.defineProperty(o, k, { value: cloneData(v[k]), enumerable: true, writable: true, configurable: true })
   })
   return o
+}
+function scrubAt(node, segs) {
+  if (node === null || typeof node !== 'object') return
+  const list = segs[0].slice(-2) === '[]'
+  const key = list ? segs[0].slice(0, -2) : segs[0]
+  if (!Object.prototype.hasOwnProperty.call(node, key)) return
+  const val = node[key]
+  if (list) {
+    if (Array.isArray(val)) val.forEach(item => scrubAt(item, segs.slice(1)))
+  } else if (segs.length === 1) {
+    if (typeof val === 'string') node[key] = scrub(val)
+  } else {
+    scrubAt(val, segs.slice(1))
+  }
+}
+function sanitize(v) {
+  const copy = cloneData(v)
+  TYPED_FIELDS.forEach(p => scrubAt(copy, p.split('.')))
+  return copy
 }
 function rule1(result) {
   const faults = []
@@ -679,38 +722,118 @@ function mainTests(opts) {
       if (!failsWith(checks[0].run)) throw new Error('rule 1 did not report ' + w + ' printed by a faulty result')
     })
   })
-  runCase('the copy: numbers, booleans and null are kept, strings without a rule 1 word are unchanged, the original is not changed', () => {
-    const orig = { a: 4.2, b: true, c: null, d: 'ZZTEST-A', e: [1, 'x', null], f: { g: 0, h: 'plain text' }, u: undefined }
+  const typedData = () => ({
+    roster: [{
+      id: 'zz-undefined-1', n: 'undefined x', dupe: 'a@NaN.zz', intake: 'Coach request — undefined', carry: 'NaN yd driver carry', tier: 'nulld',
+      hcp: 4.2, ok: true, nothing: null,
+      file: { sport: 'NaN', years: 'nulld', limits: 'a undefined', time: 'x', goal: 'y', tier: 'undefined', phase: 'NaN' },
+      notes: [{ id: 'n1', body: 'NaN', author: 'nulld y', visibility: 'undefined', mine: false }],
+      messages: [{ id: 'm1', body: 'undefined', who: 'NaN', mine: false }],
+    }],
+    me: { name: 'NaN', displayName: 'NaN z', coaches: [{ name: 'undefined' }], hcp: '4.2' },
+    meRow: { id: 'zz-NaN-0', n: 'undefined', file: { limits: 'NaN' }, notes: [{ body: 'undefined', author: 'NaN' }], messages: [{ body: 'undefined' }] },
+  })
+  runCase('the copy: only the listed typed-text fields are changed; numbers, booleans, null and every other string are kept; the original is not changed', () => {
+    const orig = typedData()
     const before = JSON.stringify(orig)
     const copy = sanitize(orig)
     expectEqual(JSON.stringify(orig), before, 'the original after making the copy')
-    expectEqual(JSON.stringify(copy), JSON.stringify({ a: 4.2, b: true, c: null, d: 'ZZTEST-A', e: [1, 'x', null], f: { g: 0, h: 'plain text' } }), 'the copy')
-    if (copy === orig || copy.f === orig.f || copy.e === orig.e) throw new Error('the copy shares objects with the original')
-    const words = { s: 'undefined NaN nulld', o: { 'a undefined': 'NaN', 'nulld': 1 }, l: ['undefinedundefined'] }
-    const wb = JSON.stringify(words)
-    const wc = sanitize(words)
-    expectEqual(JSON.stringify(words), wb, 'the original with words')
-    expectEqual(JSON.stringify(wc), JSON.stringify({ s: MARKER + ' ' + MARKER + ' ' + MARKER, o: { ['a ' + MARKER]: MARKER, [MARKER]: 1 }, l: [MARKER + MARKER] }), 'words replaced in values and in keys')
+    const r = copy.roster[0]
+    expectEqual(r.n, MARKER + ' x', 'roster n')
+    expectEqual(r.dupe, 'a@' + MARKER + '.zz', 'roster dupe')
+    expectEqual(r.file.sport, MARKER, 'file.sport')
+    expectEqual(r.file.years, MARKER, 'file.years')
+    expectEqual(r.file.limits, 'a ' + MARKER, 'file.limits')
+    expectEqual(r.notes[0].body, MARKER, 'note body')
+    expectEqual(r.notes[0].author, MARKER + ' y', 'note author')
+    expectEqual(r.messages[0].body, MARKER, 'message body')
+    expectEqual(copy.me.displayName, MARKER + ' z', 'me.displayName')
+    expectEqual(copy.meRow.n, MARKER, 'meRow.n')
+    expectEqual(copy.meRow.file.limits, MARKER, 'meRow.file.limits')
+    expectEqual(copy.meRow.notes[0].body, MARKER, 'meRow note body')
+    // everything else is exactly as it was
+    expectEqual(r.id, 'zz-undefined-1', 'id')
+    expectEqual(r.intake, 'Coach request — undefined', 'server-composed intake line')
+    expectEqual(r.carry, 'NaN yd driver carry', 'server-composed carry')
+    expectEqual(r.tier, 'nulld', 'tier')
+    expectEqual(r.file.tier, 'undefined', 'file.tier (a closed choice)')
+    expectEqual(r.file.phase, 'NaN', 'file.phase (a closed choice)')
+    expectEqual(r.notes[0].visibility, 'undefined', 'note visibility')
+    expectEqual(r.messages[0].who, 'NaN', 'message who')
+    expectEqual(copy.me.name, 'NaN', 'me.name (not printed by the three functions)')
+    expectEqual(copy.me.coaches[0].name, 'undefined', 'me.coaches[].name (not printed by the three functions)')
+    expectEqual(copy.meRow.messages[0].body, 'undefined', 'meRow.messages (the server never fills it)')
+    expectEqual(r.hcp, 4.2, 'number')
+    expectEqual(r.ok, true, 'boolean')
+    expectEqual(r.nothing, null, 'null')
+    expectEqual(copy.me.hcp, '4.2', 'a number as text')
+    if (copy === orig || copy.roster === orig.roster || copy.roster[0].file === orig.roster[0].file || copy.roster[0].notes === orig.roster[0].notes) throw new Error('the copy shares objects with the original')
   })
-  runCase('the copy: a key holding a word is replaced, and a key such as __proto__ stays a plain own key', () => {
-    const o = JSON.parse('{"__proto__": {"x": "NaN"}, "k undefined": 1}')
-    const c = sanitize(o)
-    if (Object.keys(c).indexOf('k ' + MARKER) === -1) throw new Error('the key holding a word was not replaced: ' + Object.keys(c).join(','))
-    if (Object.keys(c).indexOf('__proto__') === -1 || Object.getPrototypeOf(c) !== Object.prototype) throw new Error('__proto__ did not stay an own key')
-    expectEqual(c.__proto__ === Object.prototype, false, 'own __proto__ key reads as own data')
+  runCase('the copy: keys are never changed (keys that would collide after a replacement stay two keys), and __proto__ stays a plain own key', () => {
+    const o = JSON.parse('{"roster": [], "drills": {"NaN": 1, "(typed)": 2, "k undefined": 3}, "__proto__": {"x": "NaN"}}')
+    const c2 = sanitize(o)
+    expectEqual(Object.keys(c2.drills).join('|'), 'NaN|(typed)|k undefined', 'the keys of drills')
+    expectEqual(c2.drills.NaN, 1, 'the value under the key NaN')
+    if (Object.keys(c2).indexOf('__proto__') === -1 || Object.getPrototypeOf(c2) !== Object.prototype) throw new Error('__proto__ did not stay an own key')
+  })
+  runCase('typed-text list: TYPED_FIELDS is compared with a second literal list (a field dropped, added or renamed is red)', () => {
+    const literal = [
+      'roster[].n', 'roster[].dupe',
+      'roster[].file.sport', 'roster[].file.years', 'roster[].file.limits', 'roster[].file.time', 'roster[].file.goal',
+      'roster[].notes[].body', 'roster[].notes[].author', 'roster[].messages[].body',
+      'meRow.n',
+      'meRow.file.sport', 'meRow.file.years', 'meRow.file.limits', 'meRow.file.time', 'meRow.file.goal',
+      'meRow.notes[].body', 'meRow.notes[].author',
+      'me.displayName',
+    ]
+    expectEqual(JSON.stringify(TYPED_FIELDS), JSON.stringify(literal), 'TYPED_FIELDS')
+  })
+  runCase('typed-text list: each listed field reaches an output through the real page (a field the page never prints, or a path that matches nothing, is seen)', () => {
+    const setAt = (node, segs, value) => {
+      const list = segs[0].slice(-2) === '[]'
+      const key = list ? segs[0].slice(0, -2) : segs[0]
+      if (list) {
+        if (!Array.isArray(node[key]) || !node[key].length) node[key] = [{}]
+        setAt(node[key][0], segs.slice(1), value)
+      } else if (segs.length === 1) {
+        node[key] = value
+      } else {
+        if (node[key] === null || typeof node[key] !== 'object') node[key] = {}
+        setAt(node[key], segs.slice(1), value)
+      }
+    }
+    TYPED_FIELDS.forEach(p => {
+      const d = /^roster/.test(p) ? coachData(coachMe(null, null), [row({ id: 'zz-test-1', n: 'ZZTEST-A' })]) : playerData(null, null)
+      setAt(d, p.split('.'), 'ZZMARK undefined')
+      const res = runPage(scriptSrc, d)
+      if (!allStrings(res).some(s => s.text.indexOf('ZZMARK ' + MARKER) !== -1)) throw new Error('the listed field ' + p + ' reaches no output string')
+      expectNone(rule1(res), 'rule 1 with a word in ' + p)
+    })
+  })
+  runCase('a word the server wrote into a field that is not on the list is reported (and a listed field is not)', () => {
+    const cases = [
+      ['intake', 'Coach request — undefined', 'pfIntake'],
+      ['carry', 'NaN yd driver carry', 'pfCarry'],
+      ['leak', 'nulld leak', 'leak'],
+    ]
+    cases.forEach(cs => {
+      const d = coachData(coachMe(null, null), [row({ id: 'zz-test-1', n: 'ZZTEST-A', [cs[0]]: cs[1] })])
+      const checks = savedChecks(d, scriptSrc)
+      const e = failsWith(checks[0].run)
+      if (!e) throw new Error('a word in ' + cs[0] + ' was not reported')
+      if (e.indexOf(cs[2]) === -1) throw new Error('the report does not name ' + cs[2] + ': ' + e)
+    })
   })
   runCase('the copy: the marker holds none of the three words', () => {
     RULE1_WORDS.forEach(w => { if (MARKER.indexOf(w) !== -1) throw new Error('the marker holds ' + w) })
     expectEqual(scrub(MARKER), MARKER, 'scrubbing the marker')
   })
-  runCase('the copy: an id that holds a rule 1 word is changed the same way wherever it occurs, so the rows still open their own students', () => {
+  runCase('an id that holds a rule 1 word is left as it is, and the rows still open their own students', () => {
     const d = coachData(coachMe(null, null), [row({ id: 'zz-undefined-1', n: 'ZZTEST-A', hcp: 4.2 }), row({ id: 'zz-NaN-2', n: 'ZZTEST-B' })])
     const res = runPage(scriptSrc, d)
-    expectEqual(res.rowIds.slice().sort().join(','), 'zz-(typed)-2,zz-(typed)-1'.split(',').sort().join(','), 'the ids the rows open')
-    expectEqual(res.data.roster[0].id, 'zz-(typed)-1', 'the roster id in the copy')
-    expectEqual(d.roster[0].id, 'zz-undefined-1', 'the original id')
+    expectEqual(res.rowIds.slice().sort().join(','), 'zz-NaN-2,zz-undefined-1', 'the ids the rows open')
+    expectEqual(res.data.roster[0].id, 'zz-undefined-1', 'the roster id in the copy')
     expectNone(rule2(res), 'rule 2')
-    expectNone(rule1(res), 'rule 1')
   })
   runCase('rule 1 is a plain substring test: a word in an output string is reported whatever the data holds', () => {
     expectSome(rule1(mk('x undefined y')), 'rule 1')
@@ -728,8 +851,9 @@ function mainTests(opts) {
     // pfHandicapTarget 5409, dnaMiHcp 5343, dnaMiGap 5344)
     const expected = {
       'ZZTEST-A': { row: '12.4', real: '12.4', target: '8', miHcp: '12.4', miGap: '+1.5' },
-      // dnaMiHcp is not asserted for the plus player: the page prints it with a minus (T-144)
-      'ZZTEST-B': { row: '+1.2', real: '+1.2', target: '+2', miGap: '-0.4' },
+      // The plus player's dnaMiHcp is asserted to be that player's own number in either sign form, and nothing else:
+      // the page prints the minus today (T-144), and the fix would print the plus; neither may turn this red.
+      'ZZTEST-B': { row: '+1.2', real: '+1.2', target: '+2', miHcpEither: ['-1.2', '+1.2'], miGap: '-0.4' },
     }
     Object.keys(expected).forEach(n => {
       const e = expected[n]
@@ -738,6 +862,7 @@ function mainTests(opts) {
       expectEqual(o.pfHandicapReal, e.real, n + ' pfHandicapReal')
       expectEqual(o.pfHandicapTarget, e.target, n + ' pfHandicapTarget')
       if (e.miHcp !== undefined) expectEqual(o.dnaMiHcp, e.miHcp, n + ' dnaMiHcp')
+      if (e.miHcpEither && e.miHcpEither.indexOf(o.dnaMiHcp) === -1) throw new Error(n + ' dnaMiHcp: expected ' + e.miHcpEither.join(' or ') + ', got ' + JSON.stringify(o.dnaMiHcp))
       expectEqual(o.dnaMiGap, e.miGap, n + ' dnaMiGap')
     })
   })

@@ -120,9 +120,11 @@ in a `vm` context with `DCLogic` stubbed), calls `rosterVals()`, `profileVals()`
 rules 1 and 2 to every string they return. The three rules are:
 
 - **Rule 1.** No output string contains `undefined`, `NaN` or `nulld`. A plain test, with no exception. Before
-  the page runs, the script copies the injected data with each of those three words, inside any string or object
-  key, replaced by `(typed)`, and runs the page on the copy: a note, message, name or interview answer that holds
-  one of the words cannot put it in the output, so any occurrence there is the page's own.
+  the page runs, the script copies the injected data and, in the fields that carry text a person typed (display
+  names, note and message bodies, interview answers), replaces each of those three words by `(typed)`; every other
+  string, and every key, is left as the data has it. The page runs on the copy. So a word the server wrote into any
+  other field and the page prints is reported, and a typed-text field missing from the script's list that holds one
+  of the words fails the check until it is added.
 - **Rule 2.** Every output value built from a missing input is exactly that field's own empty text: `—` for a
   handicap, a target handicap or a strokes-gained number (missing means null, undefined, absent, or an empty
   strokes-gained series); `NA` for a handicap-history value; `No handicap on record.` for the history note when
@@ -156,4 +158,5 @@ on that file does not run rule 3.
 - The mechanics card's handicap for a plus player, which the page prints with a minus (T-144).
 - A present number being the right one (the right student's, with its plus sign): it is asserted on one built-in
   data set only, and not under `--data`.
-- A fault that depends on a text being exactly one of rule 1's words.
+- A fault inside a listed typed-text field's own text, and a word the page builds from pieces of typed text (the
+  initials of a three-part name, for example).
