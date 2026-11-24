@@ -411,7 +411,8 @@ function mainTests(opts) {
   // data-only copy of a real run.
   const missingCopy = () => plainResult(runs.missing)
 
-  RULE1_WORDS.forEach(w => {
+  // A literal list, not RULE1_WORDS: removing a word from the rule must turn one of these red.
+  ;['undefined', 'NaN', 'nulld'].forEach(w => {
     runCase('negative: an output holding ' + w + ' is reported by rule 1', () => {
       const c = missingCopy()
       c.roster.rosterRows[0].name = 'x ' + w + ' y'
