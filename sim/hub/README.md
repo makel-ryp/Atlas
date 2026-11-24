@@ -6,6 +6,10 @@ started again without losing the round. The contract for callers is [API.md](API
 
 **It listens on this PC only (127.0.0.1) and has no sign-in. Do not expose it to a network.**
 
+Two checks keep a web page open in a browser on this PC from using it: every request must carry a
+`Host` of `127.0.0.1:<port>` or `localhost:<port>`, and a post must be `application/json`. What is
+still open: any program on this PC can post. The key per bay comes with the hosted server (card 13).
+
 ## The two commands
 
 ```bash
@@ -19,8 +23,17 @@ git ignores). `sim:replay` takes `--url` (default `http://127.0.0.1:5077`):
 
 ## Where the data is
 
-`journal.jsonl` in the data folder: one line per accepted batch, only ever appended to. Delete the
-folder to start empty. Tests use temporary folders outside the repository.
+`journal.jsonl` in the data folder: one line per accepted batch that changed something, only ever
+appended to and `fsync`ed. A record the hub already holds exactly is left out, so posting a whole
+copy twice adds nothing. Delete the folder to start empty. Tests use temporary folders outside the
+repository.
+
+Why leaving a record out is safe: the hub keeps a table of the records it knows the scores hold. A
+record is left out only when its `ShotID` appears once in the post and the table holds exactly that
+record, so the library would count it `unchanged` and change nothing, and a replay cannot differ
+without it. When a post has any conflict, the hub forgets every `ShotID` of that post and writes
+them in full next time. The replay test in `sim/hub/test` checks 250 seeded sequences of posts: a
+restart must answer what the live hub answered.
 
 ## Tests
 
