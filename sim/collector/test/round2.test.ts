@@ -218,13 +218,17 @@ test('R6b. a restart mid-round after a tidy-up queues nothing twice', async () =
   assert.equal(b.status().sent, 41);
 });
 
-test('R6c. a crash after the first of the two tidy-up writes and before the second loses nothing', async () => {
+async function crashDuringTidy(failAt: 'outbox-write' | 'sent-write-after-outbox'): Promise<void> {
   const { url } = await startHub(tempDir());
   const r = rig(url);
-  const names = ['sent.json', 'outbox.jsonl'];
+  let seen = 0;
   const spy = spyFiles(createFiles(r.data, r.gspro), (m, name, history) => {
-    const prev = history[history.length - 1];
-    return m === 'writeData' && prev !== undefined && prev[0] === 'writeData' && names.includes(name) && names.includes(prev[1]) && prev[1] !== name;
+    if (m !== 'writeData') return false;
+    const prev = [...history].reverse().find((h) => h[0] === 'writeData');
+    // The third time round is the first tidy-up after GSPro starts the new round (copy 3): the new outbox is then shorter than the old one.
+    const hit = failAt === 'outbox-write' ? name === 'outbox.jsonl' : name === 'sent.json' && prev !== undefined && prev[1] === 'outbox.jsonl';
+    if (hit) seen++;
+    return hit && seen === 3;
   });
   const a = r.make({ files: spy.files, tidyOverBytes: 500 });
   let n = 1;
@@ -242,18 +246,30 @@ test('R6c. a crash after the first of the two tidy-up writes and before the seco
   assert.equal(sumAnswers(r, 'revised'), 0);
   assert.equal(b.status().pending, 0);
   assert.equal(b.status().store, 'ok');
+}
+
+test('R6c. a crash after the first of the two tidy-up writes and before the second loses nothing', async () => {
+  await crashDuringTidy('outbox-write');
 });
 
-test('R6d. the tidy-up writes the record of what was sent first, then the outbox', async () => {
+test('R6c2. a crash on the position write that follows an outbox rewrite loses nothing (the outbox is never ahead of the record of what was sent)', async () => {
+  await crashDuringTidy('sent-write-after-outbox');
+});
+
+test('R6d. every tidy-up writes the record of what was sent first, with the position equal to the new number of lines, then the outbox', async () => {
   const { url } = await startHub(tempDir());
   const r = rig(url);
   const spy = spyFiles(createFiles(r.data, r.gspro));
   const c = r.make({ files: spy.files, tidyOverBytes: 500 });
-  await runCopies(r, c, 1, 8);
-  const writes = spy.calls.filter((x) => x[0] === 'writeData').map((x) => String(x[1]));
-  const at = writes.indexOf('outbox.jsonl');
-  assert.ok(at > 0, 'a tidy-up happened');
-  assert.equal(writes[at - 1], 'sent.json');
+  await runCopies(r, c, 1, 12);
+  const writes = spy.calls.filter((x) => x[0] === 'writeData') as Array<[string, string, string]>;
+  const outboxWrites = writes.map((w, i) => [w, i] as const).filter(([w]) => w[1] === 'outbox.jsonl');
+  assert.ok(outboxWrites.length >= 3, 'several tidy-ups happened');
+  for (const [w, i] of outboxWrites) {
+    const prev = writes[i - 1]!;
+    assert.equal(prev[1], 'sent.json');
+    assert.equal(JSON.parse(prev[2]).cursor, w[2].split('\n').length - 1);
+  }
 });
 
 test('R6e. the tidy-up never runs while a record is waiting: a hub outage with a tiny limit loses nothing', async () => {
