@@ -188,3 +188,13 @@ test('Y7. typed arrays, buffers, strings and proxies of 20,000 entries with swap
     assert.equal(b.rounds().length, 0, label);
   }
 });
+
+test('Y8. the list limit: 20,000 clean records are accepted, 20,001 are refused with the book unchanged', () => {
+  const clean = (n: number) => Array.from({ length: n }, (_, i) => rec({ ShotID: `s${i}`, UserGuid: 'guid-1' }) as unknown as ShotRecord);
+  const ok = new RoundBook();
+  assert.equal(ok.ingest(clean(20_000)).added, 20_000);
+  const b = withOne();
+  const before = snapshot(b);
+  assert.throws(() => b.ingest(clean(20_001)), (e: unknown) => e instanceof UnknownLayoutError && /too many records/.test(e.message));
+  assert.deepEqual(snapshot(b), before);
+});
