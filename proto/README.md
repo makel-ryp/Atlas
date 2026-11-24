@@ -114,14 +114,17 @@ asks whether `read` has anything in it, which switches on the empty state his ow
 ## Verifying it
 
 Sign in as the demo coach, POST `/api/session`, GET `/proto/dashboard` with the cookie. Grep alone is
-not enough — it passes while the page throws on first paint. Save the injected data to a file and run
+not enough — it passes while the page throws on first paint. Save the injected data to a file (it is the object after `window.__ATLAS_DATA__ =` in the `<script>` tag
+the server writes before the page's own first script; the server writes `<` in it as `\u003c`, so parse the value
+as JSON and do not copy it by eye) and run
 `node scripts/protoValues.test.js --data <file>`: it runs his *actual* inline script against it (`class Component`
 in a `vm` context with `DCLogic` stubbed), calls `rosterVals()`, `profileVals()` and `intakeVals()`, and applies
 rules 1 and 2 to every string they return. The three rules are:
 
 - **Rule 1.** No output string contains `undefined`, `NaN` or `nulld`. A plain test, with no exception. Before
   the page runs, the script copies the injected data and, in the fields that carry text a person typed (display
-  names, note and message bodies, interview answers), replaces each of those three words by `(typed)`; every other
+  names, note and message bodies, interview answers, drill sign-off notes and video references), replaces each of those
+  three words, whatever its case, by `(typed)`; every other
   string, and every key, is left as the data has it. The page runs on the copy. So a word the server wrote into any
   other field and the page prints is reported, and a typed-text field missing from the script's list that holds one
   of the words fails the check until it is added.
@@ -140,9 +143,10 @@ rejected those.
 The text alone cannot tell the two cases apart: `fmtSG(0.03)` and an unguarded `hcpLabel(null)` both print
 `+0.0`. So the check is driven by the input.
 
-`node scripts/protoValues.test.js` runs the three rules against test data, with no database. With
+`node scripts/protoValues.test.js` runs the three rules against built-in test data, with no database: the sets hold every number present, every number
+missing, and each number missing alone with the rest present. With
 `--data <file>` it runs rules 1 and 2 (rule 3 does not run there) against a saved copy of the injected data, for
-the signed-in run described above.
+the signed-in run described above; it checks whatever mix of present and missing numbers the real data holds.
 
 Repeat with `{ roster: [] }` for the coach-with-no-students case; the built-in run does this one, and `--data`
 on that file does not run rule 3.

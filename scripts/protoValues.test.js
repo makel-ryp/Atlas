@@ -7,7 +7,8 @@
 //   Rule 1  no output string contains `undefined`, `NaN` or `nulld`. A plain substring test with no
 //           exception. Before the page runs, the script copies the injected data and, in the fields
 //           that carry text a person typed (TYPED_FIELDS: display names, note and message bodies,
-//           interview answers), replaces every occurrence of those three words by the marker
+//           interview answers, sign-off notes and video references), replaces every occurrence of
+//           those three words, whatever their case (the page changes the case of typed text), by the marker
 //           `(typed)`. Every other string, and every key, is left exactly as the data has it. The page
 //           runs on the copy and every rule reads its inputs from it. So a word the server wrote into
 //           any other field and the page prints is reported; a typed-text field missing from the list
@@ -190,11 +191,14 @@ function plainResult(r) {
 // ─── rule 1 ──────────────────────────────────────────────────────────────────────────────────
 const RULE1_WORDS = ['undefined', 'NaN', 'nulld']
 const MARKER = '(typed)'
-const scrub = s => RULE1_WORDS.reduce((acc, w) => acc.split(w).join(MARKER), s)
+const WORD_RE = new RegExp(RULE1_WORDS.join('|'), 'gi')
+const scrub = s => s.replace(WORD_RE, MARKER)
 // The fields of the injected data that carry text a person typed, and nothing else. Read from
 // server/protoData.ts (the types AtlasData, RosterRow, CoachingNoteRow); a field the server composes
 // (a status line, a label, a date, an id, a number as text) is not on the list. Only fields the
-// three functions print are listed. Pattern: dots step into an object, [] steps into each item of a list.
+// three functions print are listed. Pattern: dots step into an object, [] steps into each item of a list,
+// * steps into each value of a map. (The organisation name inside the composed `intake` line, protoData.ts:615,
+// is not listed: the server composes that line, and a name holding one of the words is not plausible.)
 const TYPED_FIELDS = [
   // a student's display name, or their email when they set none (protoData.ts:1386; type, line 52)
   'roster[].n',
@@ -212,6 +216,10 @@ const TYPED_FIELDS = [
   'meRow.notes[].body', 'meRow.notes[].author',
   // the signed-in person's own display name, as they typed it (protoData.ts:886)
   'me.displayName',
+  // a coach's sign-off note on a drill and the pasted video reference: the type (protoData.ts:159-160), a roster row
+  // (1369-1370, 1393) and the caller's own row (865-866, 1145). `*` steps into each value of the drills map.
+  'roster[].drills.*.verifyNote', 'roster[].drills.*.videoRef',
+  'meRow.drills.*.verifyNote', 'meRow.drills.*.videoRef',
 ]
 // A copy of the injected data. Structure, keys and every string are as the data has them, except the
 // values at TYPED_FIELDS, in which every occurrence of a rule 1 word (exact case) is replaced by
@@ -228,6 +236,10 @@ function cloneData(v) {
 }
 function scrubAt(node, segs) {
   if (node === null || typeof node !== 'object') return
+  if (segs[0] === '*') {
+    Object.keys(node).forEach(k => scrubAt(node[k], segs.slice(1)))
+    return
+  }
   const list = segs[0].slice(-2) === '[]'
   const key = list ? segs[0].slice(0, -2) : segs[0]
   if (!Object.prototype.hasOwnProperty.call(node, key)) return
@@ -427,6 +439,31 @@ const presentB = () => row({
 const missingA = () => row({ id: 'zz-test-1', n: 'ZZTEST-A' })
 const missingB = () => row({ id: 'zz-test-2', n: 'ZZTEST-B', dna: dna(null, null) })
 
+// The set that covers the class: a coach with their own handicap and target, and six students who each
+// have exactly one number missing and every other field present (handicap, target, strokes-gained
+// series, the mechanics handicap, the mechanics gap, one history lookback; the tier, the five
+// interview answers, a note and a message are present for all). Every present number is different
+// from every other, so a number borrowed from another field is seen as wrong. Rows of rule 2's table
+// a student's data cannot make missing alone: the history note (it needs the whole history missing,
+// not one number) and the intake form's history fields (they come from page state, not from data).
+const EACH_MISSING = [
+  { n: 'ZZTEST-A', hcp: null, target: 3.1, sg: [0.12, 0.62, 0.32, 0.92, 1.12], miHcp: 21.7, miGap: 1.3 },
+  { n: 'ZZTEST-B', hcp: 12.2, target: null, sg: [0.23, 0.73, 0.43, 1.33, 2.23], miHcp: 22.8, miGap: 2.4 },
+  { n: 'ZZTEST-C', hcp: 13.3, target: 6.2, sg: [], miHcp: 23.9, miGap: 3.6 },
+  { n: 'ZZTEST-D', hcp: 14.4, target: 7.4, sg: [-0.66, 0.84, 1.54, 2.64, 3.34], miHcp: null, miGap: 4.7 },
+  { n: 'ZZTEST-E', hcp: 15.5, target: 8.6, sg: [0.46, 1.96, 2.76, 4.36, 5.46], miHcp: 25.4, miGap: null },
+  { n: 'ZZTEST-F', hcp: 16.6, target: 9.1, sg: [1.67, 2.87, 3.97, 5.07, 7.67], miHcp: 26.3, miGap: 6.9, noY10: true },
+]
+const eachMissingData = () => coachData(coachMe('3.3', '1.1'), EACH_MISSING.map((o, i) => row({
+  id: 'zz-test-' + (i + 1), n: o.n, tier: ['foundation', 'builder', 'competitive'][i % 3], zone: String((i % 4) + 1), days: i + 1,
+  hcp: o.hcp, target: o.target, sg: o.sg.slice(),
+  hist: { m3: 30.4 + i * 6, m6: 31.4 + i * 6, y1: 32.4 + i * 6, y3: 33.4 + i * 6, y5: 34.4 + i * 6, y10: o.noY10 ? null : 35.4 + i * 6 },
+  dna: dna(o.miHcp, o.miGap),
+  file: { sport: 'ZZ sport ' + o.n, years: String(41 + i), limits: 'ZZ limits ' + o.n, time: 'ZZ time ' + o.n, goal: 'ZZ goal ' + o.n },
+  notes: [{ id: 'zz-note-' + (i + 1), body: 'ZZ note ' + o.n, visibility: 'shared', author: null, mine: false, createdAt: null }],
+  messages: [{ id: 'zz-msg-' + (i + 1), mine: false, who: '', body: 'ZZ message ' + o.n, at: null, read: false }],
+})))
+
 // Text a person typed, which holds rule 1 words (a coach's note and a message).
 const NOTE_TEXT = 'ZZ low point is still undefined after six reads.'
 const MESSAGE_TEXT = 'ZZ the range finder said NaN yards.'
@@ -467,6 +504,8 @@ const DATA = {
     d.meRow.hist = { m3: 12.4, m6: 12.9, y1: 13.5, y3: 14, y5: null, y10: null }
     return d
   },
+  // Each number missing alone with the rest present, and the coach's own numbers (see EACH_MISSING).
+  eachMissing: eachMissingData,
   // Two students nobody can tell apart by name (no email, so `dupe` is empty); one has a handicap.
   twins: () => coachData(coachMe(null, null), [row({ id: 'zz-test-1', n: 'ZZTEST-A', hcp: 4.2 }), row({ id: 'zz-test-2', n: 'ZZTEST-A' })]),
   // A coach's note and a message that hold rule 1 words.
@@ -507,6 +546,9 @@ function expectSome(faults, label) {
 }
 function expectEqual(actual, expected, label) {
   if (actual !== expected) throw new Error(label + ': expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(actual))
+}
+function expectOneOf(actual, options, label) {
+  if (options.indexOf(actual) === -1) throw new Error(label + ': expected ' + options.join(' or ') + ', got ' + JSON.stringify(actual))
 }
 function failsWith(fn) {
   try { fn() } catch (e) { return e && e.message ? e.message : String(e) }
@@ -785,30 +827,49 @@ function mainTests(opts) {
       'meRow.file.sport', 'meRow.file.years', 'meRow.file.limits', 'meRow.file.time', 'meRow.file.goal',
       'meRow.notes[].body', 'meRow.notes[].author',
       'me.displayName',
+      'roster[].drills.*.verifyNote', 'roster[].drills.*.videoRef',
+      'meRow.drills.*.verifyNote', 'meRow.drills.*.videoRef',
     ]
     expectEqual(JSON.stringify(TYPED_FIELDS), JSON.stringify(literal), 'TYPED_FIELDS')
   })
-  runCase('typed-text list: each listed field reaches an output through the real page (a field the page never prints, or a path that matches nothing, is seen)', () => {
-    const setAt = (node, segs, value) => {
-      const list = segs[0].slice(-2) === '[]'
-      const key = list ? segs[0].slice(0, -2) : segs[0]
-      if (list) {
-        if (!Array.isArray(node[key]) || !node[key].length) node[key] = [{}]
-        setAt(node[key][0], segs.slice(1), value)
-      } else if (segs.length === 1) {
-        node[key] = value
-      } else {
-        if (node[key] === null || typeof node[key] !== 'object') node[key] = {}
-        setAt(node[key], segs.slice(1), value)
-      }
+  // Whether a field, set to 'ZZMARK undefined' in a fresh data set, reaches an output through the real page
+  // with the word replaced: the marker itself must be there (a field the page never prints, a path that
+  // matches nothing, or a field the copy does not replace all read as not reached).
+  const setAt = (node, segs, value) => {
+    if (segs[0] === '*') {
+      if (node['zz-drill-1'] === undefined || node['zz-drill-1'] === null || typeof node['zz-drill-1'] !== 'object') node['zz-drill-1'] = {}
+      setAt(node['zz-drill-1'], segs.slice(1), value)
+      return
     }
+    const list = segs[0].slice(-2) === '[]'
+    const key = list ? segs[0].slice(0, -2) : segs[0]
+    if (list) {
+      if (!Array.isArray(node[key]) || !node[key].length) node[key] = [{}]
+      setAt(node[key][0], segs.slice(1), value)
+    } else if (segs.length === 1) {
+      node[key] = value
+    } else {
+      if (node[key] === null || typeof node[key] !== 'object') node[key] = {}
+      setAt(node[key], segs.slice(1), value)
+    }
+  }
+  const reaches = p => {
+    const d = /^roster/.test(p) ? coachData(coachMe(null, null), [row({ id: 'zz-test-1', n: 'ZZTEST-A' })]) : playerData(null, null)
+    if (/drills/.test(p)) d.reviewItems = [{ id: 'zz-drill-1', name: 'ZZ drill', group: 'assessment', context: 'ZZ', detail: 'ZZ', review: true }]
+    setAt(d, p.split('.'), 'ZZMARK undefined')
+    const res = runPage(scriptSrc, d)
+    return { ok: allStrings(res).some(s => s.text.indexOf('ZZMARK ' + MARKER) !== -1), res }
+  }
+  runCase('typed-text list: each listed field reaches an output through the real page (a field the page never prints, or a path that matches nothing, is seen)', () => {
     TYPED_FIELDS.forEach(p => {
-      const d = /^roster/.test(p) ? coachData(coachMe(null, null), [row({ id: 'zz-test-1', n: 'ZZTEST-A' })]) : playerData(null, null)
-      setAt(d, p.split('.'), 'ZZMARK undefined')
-      const res = runPage(scriptSrc, d)
-      if (!allStrings(res).some(s => s.text.indexOf('ZZMARK ' + MARKER) !== -1)) throw new Error('the listed field ' + p + ' reaches no output string')
-      expectNone(rule1(res), 'rule 1 with a word in ' + p)
+      const r = reaches(p)
+      if (!r.ok) throw new Error('the listed field ' + p + ' reaches no output string')
+      expectNone(rule1(r.res), 'rule 1 with a word in ' + p)
     })
+  })
+  runCase('typed-text list: a field that is not listed does not read as reached (the reach check looks for the marker)', () => {
+    if (reaches('roster[].leak').ok) throw new Error('an unlisted field read as reached')
+    if (reaches('roster[].intake').ok) throw new Error('an unlisted field read as reached')
   })
   runCase('a word the server wrote into a field that is not on the list is reported (and a listed field is not)', () => {
     const cases = [
@@ -824,8 +885,33 @@ function mainTests(opts) {
       if (e.indexOf(cs[2]) === -1) throw new Error('the report does not name ' + cs[2] + ': ' + e)
     })
   })
-  runCase('the copy: the marker holds none of the three words', () => {
-    RULE1_WORDS.forEach(w => { if (MARKER.indexOf(w) !== -1) throw new Error('the marker holds ' + w) })
+  runCase('typed text: a capitalised or upper-case word in a listed field passes (the page changes the case of typed text)', () => {
+    const d = coachData(coachMe(null, null), [row({
+      id: 'zz-test-1', n: 'ZZTEST-A',
+      file: { limits: 'Undefined lower back pain, since spring.', goal: 'NAN is not a goal', time: 'Nulld hours, mostly' },
+    })])
+    const res = runPage(scriptSrc, d)
+    if (!allStrings(res).some(s => s.where.indexOf('pfInterviewIntro') !== -1 && s.text.indexOf(MARKER) !== -1)) throw new Error('the page did not print the lowercased answer, so this case proves nothing')
+    savedChecks(d, scriptSrc).forEach(c2 => { const e = failsWith(c2.run); if (e) throw new Error(c2.name + ' failed: ' + e) })
+    expectEqual(sanitize(d).roster[0].file.goal, MARKER + ' is not a goal', 'upper case replaced')
+  })
+  runCase('typed text: a word twice in one field, and a word in the second note of a list, are fully replaced', () => {
+    const d = coachData(coachMe(null, null), [row({
+      id: 'zz-test-1', n: 'ZZTEST-A',
+      notes: [
+        { id: 'n1', body: 'plain note', visibility: 'shared', author: null, mine: false, createdAt: null },
+        { id: 'n2', body: 'undefined and undefined and NaN NaN nulld', visibility: 'shared', author: null, mine: false, createdAt: null },
+      ],
+      messages: [{ id: 'm1', mine: false, who: '', body: 'x', at: null, read: false }, { id: 'm2', mine: false, who: '', body: 'NaN then NaN', at: null, read: false }],
+    })])
+    const c3 = sanitize(d).roster[0]
+    expectEqual(c3.notes[1].body, MARKER + ' and ' + MARKER + ' and ' + MARKER + ' ' + MARKER + ' ' + MARKER, 'the second note, all occurrences')
+    expectEqual(c3.messages[1].body, MARKER + ' then ' + MARKER, 'the second message')
+    savedChecks(d, scriptSrc).forEach(c2 => { const e = failsWith(c2.run); if (e) throw new Error(c2.name + ' failed: ' + e) })
+  })
+  runCase('the copy: the marker is not empty and holds none of the three words, in any case', () => {
+    if (!MARKER.length) throw new Error('the marker is empty')
+    RULE1_WORDS.forEach(w => { if (MARKER.toLowerCase().indexOf(w.toLowerCase()) !== -1) throw new Error('the marker holds ' + w) })
     expectEqual(scrub(MARKER), MARKER, 'scrubbing the marker')
   })
   runCase('an id that holds a rule 1 word is left as it is, and the rows still open their own students', () => {
@@ -855,21 +941,89 @@ function mainTests(opts) {
       // the page prints the minus today (T-144), and the fix would print the plus; neither may turn this red.
       'ZZTEST-B': { row: '+1.2', real: '+1.2', target: '+2', miHcpEither: ['-1.2', '+1.2'], miGap: '-0.4' },
     }
+    // Every assertion that runs is recorded, and the list is compared with a literal one, so a skipped
+    // student or a skipped check turns this red.
+    const done = []
+    const chk = (label, fn) => { fn(); done.push(label) }
     Object.keys(expected).forEach(n => {
       const e = expected[n]
       const o = fileOf(n)
-      expectEqual(rowOf(n).hcp, e.row, n + ' roster handicap')
-      expectEqual(o.pfHandicapReal, e.real, n + ' pfHandicapReal')
-      expectEqual(o.pfHandicapTarget, e.target, n + ' pfHandicapTarget')
-      if (e.miHcp !== undefined) expectEqual(o.dnaMiHcp, e.miHcp, n + ' dnaMiHcp')
-      if (e.miHcpEither && e.miHcpEither.indexOf(o.dnaMiHcp) === -1) throw new Error(n + ' dnaMiHcp: expected ' + e.miHcpEither.join(' or ') + ', got ' + JSON.stringify(o.dnaMiHcp))
-      expectEqual(o.dnaMiGap, e.miGap, n + ' dnaMiGap')
+      chk(n + ' roster', () => expectEqual(rowOf(n).hcp, e.row, n + ' roster handicap'))
+      chk(n + ' real', () => expectEqual(o.pfHandicapReal, e.real, n + ' pfHandicapReal'))
+      chk(n + ' target', () => expectEqual(o.pfHandicapTarget, e.target, n + ' pfHandicapTarget'))
+      if (e.miHcp !== undefined) chk(n + ' miHcp', () => expectEqual(o.dnaMiHcp, e.miHcp, n + ' dnaMiHcp'))
+      if (e.miHcpEither) chk(n + ' miHcpEither', () => expectOneOf(o.dnaMiHcp, e.miHcpEither, n + ' dnaMiHcp'))
+      chk(n + ' miGap', () => expectEqual(o.dnaMiGap, e.miGap, n + ' dnaMiGap'))
     })
+    expectEqual(done.join('|'),
+      'ZZTEST-A roster|ZZTEST-A real|ZZTEST-A target|ZZTEST-A miHcp|ZZTEST-A miGap|ZZTEST-B roster|ZZTEST-B real|ZZTEST-B target|ZZTEST-B miHcpEither|ZZTEST-B miGap',
+      'the assertions that ran')
+  })
+  runCase('the either-sign check fires on a wrong value and accepts both signs', () => {
+    expectEqual(failsWith(() => expectOneOf('12.4', ['-1.2', '+1.2'], 'x')) === null, false, 'a wrong value was accepted')
+    expectEqual(failsWith(() => expectOneOf('-1.2', ['-1.2', '+1.2'], 'x')), null, 'the minus form')
+    expectEqual(failsWith(() => expectOneOf('+1.2', ['-1.2', '+1.2'], 'x')), null, 'the plus form')
   })
   runCase('both students with every number: rule 1 and rule 2', () => {
     expectNone(r1('bothPresent'), 'rule 1')
     if (refsOf('bothPresent').some(r => r.missing && /pfHandicap|dnaMi|rosterRows\[\]\.hcp/.test(r.field) && !/no student selected/.test(r.where))) throw new Error('every number of both students should be present')
     expectNone(r2('bothPresent'), 'rule 2')
+  })
+
+  // ── each number missing alone, the rest present ─────────────────────────────────────────────
+  runCase('each number missing alone: rule 1, rule 2, and the data set holds what it claims', () => {
+    expectNone(r1('eachMissing'), 'rule 1')
+    expectNone(r2('eachMissing'), 'rule 2')
+    const d = datas.eachMissing
+    // every present number is different from every other (the coach's own numbers, then each student's)
+    const seen = {}
+    const add = (v, where) => {
+      const x = Number(v)
+      if (seen[x]) throw new Error('the number ' + x + ' appears twice: ' + seen[x] + ' and ' + where)
+      seen[x] = where
+    }
+    add(d.me.hcp, 'me.hcp'); add(d.me.target, 'me.target')
+    d.roster.forEach(p => {
+      if (p.hcp !== null) add(p.hcp, p.n + ' hcp')
+      if (p.target !== null) add(p.target, p.n + ' target')
+      p.sg.forEach((v, i) => add(v, p.n + ' sg ' + i))
+      Object.keys(p.hist).forEach(k => { if (p.hist[k] !== null) add(p.hist[k], p.n + ' hist ' + k) })
+      if (p.dna.mi.handicap !== null) add(p.dna.mi.handicap, p.n + ' mi.handicap')
+      if (p.dna.mi.gap !== null) add(p.dna.mi.gap, p.n + ' mi.gap')
+    })
+    // every student lacks exactly one input (the series counts as one input; one history lookback is one)
+    const lacking = d.roster.map(p => [p.hcp === null, p.target === null, p.sg.length === 0, p.dna.mi.handicap === null, p.dna.mi.gap === null, Object.keys(p.hist).some(k => p.hist[k] === null)].filter(Boolean).length)
+    expectEqual(lacking.join(','), '1,1,1,1,1,1', 'inputs missing per student')
+  })
+  runCase('each number missing alone: the one missing field shows its empty text and the fields beside it show their own values', () => {
+    const res = runs.eachMissing
+    const rowOf = n => res.roster.rosterRows.filter(r => r.name === n)[0]
+    const fileOf = n => res.profiles.filter(p => p.kind === 'student' && p.student.n === n)[0].out
+    const hist = (i, no10) => [0, 1, 2, 3, 4, 5].map(j => (no10 && j === 5 ? 'NA' : (30.4 + i * 6 + j).toFixed(1)))
+    // hand-written from what the page prints: hcpLabel 3179 (a handicap, one decimal), String(target) 5409, fmtSG 3176 for the
+    // strokes-gained now and change (5679, 5686), String(mi.handicap) 5343, the signed mi.gap 5344, pfHist 5436
+    const expected = [
+      { n: 'ZZTEST-A', row: ['—', '+1.1', '+1.0'], real: '—', target: '3.1', miHcp: '21.7', miGap: '+1.3', hist: hist(0) },
+      { n: 'ZZTEST-B', row: ['12.2', '+2.2', '+2.0'], real: '12.2', target: '—', miHcp: '22.8', miGap: '+2.4', hist: hist(1) },
+      { n: 'ZZTEST-C', row: ['13.3', '—', '—'], real: '13.3', target: '6.2', miHcp: '23.9', miGap: '+3.6', hist: hist(2) },
+      { n: 'ZZTEST-D', row: ['14.4', '+3.3', '+4.0'], real: '14.4', target: '7.4', miHcp: '—', miGap: '+4.7', hist: hist(3) },
+      { n: 'ZZTEST-E', row: ['15.5', '+5.5', '+5.0'], real: '15.5', target: '8.6', miHcp: '25.4', miGap: '—', hist: hist(4) },
+      { n: 'ZZTEST-F', row: ['16.6', '+7.7', '+6.0'], real: '16.6', target: '9.1', miHcp: '26.3', miGap: '+6.9', hist: hist(5, true) },
+    ]
+    expectEqual(expected.length, 6, 'the students asserted')
+    expected.forEach(e => {
+      const r = rowOf(e.n)
+      const o = fileOf(e.n)
+      expectEqual([r.hcp, r.sg, r.delta].join(' '), e.row.join(' '), e.n + ' roster row (handicap, strokes gained, change)')
+      expectEqual(o.pfHandicapReal, e.real, e.n + ' pfHandicapReal')
+      expectEqual(o.pfHandicapTarget, e.target, e.n + ' pfHandicapTarget')
+      expectEqual(o.dnaMiHcp, e.miHcp, e.n + ' dnaMiHcp')
+      expectEqual(o.dnaMiGap, e.miGap, e.n + ' dnaMiGap')
+      expectEqual(o.pfHist.map(h => h.value).join(' '), e.hist.join(' '), e.n + ' history values')
+    })
+    // the coach's own numbers are not shown on a student
+    const none = res.profiles.filter(p => p.kind === 'none')[0].out
+    expectEqual(none.pfHandicapReal + ' ' + none.pfHandicapTarget, '— —', 'no student selected')
   })
 
   // ── a coach with their own numbers, and a student with none ──────────────────────────────────
@@ -1126,12 +1280,15 @@ function mainTests(opts) {
     })
   })
   runCase('saved-data mode: a clean data set passes both checks', () => {
-    ;['missing', 'present', 'twins', 'prose', 'playerWithout', 'empty', 'bothPresent', 'coachOwn', 'reordered'].forEach(k => {
+    const checked = []
+    Object.keys(datas).forEach(k => {
+      checked.push(k)
       savedChecks(datas[k], scriptSrc).forEach(c => {
         const e = failsWith(c.run)
         if (e) throw new Error(k + ': ' + c.name + ' failed: ' + e)
       })
     })
+    expectEqual(checked.join(','), Object.keys(DATA).join(','), 'the built-in sets run through the saved-data function')
   })
   runCase('saved-data mode: a rule 1 word that is not a person\'s text is reported (and rule 2 is not)', () => {
     const checks = savedChecks(DATA.missing(), scriptSrc, res => { res.profiles[0].out.pfName = 'x undefined y' })
