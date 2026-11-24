@@ -148,7 +148,8 @@ missing, and each number missing alone with the rest present, for a coach lookin
 at their own file. The built-in run is a smoke check of the shapes those sets hold, and the sets are not the
 server's data: a page that borrows a number from a field they do not carry passes it. With
 `--data <file>` it runs rules 1 and 2 (rule 3 does not run there) against a saved copy of the injected data, for
-the signed-in run described above; it checks whatever mix of present and missing numbers the real data holds, and
+the signed-in run described above (the file must be the object the page was given: a file with no `roster` list is
+refused, and `{ roster: [] }` is the no-students file); it checks whatever mix of present and missing numbers the real data holds, and
 that run is the real check.
 
 Repeat with `{ roster: [] }` for the coach-with-no-students case; the built-in run does this one, and `--data`

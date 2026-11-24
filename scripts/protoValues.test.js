@@ -639,21 +639,39 @@ function savedChecks(data, scriptSrc, hook) {
 }
 
 // ─── main ────────────────────────────────────────────────────────────────────────────────────
-function mainData(opts) {
-  // The file is parsed with JSON.parse and handed to the page as data; its text is never joined
-  // into script source or evaluated.
-  let size
-  let text
-  const unreadable = () => new Error('the data file ' + opts.dataArg + ' cannot be read; refusing it')
-  try { size = fs.statSync(opts.data).size } catch (e) { throw unreadable() }
-  if (size > MAX_DATA_CHARS * 4) throw new Error('the data file is larger than ' + MAX_DATA_CHARS + ' characters; refusing it')
-  try { text = fs.readFileSync(opts.data, 'utf8') } catch (e) { throw unreadable() }
+// The text of a saved-data file to the data: parsed with JSON.parse (never evaluated or joined into source),
+// and it must be the object the page was given: an object whose `roster` is a list (an empty list is the
+// no-students file). The server always sends `roster` as a list, for a coach and for a player
+// (server/protoData.ts:381, 1164, 1485). Every refusal is one plain line that never quotes the file.
+function parseSavedData(text) {
   if (text.length > MAX_DATA_CHARS) throw new Error('the data file is larger than ' + MAX_DATA_CHARS + ' characters; refusing it')
   let data
   try { data = JSON.parse(text) } catch (e) { throw new Error('the data file is not valid JSON; refusing it') }
   if (data === null || typeof data !== 'object' || Array.isArray(data)) throw new Error('the data file does not parse to an object; refusing it')
+  if (!Array.isArray(data.roster)) throw new Error('the data file holds no roster list; it is not the dashboard\'s injected data; refusing it')
+  if (!data.roster.every(item => item !== null && typeof item === 'object' && !Array.isArray(item))) throw new Error('the data file\'s roster list holds an entry that is not an object; it is not the dashboard\'s injected data; refusing it')
+  return data
+}
+
+// The checks for a saved-data file: from the file named by --data, or (the built-in cases only) from
+// `opts.dataText`, so the same path runs in both. The script writes no file.
+function loadSavedChecks(opts) {
+  let text
+  if (opts.dataText !== undefined) {
+    text = opts.dataText
+  } else {
+    let size
+    const unreadable = () => new Error('the data file ' + opts.dataArg + ' cannot be read; refusing it')
+    try { size = fs.statSync(opts.data).size } catch (e) { throw unreadable() }
+    if (size > MAX_DATA_CHARS * 4) throw new Error('the data file is larger than ' + MAX_DATA_CHARS + ' characters; refusing it')
+    try { text = fs.readFileSync(opts.data, 'utf8') } catch (e) { throw unreadable() }
+  }
+  const data = parseSavedData(text)
   const scriptSrc = extractScript(readPage(opts))
-  savedChecks(data, scriptSrc).forEach(c => runCase(c.name, c.run))
+  return savedChecks(data, scriptSrc)
+}
+function mainData(opts) {
+  loadSavedChecks(opts).forEach(c => runCase(c.name, c.run))
 }
 
 function mainTests(opts) {
@@ -1538,6 +1556,52 @@ function mainTests(opts) {
     if (!e) throw new Error('no refusal')
     if (e.indexOf(arg) === -1) throw new Error('the message lacks the argument: ' + e)
     if (e.indexOf(path.resolve(arg)) !== -1 || /ENOENT|no such file|open '/.test(e)) throw new Error('the message holds a path or system text: ' + e)
+  })
+
+  // ── the saved-data run refuses a file that is not the dashboard's data (outside review) ─────────
+  const savedOpts = text => ({ dataText: text, page: opts.page, pageArg: opts.pageArg })
+  runCase('saved data: a file with no roster list is refused by the script\'s own line, which does not quote the file', () => {
+    const marker = 'ZZMARKERWORD'
+    const bad = [
+      '{"zz":"' + marker + '","n":1}', '{}', '{"roster":"' + marker + '"}', '{"roster":5}',
+      '{"roster":null}', '{"roster":true}', '{"roster":{"a":"' + marker + '"}}',
+    ]
+    bad.forEach(text => {
+      ;[() => parseSavedData(text), () => loadSavedChecks(savedOpts(text))].forEach(run => {
+        const e = failsWith(run)
+        if (!e) throw new Error('a file with no roster list was accepted: ' + text.slice(0, 40))
+        if (e.indexOf('holds no roster list') === -1) throw new Error('refused, but not by the roster rule: ' + e)
+        if (e.indexOf(marker) !== -1) throw new Error('the refusal quotes the file: ' + e)
+      })
+    })
+  })
+  runCase('saved data: a roster list that holds an entry that is not an object is refused by the script\'s own line', () => {
+    const marker = 'ZZMARKERWORD'
+    ;['[1,2]', '[null]', '[[]]', '["' + marker + '"]', '[true]', '[{"id":"zz1"},"' + marker + '"]'].forEach(list => {
+      const text = '{"roster":' + list + '}'
+      ;[() => parseSavedData(text), () => loadSavedChecks(savedOpts(text))].forEach(run => {
+        const e = failsWith(run)
+        if (!e) throw new Error('a roster list with a non-object entry was accepted: ' + list)
+        if (e.indexOf('holds an entry that is not an object') === -1) throw new Error('refused, but not by the entry rule: ' + e)
+        if (e.indexOf(marker) !== -1) throw new Error('the refusal quotes the file: ' + e)
+      })
+    })
+    parseSavedData('{"roster":[{}]}')
+  })
+  runCase('saved data: { "roster": [] } is accepted, and the two saved-data checks run and pass on it', () => {
+    const data = parseSavedData('{"roster":[]}')
+    expectEqual(Array.isArray(data.roster) && data.roster.length === 0, true, 'the parsed no-students file')
+    const checks = loadSavedChecks(savedOpts('{"roster":[]}'))
+    expectEqual(checks.length, 2, 'the saved-data checks')
+    checks.forEach(c2 => { const e = failsWith(c2.run); if (e) throw new Error(c2.name + ' failed: ' + e) })
+  })
+  runCase('saved data: every built-in set, written out as text and read back through the same function, is accepted', () => {
+    const names = Object.keys(DATA)
+    names.forEach(k => {
+      const back = parseSavedData(JSON.stringify(DATA[k]()))
+      if (!Array.isArray(back.roster)) throw new Error(k + ' lost its roster')
+    })
+    expectEqual(names.length >= 20, true, 'the built-in sets read back')
   })
 }
 
