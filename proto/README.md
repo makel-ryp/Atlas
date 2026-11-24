@@ -119,8 +119,9 @@ not enough — it passes while the page throws on first paint. Extract the injec
 call `rosterVals()`, `profileVals()` and `intakeVals()`, and apply three rules to every string they return:
 
 - **Rule 1.** No output string contains `undefined`, `NaN` or `nulld`. Text a person typed is not tested: a
-  string in the injected data that itself holds one of those words (a coach's note, a message) is taken out of an
-  output string before the test.
+  string in the injected data that holds one of those words and at least four other characters (a coach's note, a
+  message) is taken out of an output string before the test. A name or note that is just the word, or the word
+  with up to three other characters, is not taken out: it fails the check, and the reader settles that by eye.
 - **Rule 2.** Every output value built from a missing input is exactly that field's own empty text: `—` for a
   handicap, a target handicap or a strokes-gained number (missing means null, undefined, absent, or an empty
   strokes-gained series); `NA` for a handicap-history value; `No handicap on record.` for the history note when
@@ -149,4 +150,7 @@ on that file does not run rule 3.
 - A change printed from a single strokes-gained read (T-143).
 - Numbers that are not a handicap, a target, a strokes-gained or a handicap-history value, such as counts and days.
 - Anything outside `rosterVals()`, `profileVals()` and `intakeVals()`.
-- A fault that prints one of rule 1's words only where the data holds that same text.
+- Output the page builds from what a person has typed into the page since it loaded (the intake form's entries, an
+  unsaved target or handicap, a history typed in): the script never sets that state.
+- A fault that prints one of rule 1's words only where the data holds a text with that word and at least four other
+  characters.

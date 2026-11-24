@@ -5,8 +5,11 @@
 // applies three rules. No database, no network, no server, no file written, no environment file.
 //
 //   Rule 1  no output string contains `undefined`, `NaN` or `nulld`. Text a person typed is not
-//           tested: every string in the injected data that itself holds one of the three words is
-//           taken out of an output string, wherever it occurs in it, before the test.
+//           tested: a string in the injected data that holds one of the three words and at least four
+//           other characters is taken out of an output string, wherever it occurs in it, before the
+//           test. A data string that is just the word, or the word with up to three other characters
+//           (a name, a one-word note), is never taken out: it is tested like any other output, fails
+//           the check, and the reader settles that by eye.
 //   Rule 2  every output value built from a handicap, a target handicap, a strokes-gained number or a
 //           handicap-history value whose input is missing is exactly that field's own empty text
 //           (see RULE2_TABLE: the dash, `NA`, `No handicap on record.`, or the form's blank).
@@ -21,7 +24,9 @@
 // Not covered (README "What this check does not cover"): the history note when part of the history
 // is missing (T-142); a change printed from a single strokes-gained read (T-143); numbers that are
 // not a handicap, target, strokes-gained or history value; anything outside the three functions;
-// a fault that prints a rule 1 word only where the data holds that same text.
+// output built from what a person typed into the page since it loaded (the script never sets that
+// state); a fault that prints a rule 1 word only where the data holds a text with that word and at
+// least four other characters.
 //
 // Options:
 //   --page <path>   run this copy of the page instead of proto/Dashboard.dc.html (mutation runs
@@ -177,12 +182,14 @@ function plainResult(r) {
 
 // ─── rule 1 ──────────────────────────────────────────────────────────────────────────────────
 const RULE1_WORDS = ['undefined', 'NaN', 'nulld']
-// Every string in the injected data that itself holds a rule 1 word (a coach's note, a message, an
-// interview answer): text a person typed. Longest first, so a long text goes before a part of it.
+// Every string in the injected data that holds a rule 1 word and at least TYPED_FLOOR other characters
+// (a coach's note, a message, an interview answer): text a person typed. A shorter one (a name that
+// is just the word) is not taken out. Longest first, so a long text goes before a part of it.
+const TYPED_FLOOR = 4
 function typedTexts(data) {
   const found = new Set()
   const walk = (v, seen) => {
-    if (typeof v === 'string') { if (RULE1_WORDS.some(w => v.indexOf(w) !== -1)) found.add(v); return }
+    if (typeof v === 'string') { if (RULE1_WORDS.some(w => v.indexOf(w) !== -1 && v.length - w.length >= TYPED_FLOOR)) found.add(v); return }
     if (v === null || typeof v !== 'object' || seen.has(v)) return
     seen.add(v)
     Object.keys(v).forEach(k => walk(v[k], seen))
@@ -286,6 +293,10 @@ function rosterRefs(result, data, key, isMissing) {
   const roster = Array.isArray(data.roster) ? data.roster : []
   const rows = result.roster && result.roster.rosterRows ? result.roster.rosterRows : []
   if (rows.length !== roster.length) throw new Error('rosterRows has ' + rows.length + ' rows for ' + roster.length + ' students')
+  // Each row's own `open` handler must open one student, and together they must open every student once.
+  const opened = result.rowIds.slice().map(String).sort().join('|')
+  const wanted = roster.map(p => String(p.id)).sort().join('|')
+  if (result.rowIds.length !== roster.length || opened !== wanted) throw new Error('the roster rows do not open their own students (the ids their open handlers set are not the roster ids, each once)')
   return rows.map((row, i) => {
     const matches = roster.filter(p => p.id === result.rowIds[i])
     if (matches.length !== 1) throw new Error('cannot match rosterRows[' + i + '] to one student (' + matches.length + ' matches)')
@@ -479,7 +490,6 @@ function mainTests(opts) {
   const r1 = k => rule1(runs[k], datas[k])
   const r2 = k => rule2(runs[k], datas[k])
   const refsOf = k => rule2Refs(runs[k], datas[k])
-  const field = (k, name) => refsOf(k).filter(r => r.field.slice(r.field.indexOf('.') + 1).indexOf(name) !== -1)
 
   // Rules against each data set.
   runCase('empty roster: rule 1', () => expectNone(r1('empty'), 'rule 1'))
@@ -589,6 +599,22 @@ function mainTests(opts) {
     const ids = runs.twins.rowIds.slice().sort()
     expectEqual(ids.join(','), 'zz-test-1,zz-test-2', 'the ids the two rows open')
   })
+  runCase('the ids the rows open must be the roster ids, each once (else rule 2 refuses with a plain line)', () => {
+    const c = plainResult(runs.twins)
+    c.rowIds = ['zz-test-1', 'zz-test-1']
+    const e = failsWith(() => rule2Refs(c, datas.twins))
+    if (!e || e.indexOf('do not open their own students') === -1) throw new Error('every row opening one student was not refused: ' + e)
+    c.rowIds = ['zz-test-1']
+    if (!failsWith(() => rule2Refs(c, datas.twins))) throw new Error('a missing id was not refused')
+    c.rowIds = ['zz-test-2', 'zz-test-1']
+    if (failsWith(() => rule2Refs(c, datas.twins))) throw new Error('the right ids in the other order were refused')
+    // a missing handicap printed as a number must not go unseen when every row opens one student
+    const d = plainResult(runs.missing)
+    d.rowIds = ['zz-test-1', 'zz-test-1']
+    d.roster.rosterRows[1].hcp = '5.0'
+    const e2 = failsWith(() => expectNone(rule2(d, datas.missing), 'rule 2'))
+    if (!e2) throw new Error('rows that all open one student, with a number printed for a missing handicap, passed rule 2')
+  })
   runCase('negative: twins, the one with a missing handicap printing a number is reported by rule 2', () => {
     const c = plainResult(runs.twins)
     const i = c.rowIds.indexOf('zz-test-2')
@@ -622,6 +648,39 @@ function mainTests(opts) {
     expectSome(rule1(mk('x undefined y'), typedData), 'rule 1 with data that holds other text')
     expectSome(rule1(mk('x NaN y'), { roster: [{ n: 'ZZTEST-A' }] }), 'rule 1 with data holding no rule 1 word')
     expectSome(rule1(mk('nulld ago')), 'rule 1 with no data')
+  })
+  // A data string that is just a rule 1 word, or the word with up to three other characters, is never
+  // taken out, so it cannot hide the same word printed in another field. With four other characters
+  // it is taken out, and the word printed elsewhere is still reported.
+  RULE1_WORDS.forEach(w => {
+    runCase('rule 1: a data string that is ' + w + ' (alone, or with one, two or three other characters) does not hide ' + w + ' printed elsewhere', () => {
+      ;['', 'a', 'ab', 'abc'].forEach(extra => {
+        ;[w + extra, extra + w].forEach(s => {
+          ;[{ roster: [{ n: s }] }, { roster: [{ notes: [{ body: s }] }] }].forEach(data => {
+            expectSome(rule1(mk('x ' + w + ' y'), data), 'rule 1 with a data string ' + JSON.stringify(s) + ' printed elsewhere')
+            expectSome(rule1(mk(s), data), 'rule 1 on the string ' + JSON.stringify(s) + ' itself (a name or note that is just the word fails, settled by eye)')
+          })
+        })
+      })
+    })
+    runCase('rule 1: a data string with ' + w + ' and four other characters is taken out; ' + w + ' printed elsewhere is still reported', () => {
+      ;[w + 'abcd', 'abcd' + w, 'ab' + w + 'cd'].forEach(s => {
+        ;[{ roster: [{ n: s }] }, { roster: [{ notes: [{ body: s }] }] }].forEach(data => {
+          expectNone(rule1(mk(s), data), 'rule 1 on ' + JSON.stringify(s))
+          expectNone(rule1(mk('Note: ' + s + ' (shared)'), data), 'rule 1 on ' + JSON.stringify(s) + ' inside a longer string')
+          expectSome(rule1(mk(s + ' and ' + w), data), 'rule 1 on ' + JSON.stringify(s) + ' and a second ' + w)
+          expectSome(rule1({ roster: { a: s, b: 'x ' + w + ' y' }, profiles: [], intake: {} }, data), 'rule 1 on the word in another field')
+        })
+      })
+    })
+    runCase('saved-data mode: a ' + w + ' printed in an unrelated field is reported when the data holds a name or note that is just ' + w, () => {
+      ;[{ n: w }, { notes: [{ body: w }] }, { n: w + 'ab' }].forEach(extra => {
+        const data = DATA.missing()
+        Object.assign(data.roster[0], extra)
+        const checks = savedChecks(data, scriptSrc, res => { res.roster.rosterRows[0].leak = 'x ' + w + ' y' })
+        if (!failsWith(checks[0].run)) throw new Error('rule 1 did not report ' + w + ' with data ' + JSON.stringify(extra))
+      })
+    })
   })
   runCase('rule 1: only input strings that hold a rule 1 word are taken out (a short string without one is not)', () => {
     expectSome(rule1(mk('x undefined y'), { roster: [{ a: 'd', b: 'n', c: 'e', d: 'u' }] }), 'rule 1 with short input strings')
