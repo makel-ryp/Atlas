@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
-import { UnknownLayoutError, checkRecordFields, plainCopy, readList } from './parse.js';
+import { UnknownLayoutError, checkRecordFields, newValueBudget, plainCopy, readList } from './parse.js';
 import { normalisedName } from './text.js';
 import type { ShotRecord } from './parse.js';
 
@@ -88,10 +88,12 @@ export class RoundBook {
     const copies: ShotRecord[] = [];
     try {
       const entries = readList(records, 'records');
+      // one running total of counted values over the whole call, carried from record to record
+      const budget = newValueBudget('call');
       for (let i = 0; i < entries.length; i++) {
         // the book keeps its own plain copy, checked like a file record; the caller's object is never stored.
         // Each record has its own walk: the same object may appear as two records of one call.
-        const copy = plainCopy(entries[i], `record ${i}`, new Set<object>());
+        const copy = plainCopy(entries[i], `record ${i}`, new Set<object>(), budget);
         checkRecordFields(copy, `record ${i}`);
         copies.push(copy);
       }
