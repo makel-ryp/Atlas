@@ -45,6 +45,12 @@ contains can put text to the right of the bar.
 Player numbers are first-seen order within one book: a fresh book reading the same records in another
 order can number the players differently, so a number is only meaningful inside one book's output.
 
+A player is shown under the first name seen: the book keeps, for each player of each round, the name of the
+first record it accepted for that player, and `rounds()` and the scorecard print that name for as long as the
+book lives, whatever later reads do to the record that carried it. A record the book accepts under another name
+flags the player (and so the round); the flag stays even if a later read puts the first name back. The revision
+itself is still applied, so the score follows the newest record. A record the book refuses sets no name.
+
 A shot never changes owner. If a record arrives whose `ShotID` the book already holds under another
 `UserGuid` or another `RoundID`, it is not applied: `ingest` counts it in `conflicts`, and `issues()`
 lists it (a kind, the round id and the shot id, nothing else from the file). Inside one call
@@ -124,7 +130,10 @@ The text formatter replaces control, format
 and line or paragraph separator characters (Unicode classes Cc, Cf, Zl, Zp) in names and course
 keys with a space (a name that uses joined emoji prints with spaces between the parts) and cuts them
 to 64 code points; `rounds()` returns them exactly as the file had
-them. The command refuses a file over 50,000,000 bytes without reading it. After the rounds it
+them. The command opens a file once and takes the size and the bytes from that one handle: it refuses a file over
+50,000,000 bytes (bytes, not characters) without reading it, reads at most 50,000,001 bytes, and refuses with the same
+message if more than 50,000,000 came back, so a file replaced after the open cannot be read whole. The file name in a
+message is cleaned like any other text from outside. After the rounds it
 prints one line when the book refused anything, for example
 `Issues: 2 (duplicate_shot_in_copy 1, shot_owner_changed 1); records refused: 3`: the count of each
 kind (fixed words only) and the number of records refused over every read the command made.

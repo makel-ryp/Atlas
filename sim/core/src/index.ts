@@ -2,5 +2,5 @@ export { parseRoundFile, validateRecord, UnknownLayoutError, MAX_TEXT_CHARS, MAX
 export { RoundBook, type IngestCounts, type BookIssue, type HoleScore, type PlayerScore, type RoundScore } from './book.js';
 export { formatScorecard } from './format.js';
 export { normalisedName } from './text.js';
-export { runScorecard, issuesLine, type FileAccess, type CommandResult } from './command.js';
+export { runScorecard, issuesLine, type FileAccess, type OpenFile, type CommandResult } from './command.js';
 export { loadRecording, type Copy } from './recording.js';

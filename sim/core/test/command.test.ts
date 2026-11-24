@@ -26,18 +26,23 @@ function rec(over: Record<string, unknown> = {}): Record<string, unknown> {
 function fake(files: Record<string, string>, sizeOf?: (p: string) => number) {
   const calls: string[] = [];
   const access: FileAccess = {
-    size(p) {
-      calls.push(`size ${p}`);
-      if (sizeOf) return sizeOf(p);
+    open(p) {
+      calls.push(`open ${p}`);
       const t = files[p];
       if (t === undefined) throw Object.assign(new Error('no such file'), { code: 'ENOENT' });
-      return Buffer.byteLength(t);
-    },
-    read(p) {
-      calls.push(`read ${p}`);
-      const t = files[p];
-      if (t === undefined) throw Object.assign(new Error('no such file'), { code: 'ENOENT' });
-      return t;
+      return {
+        size() {
+          calls.push('size');
+          return sizeOf ? sizeOf(p) : Buffer.byteLength(t);
+        },
+        read(maxBytes) {
+          calls.push(`read ${maxBytes}`);
+          return Buffer.from(t).subarray(0, maxBytes);
+        },
+        close() {
+          calls.push('close');
+        },
+      };
     },
   };
   return { access, calls };
@@ -48,14 +53,14 @@ test('N23. a file over 50,000,000 bytes is refused before anything is read', () 
   const res = runScorecard('/some/where/big.dat', access, RECORDING_DIR);
   assert.equal(res.exitCode, 1);
   assert.equal(res.stdout, '');
-  assert.deepEqual(calls, ['size /some/where/big.dat'], 'only the size was asked for; the file was never read');
+  assert.deepEqual(calls, ['open /some/where/big.dat', 'size', 'close'], 'only the size was asked for; the file was never read');
   assert.match(res.stderr, /big\.dat/);
   assert.ok(!res.stderr.includes('/some/where'));
   assert.equal(res.stderr.trim().split('\n').length, 1);
   // exactly at the limit it is read
   const edge = fake({ '/p/edge.dat': '[]' }, () => 50_000_000);
   runScorecard('/p/edge.dat', edge.access, RECORDING_DIR);
-  assert.deepEqual(edge.calls, ['size /p/edge.dat', 'read /p/edge.dat']);
+  assert.deepEqual(edge.calls, ['open /p/edge.dat', 'size', 'read 50000001', 'close']);
 });
 
 test('K1. a read failure prints one line with the base name and the error code only', () => {
