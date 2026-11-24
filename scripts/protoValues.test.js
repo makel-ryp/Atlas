@@ -222,7 +222,7 @@ const TYPED_FIELDS = [
   'meRow.drills.*.verifyNote', 'meRow.drills.*.videoRef',
 ]
 // A copy of the injected data. Structure, keys and every string are as the data has them, except the
-// values at TYPED_FIELDS, in which every occurrence of a rule 1 word (exact case) is replaced by
+// values at TYPED_FIELDS, in which every occurrence of a rule 1 word (whatever its case) is replaced by
 // MARKER. Numbers, booleans and null are kept; the original is not touched. Keys are defined with
 // defineProperty so that a key such as __proto__ stays a plain own key.
 function cloneData(v) {
@@ -464,6 +464,31 @@ const eachMissingData = () => coachData(coachMe('3.3', '1.1'), EACH_MISSING.map(
   messages: [{ id: 'zz-msg-' + (i + 1), mine: false, who: '', body: 'ZZ message ' + o.n, at: null, read: false }],
 })))
 
+// The same class for a player looking at their own file (`me` and `meRow` as the server sends them to a
+// player, roster empty): five sets, each with exactly one number missing and everything else present: the
+// handicap, the target, the mechanics handicap, the mechanics gap, one history lookback (y10). Each carries a
+// tier, the five interview answers, a scored intake, a note and a message; every present number is
+// different from every other in the set (`me` mirrors `meRow`, as the server builds both from the same
+// profile). Rows of rule 2's table a player's data cannot make missing alone: the roster rows (a player has
+// no roster), the history note (it needs the whole history missing) and the intake form's history fields.
+const PLAYER_BASE = { hcp: 9.1, target: 4.3, miHcp: 21.7, miGap: 1.3, noY10: false }
+const playerEachData = over => {
+  const o = Object.assign({}, PLAYER_BASE, over)
+  const d = playerData(o.hcp === null ? null : String(o.hcp), o.target === null ? null : String(o.target))
+  d.me.tier = 'builder'
+  d.me.zone = '2'
+  d.me.coaches = [{ name: 'ZZTEST-G' }]
+  d.me.messages = [{ id: 'zz-msg-1', mine: false, who: 'ZZTEST-G', body: 'ZZ message', at: null, read: false }]
+  Object.assign(d.meRow, {
+    tier: 'builder', zone: '2',
+    file: { sport: 'ZZ sport', years: '41', limits: 'ZZ limits', time: 'ZZ time', goal: 'ZZ goal' },
+    dna: dna(o.miHcp, o.miGap),
+    hist: { m3: 30.4, m6: 31.4, y1: 32.4, y3: 33.4, y5: 34.4, y10: o.noY10 ? null : 35.4 },
+    notes: [{ id: 'zz-note-1', body: 'ZZ note', visibility: 'shared', author: null, mine: false, createdAt: null }],
+  })
+  return d
+}
+
 // Text a person typed, which holds rule 1 words (a coach's note and a message).
 const NOTE_TEXT = 'ZZ low point is still undefined after six reads.'
 const MESSAGE_TEXT = 'ZZ the range finder said NaN yards.'
@@ -506,6 +531,12 @@ const DATA = {
   },
   // Each number missing alone with the rest present, and the coach's own numbers (see EACH_MISSING).
   eachMissing: eachMissingData,
+  // The player's own file, each number missing alone (see PLAYER_BASE).
+  playerNoHcp: () => playerEachData({ hcp: null }),
+  playerNoTarget: () => playerEachData({ target: null }),
+  playerNoMiHcp: () => playerEachData({ miHcp: null }),
+  playerNoMiGap: () => playerEachData({ miGap: null }),
+  playerNoY10: () => playerEachData({ noY10: true }),
   // Two students nobody can tell apart by name (no email, so `dupe` is empty); one has a handicap.
   twins: () => coachData(coachMe(null, null), [row({ id: 'zz-test-1', n: 'ZZTEST-A', hcp: 4.2 }), row({ id: 'zz-test-2', n: 'ZZTEST-A' })]),
   // A coach's note and a message that hold rule 1 words.
@@ -909,6 +940,28 @@ function mainTests(opts) {
     expectEqual(c3.messages[1].body, MARKER + ' then ' + MARKER, 'the second message')
     savedChecks(d, scriptSrc).forEach(c2 => { const e = failsWith(c2.run); if (e) throw new Error(c2.name + ' failed: ' + e) })
   })
+  runCase('typed text: the word in the second drill\'s sign-off note and video reference is replaced too (every drill, not only the first)', () => {
+    const drills = () => ({
+      'zz-drill-1': { verifyNote: 'plain note', videoRef: 'plain ref' },
+      'zz-drill-2': { verifyNote: 'grip is undefined', videoRef: 'NaN ref' },
+    })
+    const d = coachData(coachMe(null, null), [row({ id: 'zz-test-1', n: 'ZZTEST-A', drills: drills() })])
+    d.meRow.drills = drills()
+    const cp = sanitize(d)
+    expectEqual(cp.roster[0].drills['zz-drill-2'].verifyNote, 'grip is ' + MARKER, 'roster, second drill note')
+    expectEqual(cp.roster[0].drills['zz-drill-2'].videoRef, MARKER + ' ref', 'roster, second drill reference')
+    expectEqual(cp.meRow.drills['zz-drill-2'].verifyNote, 'grip is ' + MARKER, 'meRow, second drill note')
+    expectEqual(cp.meRow.drills['zz-drill-2'].videoRef, MARKER + ' ref', 'meRow, second drill reference')
+    expectEqual(cp.roster[0].drills['zz-drill-1'].verifyNote, 'plain note', 'the first drill is unchanged')
+    // and through the real page: both drills printed, no rule 1 fault
+    d.reviewItems = [
+      { id: 'zz-drill-1', name: 'ZZ one', group: 'assessment', context: 'ZZ', detail: 'ZZ', review: true },
+      { id: 'zz-drill-2', name: 'ZZ two', group: 'assessment', context: 'ZZ', detail: 'ZZ', review: true },
+    ]
+    const res = runPage(scriptSrc, d)
+    if (!allStrings(res).some(s => s.text === 'grip is ' + MARKER)) throw new Error('the page did not print the second drill\'s note')
+    savedChecks(d, scriptSrc).forEach(c2 => { const e = failsWith(c2.run); if (e) throw new Error(c2.name + ' failed: ' + e) })
+  })
   runCase('the copy: the marker is not empty and holds none of the three words, in any case', () => {
     if (!MARKER.length) throw new Error('the marker is empty')
     RULE1_WORDS.forEach(w => { if (MARKER.toLowerCase().indexOf(w.toLowerCase()) !== -1) throw new Error('the marker holds ' + w) })
@@ -1024,6 +1077,54 @@ function mainTests(opts) {
     // the coach's own numbers are not shown on a student
     const none = res.profiles.filter(p => p.kind === 'none')[0].out
     expectEqual(none.pfHandicapReal + ' ' + none.pfHandicapTarget, '— —', 'no student selected')
+  })
+
+  // ── a player's own file, each number missing alone ──────────────────────────────────────────
+  // Expected texts, hand-written from what the page prints on a player's own file: hcpLabel (3179) of
+  // 9.1, String(4.3) (5409), String(mi.handicap) (5343), the signed gap (5344), pfHist (5436).
+  // Page state: the script's fresh page seeds `realHcp` and `targetHcp` from `me.hcp` and `me.target`
+  // (3291-3298), and the player's branches (4866, 5404) read that state first and `meRow` second. So a
+  // data set reaches both: a present `me` number is read through the state, a missing one falls to
+  // `meRow`. The script never sets state typed since load (README: not covered).
+  const HIST_TEXTS = ['30.4', '31.4', '32.4', '33.4', '34.4', '35.4']
+  const playerEachCases = [
+    ['playerNoHcp', 'the handicap', { real: DASH, target: '4.3', miHcp: '21.7', miGap: '+1.3', hist: HIST_TEXTS }],
+    ['playerNoTarget', 'the target', { real: '9.1', target: DASH, miHcp: '21.7', miGap: '+1.3', hist: HIST_TEXTS }],
+    ['playerNoMiHcp', 'the mechanics handicap', { real: '9.1', target: '4.3', miHcp: DASH, miGap: '+1.3', hist: HIST_TEXTS }],
+    ['playerNoMiGap', 'the mechanics gap', { real: '9.1', target: '4.3', miHcp: '21.7', miGap: DASH, hist: HIST_TEXTS }],
+    ['playerNoY10', 'the ten-year history lookback', { real: '9.1', target: '4.3', miHcp: '21.7', miGap: '+1.3', hist: HIST_TEXTS.slice(0, 5).concat(['NA']) }],
+  ]
+  playerEachCases.forEach(pc => {
+    const set = pc[0]
+    runCase('player, ' + pc[1] + ' missing alone: rule 1, rule 2, and the set holds what it claims', () => {
+      expectNone(r1(set), 'rule 1')
+      expectNone(r2(set), 'rule 2')
+      const d = datas[set]
+      const seen = {}
+      const add = (v, where) => {
+        const x = Number(v)
+        if (seen[x]) throw new Error('the number ' + x + ' appears twice: ' + seen[x] + ' and ' + where)
+        seen[x] = where
+      }
+      const m = d.meRow
+      if (m.hcp !== null) add(m.hcp, 'hcp')
+      if (m.target !== null) add(m.target, 'target')
+      Object.keys(m.hist).forEach(k => { if (m.hist[k] !== null) add(m.hist[k], 'hist ' + k) })
+      if (m.dna.mi.handicap !== null) add(m.dna.mi.handicap, 'mi.handicap')
+      if (m.dna.mi.gap !== null) add(m.dna.mi.gap, 'mi.gap')
+      const lacking = [m.hcp === null, m.target === null, m.dna.mi.handicap === null, m.dna.mi.gap === null, Object.keys(m.hist).some(k => m.hist[k] === null)].filter(Boolean).length
+      expectEqual(lacking, 1, 'inputs missing')
+      if (!m.tier || !m.file.limits || !m.dna || !m.notes.length || !d.me.messages.length) throw new Error('the set must carry a tier, interview answers, a scored intake, a note and a message')
+    })
+    runCase('player, ' + pc[1] + ' missing alone: the missing field shows its empty text and the fields beside it show their own values', () => {
+      const o = runs[set].profiles[0].out
+      const e = pc[2]
+      expectEqual(o.pfHandicapReal, e.real, 'pfHandicapReal')
+      expectEqual(o.pfHandicapTarget, e.target, 'pfHandicapTarget')
+      expectEqual(o.dnaMiHcp, e.miHcp, 'dnaMiHcp')
+      expectEqual(o.dnaMiGap, e.miGap, 'dnaMiGap')
+      expectEqual(o.pfHist.map(h => h.value).join(' '), e.hist.join(' '), 'history values')
+    })
   })
 
   // ── a coach with their own numbers, and a student with none ──────────────────────────────────

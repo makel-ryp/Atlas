@@ -144,7 +144,8 @@ The text alone cannot tell the two cases apart: `fmtSG(0.03)` and an unguarded `
 `+0.0`. So the check is driven by the input.
 
 `node scripts/protoValues.test.js` runs the three rules against built-in test data, with no database: the sets hold every number present, every number
-missing, and each number missing alone with the rest present. With
+missing, and each number missing alone with the rest present, for a coach looking at students and for a player looking
+at their own file. With
 `--data <file>` it runs rules 1 and 2 (rule 3 does not run there) against a saved copy of the injected data, for
 the signed-in run described above; it checks whatever mix of present and missing numbers the real data holds.
 
