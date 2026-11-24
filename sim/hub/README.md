@@ -25,7 +25,7 @@ git ignores). `sim:replay` takes `--url` (default `http://127.0.0.1:5077`):
 
 `journal.jsonl` in the data folder: one line per accepted batch that changed something, only ever
 appended to and `fsync`ed. A record the hub already holds exactly is left out, so posting a whole
-copy twice adds nothing. Delete the folder to start empty. Tests use temporary folders outside the
+copy twice adds nothing. To start empty, stop the hub first, then delete the folder. If the folder, its journal or the hub's lock is removed or replaced while the hub is running, the hub notices before the next shot is written, prints one line, and answers every later post 503 until it is restarted (the two GET addresses go on answering). Tests use temporary folders outside the
 repository.
 
 Why leaving a record out is safe: the hub keeps a table of the records it knows the scores hold. A
@@ -40,7 +40,7 @@ restart must answer what the live hub answered.
 The hub takes a lock, a numbered file `hub.lock.<n>` in the data folder, before it opens the journal. A second hub on
 the same folder refuses to start and changes nothing; give it its own folder with `SIM_HUB_DATA`. If a
 hub was killed, its lock is stale: the next start sees the process is gone, replaces the lock and says so
-in one line. A start that fails on the lock or on a busy port changes nothing in the folder (the folder itself may be created, for the lock), and the journal is read only after the port is bound; a request that arrives while it is being read gets 503 busy. If a start ever refuses wrongly (for example the lock names a process id that now belongs to
+in one line. A start that fails on the lock or on a busy port changes nothing in the folder (the folder itself may be created, for the lock), and the journal is read only after the port is bound; a request that arrives while it is being read gets 503 busy. The refusal names the lock file and the process id in it, and says that the process may be another program: a lock only holds an id, and after a restart of the PC that id can belong to anything. Stop nothing; delete the named lock file and start again. (A lock that names the starting process itself, with a token no hub here holds, is a leftover and is replaced with one line.) If a start ever refuses wrongly (for example the lock names a process id that now belongs to
 some other program), make sure no hub is running and delete the `hub.lock.<n>` file the message names from the data folder (any `hub.lock.tmp-*` leftover of a crash is removed by the next start; a plain `hub.lock` or `hub.lock.takeover` from an older build is ignored and may be deleted). The lock needs a file system that supports hard links (NTFS and ordinary Linux or macOS folders do; some network or removable drives do not): on one that does not, the hub refuses to start and says so, and `SIM_HUB_DATA` must point somewhere else.
 
 ## Tests

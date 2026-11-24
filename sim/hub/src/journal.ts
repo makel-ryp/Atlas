@@ -1,4 +1,4 @@
-import { appendFileSync, closeSync, existsSync, fsyncSync, ftruncateSync, mkdirSync, openSync, readSync, truncateSync, writeSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, fstatSync, fsyncSync, ftruncateSync, mkdirSync, openSync, readSync, statSync, truncateSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 
 export const JOURNAL_NAME = 'journal.jsonl';
@@ -193,6 +193,22 @@ export class Journal {
     }
     if (!existsSync(file)) closeSync(openSync(file, 'a'));
     return new Journal(file, openSync(file, 'r+'), good, options.io);
+  }
+
+  /**
+   * True while the file this journal holds open is still the file at the journal's path: the same device and file number
+   * (read as big integers). A path that is gone, or now names another file, fails. Nothing is ever written to a file that
+   * has lost its name.
+   */
+  sameFile(): boolean {
+    if (this.fd === undefined) return false;
+    try {
+      const held = fstatSync(this.fd, { bigint: true });
+      const named = statSync(this.file, { bigint: true });
+      return held.dev === named.dev && held.ino === named.ino;
+    } catch {
+      return false;
+    }
   }
 
   /** True when a write failed and the file could not be cut back: nothing more may be appended. */

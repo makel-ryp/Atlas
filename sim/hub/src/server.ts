@@ -24,6 +24,8 @@ export interface HubOptions {
   warn?: (line: string) => void;
   /** For tests: the journal's piece size and line limit, and a seam that makes a write fail part-way. */
   journal?: JournalOptions;
+  /** How long a post may take to send its whole body, from its headers. Default 30 seconds; settable for tests. */
+  bodyTimeoutMs?: number;
 }
 
 export interface Hub {
@@ -41,6 +43,8 @@ const ROUTES = new Map<string, string>([
 ]);
 
 class BodyTooLarge extends Error {}
+/** The body was not complete in time. */
+class BodyTimeout extends Error {}
 /** The client dropped the connection before its body ended. */
 class ClientAborted extends Error {}
 
@@ -79,6 +83,7 @@ export function createHub(options: HubOptions): Hub {
   const warn = options.warn ?? ((l: string) => console.warn(l));
   const limit = options.maxBodyBytes ?? MAX_BODY_BYTES;
   const wantedPort = options.port ?? 5077;
+  const bodyTimeoutMs = options.bodyTimeoutMs ?? 30_000;
 
   let book = new RoundBook();
   let table = new Map<string, string>();
@@ -87,6 +92,7 @@ export function createHub(options: HubOptions): Hub {
   let bound: { host: string; port: number } | undefined;
   // True when a journal write failed and the file could not be cut back: no more posts until a restart.
   let unavailable = false;
+  let lostNoticeGiven = false;
   let lock: HeldLock | undefined;
   // True from the moment the port is bound until the journal has been replayed: every request answers 503 busy.
   let starting = false;
@@ -125,7 +131,13 @@ export function createHub(options: HubOptions): Hub {
       const parts: Buffer[] = [];
       let size = 0;
       let ended = false;
+      // the hub's own time limit on a body: a sender that dribbles cannot hold a slot for ever
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new BodyTimeout());
+      }, bodyTimeoutMs);
       const cleanup = (): void => {
+        clearTimeout(timer);
         req.off('data', onData);
         req.off('end', onEnd);
         req.off('error', onError);
@@ -201,9 +213,31 @@ export function createHub(options: HubOptions): Hub {
     }
   }
 
+  /**
+   * The journal this hub holds open is still the file at its path, and this hub's own lock is still its own. If either is gone the
+   * hub must never write again: a line written now would go into a file that has lost its name, or over another hub's lines.
+   */
+  function lost(): boolean {
+    return !(journal as Journal).sameFile() || !(lock as HeldLock).stillHeld();
+  }
+
+  /** From now on this hub takes no posts until it is restarted; one plain line says so, once. */
+  function markLost(): void {
+    unavailable = true;
+    if (!lostNoticeGiven) {
+      lostNoticeGiven = true;
+      warn('the data folder, its journal or this hub\'s lock was removed or replaced while the hub was running: this hub takes no more shots; restart it');
+    }
+  }
+
   /** Runs in the queue. The library's ingest and the journal write have no await between them. */
   function acceptBatch(records: ShotRecord[]): { status: number; body: unknown } {
     if (unavailable) return { status: 503, body: { error: 'journal_unavailable' } };
+    // first of two looks: before anything is written (or the book touched)
+    if (lost()) {
+      markLost();
+      return { status: 503, body: { error: 'journal_unavailable' } };
+    }
     // A record is left out of the journal only when its ShotID appears once in this post and the book is known to hold
     // exactly it: the library would count it unchanged and change nothing, so a replay cannot differ without it.
     // The line this post would write is known now, from the post and the table alone, and it is measured before the
@@ -241,6 +275,18 @@ export function createHub(options: HubOptions): Hub {
         }
         throw e;
       }
+      // second look: the line is on the disk, but is it in a file that still has its name, under a lock that is still ours? If not the
+      // post is handled as a failed write is: the book is rebuilt from what the path now holds, and the answer is 500. (The file is
+      // not cut back here: it may by now be another hub's journal.)
+      if (lost()) {
+        markLost();
+        try {
+          rebuild();
+        } catch {
+          // the book is then whatever it was; the hub takes no more posts
+        }
+        throw new Error('the journal was lost while a line was being written');
+      }
     }
     updateTable(table, records, counts);
     return { status: 200, body: counts };
@@ -255,6 +301,10 @@ export function createHub(options: HubOptions): Hub {
       if (e instanceof BodyTooLarge) {
         refuseAndDrain(req, res, 413, { error: 'too_large' });
         return { status: 413, note: '' };
+      }
+      if (e instanceof BodyTimeout) {
+        refuseAndDrain(req, res, 408, { error: 'body_timeout' }, { Connection: 'close' });
+        return { status: 408, note: '' };
       }
       throw e;
     }

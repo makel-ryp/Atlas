@@ -1,6 +1,6 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, chmodSync, unlinkSync, rmSync, readFileSync, writeFileSync, appendFileSync, existsSync, statSync, writeSync, ftruncateSync, fsyncSync, symlinkSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, chmodSync, unlinkSync, renameSync, rmSync, readFileSync, writeFileSync, appendFileSync, existsSync, statSync, writeSync, ftruncateSync, fsyncSync, symlinkSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -922,7 +922,7 @@ test('29. a second hub on the same data folder is refused and changes nothing, w
     const lock = readFileSync(join(dir, 'hub.lock.1'), 'utf8');
     const second = createHub({ dataDir: dir, port: 0, ...quiet });
     try {
-      await assert.rejects(() => second.listen(), /already using this data folder/);
+      await assert.rejects(() => second.listen(), /holds this data folder/);
       assert.equal(second.address(), undefined);
     } finally {
       await second.close();
@@ -1241,8 +1241,13 @@ test('42. a start that fails on the lock gives a plain message with no part of t
   assert.match(messages[2]!, /delete/);
   // 4. a folder with a read-only numbered lock of a running process is a plain live-holder refusal
   const dir4 = tempDir();
-  writeFileSync(join(dir4, 'hub.lock.5'), `${process.pid} abcdef\n`);
-  await attempt(dir4);
+  const other = await stranger();
+  try {
+    writeFileSync(join(dir4, 'hub.lock.5'), `${other.pid} 000000000000000000000000\n`);
+    await attempt(dir4);
+  } finally {
+    other.kill();
+  }
   noPath(dir4, messages[3]!);
 });
 
@@ -1360,6 +1365,13 @@ test('41. while the journal is replayed every request answers 503 busy; afterwar
 
 const GOOD_TOKEN = '0'.repeat(24);
 
+/** A running process that is not a hub (it ends on its own after 60 seconds). */
+async function stranger(): Promise<{ pid: number; kill: () => void }> {
+  const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'ignore' });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  return { pid: child.pid!, kill: () => void child.kill() };
+}
+
 test('43. a starter asleep while two generations pass is refused, and exactly one hub holds a lock (10 trials)', { timeout: 240000 }, async (t) => {
   const TRIALS = 10;
   let done = 0;
@@ -1421,6 +1433,7 @@ test('44. a starter that exits at the hook (no close) leaves no numbered lock; i
   });
 });
 
+// Pinned because only a link makes the whole lock appear at once: a create followed by a write would leave an empty lock for a crash or a racing reader to meet.
 test('45. the lock file is made whole by a hard link: right after the link it is a whole lock with two names', () => {
   const dir = tempDir();
   let seen: { text: string; links: number } | undefined;
@@ -1476,12 +1489,17 @@ test('47. a temporary file of a running starter is left alone by a winner', { ti
   }
 });
 
-test('48. the highest number is the current lock: a live lock above a dead one refuses the start', { timeout: 60000 }, () => {
+test('48. the highest number is the current lock: a live lock above a dead one refuses the start', { timeout: 60000 }, async () => {
   const dir = tempDir();
-  writeFileSync(join(dir, 'hub.lock.1'), `99999999 ${GOOD_TOKEN}\n`); // no such process
-  writeFileSync(join(dir, 'hub.lock.2'), `${process.pid} ${GOOD_TOKEN}\n`);
-  assert.throws(() => takeLock(dir, () => undefined), /already using this data folder/);
-  assert.deepEqual(lockFiles(dir), ['hub.lock.1', 'hub.lock.2']);
+  const other = await stranger();
+  try {
+    writeFileSync(join(dir, 'hub.lock.1'), `99999999 ${GOOD_TOKEN}\n`); // no such process
+    writeFileSync(join(dir, 'hub.lock.2'), `${other.pid} ${GOOD_TOKEN}\n`);
+    assert.throws(() => takeLock(dir, () => undefined), /hub\.lock\.2 says process/);
+    assert.deepEqual(lockFiles(dir), ['hub.lock.1', 'hub.lock.2']);
+  } finally {
+    other.kill();
+  }
 });
 
 test('49. createHub never passes test hooks to the lock', () => {
@@ -1518,4 +1536,293 @@ test('50. a journal that cannot be opened gives a plain message with no part of 
   assert.ok(!message.includes(dir), message);
   assert.ok(!message.toLowerCase().includes(basename(dir).toLowerCase()), message);
   assert.deepEqual(lockFiles(dir), [], 'the lock is given back');
+});
+
+// ---- round 8: a folder or lock removed under a live hub; the lock's message; rules that had no test; body time limit; number cap ----
+
+const REC = (n: number): any => structuredClone(copies[37]!.records[n]!);
+
+test('51. the data folder removed under a live hub: the next post is 503, none is answered 200, a restart shows nothing missing', { timeout: 120000 }, async () => {
+  const dir = tempDir();
+  const warnings: string[] = [];
+  await withHub(dir, { warn: (l) => warnings.push(l) }, async (url) => {
+    assert.equal((await post(url, [REC(0)])).status, 200);
+    rmSync(dir, { recursive: true, force: true });
+    assert.equal(existsSync(dir), false, 'the folder is gone');
+    for (let i = 1; i <= 3; i++) {
+      const r = await post(url, [REC(i)]);
+      assert.deepEqual([r.status, r.body], [503, { error: 'journal_unavailable' }], `post ${i} after the removal`);
+    }
+    assert.equal((await fetch(`${url}/v0/rounds`)).status, 200, 'the read endpoints go on answering');
+    assert.equal(warnings.length, 1, 'one plain line, once');
+    assert.match(warnings[0]!, /removed or replaced/);
+    assert.match(warnings[0]!, /restart/);
+    assert.ok(!warnings[0]!.includes(dir) && !warnings[0]!.toLowerCase().includes(basename(dir).toLowerCase()), 'no path in it');
+  });
+  await withHub(dir, {}, async (url) => {
+    assert.deepEqual((await rounds(url)).rounds, [], 'the restart starts empty: nothing was promised after the removal');
+  });
+});
+
+test('52. the lock removed under a live hub and a second hub started: the first writes nothing more, the second keeps every line', { timeout: 120000 }, async () => {
+  const dir = tempDir();
+  const warnings: string[] = [];
+  let reference: any;
+  await withHub(tempDir(), {}, async (url) => {
+    for (const n of [0, 1, 3]) assert.equal((await post(url, [REC(n)])).status, 200);
+    reference = await rounds(url);
+  });
+  await withHub(dir, { warn: (l) => warnings.push(l) }, async (urlA) => {
+    assert.equal((await post(urlA, [REC(0)])).status, 200);
+    unlinkSync(join(dir, 'hub.lock.1')); // a person deletes the lock, as the hub's own messages say to if no hub is running
+    const b = createHub({ dataDir: dir, port: 0, ...quiet });
+    try {
+      const addr = await b.listen();
+      const urlB = `http://${addr.host}:${addr.port}`;
+      assert.equal((await post(urlB, [REC(1)])).status, 200);
+      const before = readFileSync(journalOf(dir));
+      const refused = await post(urlA, [REC(2)]);
+      assert.deepEqual([refused.status, refused.body], [503, { error: 'journal_unavailable' }]);
+      assert.ok(readFileSync(journalOf(dir)).equals(before), 'the first hub wrote nothing');
+      assert.equal((await post(urlB, [REC(3)])).status, 200);
+    } finally {
+      await b.close();
+    }
+    assert.equal(warnings.length, 1);
+  });
+  assert.deepEqual(journalLines(dir).map((l) => JSON.parse(l) as unknown[]), [[REC(0)], [REC(1)], [REC(3)]], 'every line the second hub answered 200 is there, byte for byte');
+  assert.deepEqual(await answerOf(dir), reference);
+});
+
+test('53. the journal file deleted, or replaced by another file, under a live hub: 503 and nothing written', { timeout: 120000 }, async () => {
+  for (const how of ['deleted', 'replaced'] as const) {
+    const dir = tempDir();
+    await withHub(dir, {}, async (url) => {
+      assert.equal((await post(url, [REC(0)])).status, 200);
+      if (how === 'deleted') unlinkSync(journalOf(dir));
+      else {
+        renameSync(journalOf(dir), join(dir, 'journal.old'));
+        writeFileSync(journalOf(dir), '');
+      }
+      const r = await post(url, [REC(1)]);
+      assert.deepEqual([r.status, r.body], [503, { error: 'journal_unavailable' }], how);
+      if (how === 'replaced') assert.equal(statSync(journalOf(dir)).size, 0, 'nothing was written into the new file');
+    });
+  }
+});
+
+test('54. once the check has failed the hub takes no more posts until it is restarted, even if the lock comes back', { timeout: 120000 }, async () => {
+  const dir = tempDir();
+  await withHub(dir, {}, async (url) => {
+    assert.equal((await post(url, [REC(0)])).status, 200);
+    const text = readFileSync(join(dir, 'hub.lock.1'), 'utf8');
+    unlinkSync(join(dir, 'hub.lock.1'));
+    assert.equal((await post(url, [REC(1)])).status, 503);
+    writeFileSync(join(dir, 'hub.lock.1'), text); // the very same lock back in place
+    assert.equal((await post(url, [REC(1)])).status, 503, 'still unavailable: only a restart makes it take posts again');
+  });
+});
+
+test('55. the folder removed while a line is being written: the post is not answered 200 and the live book keeps nothing it cannot give back', { timeout: 120000 }, async () => {
+  const dir = tempDir();
+  let arm = false;
+  const io = {
+    write: (fd: number, buf: Buffer, off: number, len: number, position: number): number => {
+      if (arm) rmSync(dir, { recursive: true, force: true }); // between the check before the write and the check after it
+      return writeSync(fd, buf, off, len, position);
+    },
+  };
+  await withHub(dir, { journal: { io } }, async (url) => {
+    assert.equal((await post(url, [REC(0)])).status, 200);
+    arm = true;
+    const r = await post(url, [REC(1)]);
+    arm = false;
+    assert.notEqual(r.status, 200, 'a post whose line went into a removed folder is never answered 200');
+    assert.deepEqual((await post(url, [REC(2)])).body, { error: 'journal_unavailable' });
+    assert.deepEqual((await rounds(url)).rounds, [], 'the book holds only what a restart would find');
+  });
+});
+
+test('56. a lock naming this very process with a token no hub here holds is a leftover and is replaced, with one line', { timeout: 60000 }, async () => {
+  const dir = tempDir();
+  writeFileSync(join(dir, 'hub.lock.1'), `${process.pid} ${'1'.repeat(24)}\n`);
+  const said: string[] = [];
+  await withHub(dir, { warn: (l) => said.push(l) }, async (url) => {
+    assert.equal(said.length, 1);
+    assert.equal((await fetch(`${url}/healthz`)).status, 200);
+    assert.deepEqual(lockFiles(dir), ['hub.lock.1', 'hub.lock.2']);
+  });
+});
+
+test('57. a lock naming a running process that is not a hub is refused with a message that names the file and no path', { timeout: 60000 }, async () => {
+  const dir = tempDir();
+  const other = await stranger();
+  try {
+    writeFileSync(join(dir, 'hub.lock.7'), `${other.pid} ${GOOD_TOKEN}\n`);
+    let message = '';
+    try {
+      takeLock(dir, () => undefined);
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    assert.ok(message.startsWith(`hub.lock.7 says process ${other.pid} holds this data folder (the SIM_HUB_DATA setting).`), message);
+    assert.match(message, /may be another program: stop nothing, delete hub\.lock\.7 and start again\./);
+    assert.ok(!message.includes(dir) && !message.toLowerCase().includes(basename(dir).toLowerCase()), message);
+  } finally {
+    other.kill();
+  }
+});
+
+test('58. a journal whose one complete line lacks its newline: a second shot can be posted and both survive a restart', { timeout: 60000 }, async () => {
+  const dir = tempDir();
+  writeFileSync(journalOf(dir), JSON.stringify([REC(0)])); // no newline
+  const reference = tempDir();
+  await withHub(reference, {}, async (url) => {
+    for (const n of [0, 1]) assert.equal((await post(url, [REC(n)])).status, 200);
+  });
+  await withHub(dir, {}, async (url) => {
+    assert.equal((await post(url, [REC(1)])).status, 200);
+  });
+  assert.deepEqual(await answerOf(dir), await answerOf(reference), 'both shots are there after the restart');
+});
+
+test('59. a lock naming a process that answers "not permitted" to a signal is refused, never taken over', { timeout: 60000 }, (t) => {
+  const pid = process.platform === 'win32' ? 4 : 1;
+  let answer = '';
+  try {
+    process.kill(pid, 0);
+    answer = 'allowed';
+  } catch (e) {
+    answer = (e as NodeJS.ErrnoException).code ?? 'error';
+  }
+  if (answer !== 'EPERM') {
+    t.skip(`process ${pid} does not answer "not permitted" to a signal here (it answered ${answer})`);
+    return;
+  }
+  const dir = tempDir();
+  writeFileSync(join(dir, 'hub.lock.1'), `${pid} ${GOOD_TOKEN}\n`);
+  assert.throws(() => takeLock(dir, () => undefined), /hub\.lock\.1 says process/);
+  assert.deepEqual(lockFiles(dir), ['hub.lock.1']);
+});
+
+test('60. a post whose journal line is exactly the limit is 200, and the next start reads it', { timeout: 60000 }, async () => {
+  const rec = REC(0);
+  const exact = Buffer.byteLength(JSON.stringify([rec]), 'utf8');
+  const dir = tempDir();
+  await withHub(dir, { journal: { maxLineBytes: exact } }, async (url) => {
+    assert.equal((await post(url, [rec])).status, 200);
+  });
+  await withHub(dir, { journal: { maxLineBytes: exact } }, async (url) => {
+    assert.equal((await rounds(url)).rounds.length, 1, 'the start read the line');
+  });
+});
+
+test('61. a refused post whose body keeps coming is cut about two seconds after the answer', { timeout: 60000 }, async () => {
+  await withHub(tempDir(), {}, async (url) => {
+    const port = Number(new URL(url).port);
+    const result = await new Promise<{ closedAfterMs: number | undefined; answer: string }>((resolve) => {
+      const sock = connect(port, '127.0.0.1');
+      let text = '';
+      const started = Date.now();
+      let closedAt: number | undefined;
+      sock.on('data', (c) => (text += c.toString('utf8')));
+      sock.on('error', () => undefined);
+      sock.on('close', () => {
+        closedAt = Date.now() - started;
+      });
+      sock.on('connect', () => sock.write(`POST /v0/shots HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nContent-Type: text/plain\r\nContent-Length: 1000000\r\n\r\n`));
+      const drip = setInterval(() => {
+        if (!sock.destroyed) sock.write('x');
+      }, 200);
+      setTimeout(() => {
+        clearInterval(drip);
+        sock.destroy();
+        resolve({ closedAfterMs: closedAt, answer: text });
+      }, 7000);
+    });
+    assert.match(result.answer, /^HTTP\/1\.1 415 /);
+    assert.ok(result.closedAfterMs !== undefined, 'the hub never cut the connection');
+    assert.ok(result.closedAfterMs! >= 1500 && result.closedAfterMs! <= 4500, `cut after ${result.closedAfterMs} ms`);
+  });
+});
+
+test('62. a body of exactly the limit is taken; one byte more is 413', { timeout: 60000 }, async () => {
+  const body = JSON.stringify({ records: [REC(0)] });
+  const exact = Buffer.byteLength(body);
+  await withHub(tempDir(), { maxBodyBytes: exact }, async (url) => {
+    const ok = await raw(url, { method: 'POST', path: '/v0/shots', headers: { 'Content-Type': 'application/json', 'Content-Length': String(exact) }, body });
+    assert.equal(ok.status, 200);
+    const more = `${body} `;
+    const over = await raw(url, { method: 'POST', path: '/v0/shots', headers: { 'Content-Type': 'application/json', 'Content-Length': String(exact + 1) }, body: more });
+    assert.equal(over.status, 413);
+  });
+});
+
+test('63. a body that is not complete after the time limit is answered 408 body_timeout and frees its slot', { timeout: 60000 }, async () => {
+  await withHub(tempDir(), { bodyTimeoutMs: 400 }, async (url) => {
+    const port = Number(new URL(url).port);
+    const socks: Array<{ text: () => string; stop: () => void }> = [];
+    try {
+      for (let i = 0; i < 4; i++) {
+        const sock = connect(port, '127.0.0.1');
+        let text = '';
+        sock.on('data', (c) => (text += c.toString('utf8')));
+        sock.on('error', () => undefined);
+        sock.on('connect', () => sock.write(`POST /v0/shots HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nContent-Type: application/json\r\nContent-Length: 100000\r\n\r\n{`));
+        const drip = setInterval(() => {
+          if (!sock.destroyed) sock.write(' ');
+        }, 100);
+        socks.push({ text: () => text, stop: () => (clearInterval(drip), sock.destroy()) });
+      }
+      let fine = 0;
+      for (let i = 0; i < 60 && fine !== 200; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        fine = (await post(url, [])).status;
+      }
+      assert.equal(fine, 200, 'a normal post is taken once the dribbling senders have timed out');
+      for (const s of socks) assert.match(s.text(), /^HTTP\/1\.1 408 [\s\S]*"body_timeout"/);
+    } finally {
+      for (const s of socks) s.stop();
+    }
+  });
+});
+
+test('64. a current lock whose number is above a billion is refused with a plain message naming the file', { timeout: 60000 }, () => {
+  const dir = tempDir();
+  writeFileSync(join(dir, 'hub.lock.9007199254740991'), `${99999999} ${GOOD_TOKEN}\n`);
+  let message = '';
+  try {
+    takeLock(dir, () => undefined);
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  assert.match(message, /hub\.lock\.9007199254740991/);
+  assert.match(message, /delete/);
+  assert.ok(!message.includes(dir), message);
+});
+
+test('65. a start gives up after five seconds, with a plain message, when the current lock cannot be read on any attempt', { timeout: 60000 }, () => {
+  const dir = tempDir();
+  let n = 1;
+  writeFileSync(join(dir, 'hub.lock.1'), `99999999 ${GOOD_TOKEN}\n`);
+  const stopAt = Date.now() + 9000; // if the start never gives up, the hook lets it through so this test ends by itself
+  const started = Date.now();
+  let message = '';
+  try {
+    takeLock(dir, () => undefined, {
+      beforeRead: () => {
+        if (Date.now() > stopAt) return;
+        // the lock that was listed vanishes and the next number appears: every read fails with ENOENT, forever
+        unlinkSync(join(dir, `hub.lock.${n}`));
+        n++;
+        writeFileSync(join(dir, `hub.lock.${n}`), `99999999 ${GOOD_TOKEN}\n`);
+      },
+    });
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  const took = Date.now() - started;
+  assert.match(message, /cannot be read \(ENOENT\)/);
+  assert.ok(!message.includes(dir), message);
+  assert.ok(took >= 4500 && took <= 8000, `gave up after ${took} ms`);
 });
