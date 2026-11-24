@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { RoundBook, UnknownLayoutError, validateRecord, MAX_RECORDS, type IngestCounts, type ShotRecord } from '../../core/src/index.js';
-import { Journal, replayFile, JOURNAL_NAME, MAX_LINE_BYTES, type JournalOptions } from './journal.js';
+import { Journal, JournalError, replayFile, JOURNAL_NAME, MAX_LINE_BYTES, type JournalOptions } from './journal.js';
 import { takeLock, type HeldLock } from './lock.js';
 
 export const HOST = '127.0.0.1';
@@ -373,7 +373,14 @@ export function createHub(options: HubOptions): Hub {
         server = s;
         const a = s.address() as AddressInfo;
         bound = { host: a.address, port: a.port };
-        journal = await Journal.open(options.dataDir, (records) => void apply(book, table, records as ShotRecord[]), warn, options.journal);
+        try {
+          journal = await Journal.open(options.dataDir, (records) => void apply(book, table, records as ShotRecord[]), warn, options.journal);
+        } catch (e) {
+          // a file-system error here would carry the data folder's path: say only which file and which error
+          if (e instanceof JournalError) throw e;
+          const code = (e as NodeJS.ErrnoException | undefined)?.code;
+          throw new JournalError(`journal.jsonl could not be opened or read (${typeof code === 'string' ? code : 'error'})`);
+        }
         starting = false;
       } catch (e) {
         starting = false;

@@ -4,6 +4,19 @@ import { join } from 'node:path';
 
 export const LOCK_NAME = 'hub.lock';
 
+/**
+ * Test hooks, called at fixed points of takeLock so a test can make another starter's work happen in between. Nothing outside the
+ * tests passes them: createHub does not, and no setting or environment variable turns them on.
+ */
+export interface LockHooks {
+  /** Between the listing and the read of the current lock. */
+  beforeRead?: () => void;
+  /** After the temporary file is written, just before the link. */
+  beforeLink?: () => void;
+  /** Right after a successful link, before the temporary file is removed. */
+  afterLink?: (target: string) => void;
+}
+
 export interface HeldLock {
   /** Removes this hub's own lock file, only if it still holds this hub's own process id and token. */
   release(): void;
@@ -58,9 +71,9 @@ function lockNumbers(dir: string): number[] {
  *
  * Nothing of this takes a file name from the folder and prints a path: a failure is a plain message with a file's name.
  */
-export function takeLock(dir: string, say: (line: string) => void): HeldLock {
+export function takeLock(dir: string, say: (line: string) => void, hooks?: LockHooks): HeldLock {
   try {
-    return takeNumberedLock(dir, say);
+    return takeNumberedLock(dir, say, hooks);
   } catch (e) {
     if (e instanceof LockRefused) throw e;
     // a file-system error that is not a race: a plain refusal, with no path in it
@@ -68,13 +81,25 @@ export function takeLock(dir: string, say: (line: string) => void): HeldLock {
   }
 }
 
-function takeNumberedLock(dir: string, say: (line: string) => void): HeldLock {
+function takeNumberedLock(dir: string, say: (line: string) => void, hooks?: LockHooks): HeldLock {
   mkdirSync(dir, { recursive: true });
   const mine = `${process.pid} ${randomBytes(12).toString('hex')}\n`;
   const giveUpAt = Date.now() + 5000;
-  const busy = (): LockRefused => new LockRefused('another hub is starting on this data folder (the SIM_HUB_DATA setting); try again in a moment');
+  // What the last look-again was for, so that the refusal after five seconds can say what kept coming. On Windows a file another
+  // starter is deleting or linking fails with EPERM or EACCES for a moment: those are races and are looked at again.
+  let lastRead: { name: string; code: string } | undefined;
+  let lastLink: { name: string; code: string } | undefined;
+  const giveUp = (): LockRefused => {
+    if (lastLink !== undefined) {
+      return new LockRefused(`another hub is starting on this data folder (the SIM_HUB_DATA setting), or the folder cannot hold hard links (${lastLink.code}, ${lastLink.name})`);
+    }
+    if (lastRead !== undefined) {
+      return new LockRefused(`${lastRead.name} cannot be read (${lastRead.code}); if no hub is running, delete it (the folder is set by SIM_HUB_DATA)`);
+    }
+    return new LockRefused('another hub is starting on this data folder (the SIM_HUB_DATA setting); try again in a moment');
+  };
   for (;;) {
-    if (Date.now() > giveUpAt) throw busy();
+    if (Date.now() > giveUpAt) throw giveUp();
     const numbers = lockNumbers(dir);
     let target = 1;
     let replaced: number | undefined;
@@ -83,9 +108,15 @@ function takeNumberedLock(dir: string, say: (line: string) => void): HeldLock {
       const name = `${LOCK_NAME}.${current}`;
       let text: string;
       try {
+        hooks?.beforeRead?.();
         text = readFileSync(join(dir, name), 'utf8');
       } catch (e) {
-        if (codeOf(e) === 'ENOENT') continue; // its hub just let go of it: look again
+        if (codeOf(e) === 'ENOENT' || codeOf(e) === 'EPERM') {
+          // its hub just let go of it (on Windows a file being deleted may answer EPERM): look again from the listing
+          lastRead = { name, code: codeOf(e) };
+          pause(10);
+          continue;
+        }
         throw new LockRefused(`${name} cannot be read (${codeOf(e)}); if no hub is running, delete it (the folder is set by SIM_HUB_DATA)`);
       }
       const m = CONTENT.exec(text);
@@ -108,10 +139,14 @@ function takeNumberedLock(dir: string, say: (line: string) => void): HeldLock {
     }
     let linked = false;
     try {
+      hooks?.beforeLink?.();
       linkSync(tmpPath, join(dir, targetName));
       linked = true;
+      hooks?.afterLink?.(join(dir, targetName));
     } catch (e) {
-      if (codeOf(e) !== 'EEXIST') {
+      if (codeOf(e) === 'EPERM' || codeOf(e) === 'EACCES') {
+        lastLink = { name: targetName, code: codeOf(e) }; // a name still being deleted, or a folder with no hard links: look again, and say so if it persists
+      } else if (codeOf(e) !== 'EEXIST') {
         throw new LockRefused(`the file system of the data folder refused to make ${targetName} (${codeOf(e)}); the lock needs hard links, so this folder cannot be used (set SIM_HUB_DATA to another)`);
       }
     } finally {
@@ -125,8 +160,11 @@ function takeNumberedLock(dir: string, say: (line: string) => void): HeldLock {
       pause(10); // the name was taken by another starter: start again from the listing
       continue;
     }
-    // A lock lower than one that now exists is not the current lock (a very slow starter could land on a number that was cleaned up):
-    // take it back and start again.
+    // THE RE-LIST: NEITHER THIS CHECK NOR THE KEPT PREDECESSOR IN cleanUp MAY BE REMOVED; EACH COVERS A CASE THE OTHER DOES NOT.
+    // A starter whose listing is two or more generations old aims at a number that later clean-ups have since removed, so its link to that
+    // free name succeeds although a newer lock (the live hub's) exists. The kept predecessor cannot help it. Only this look after the link
+    // can: if a higher number exists, this lock is not the current one, so it is given back and the starter starts again from the listing
+    // (and then finds the live holder and is refused). Tested with a starter that sleeps at the beforeLink hook while generations pass.
     if ((lockNumbers(dir)[0] ?? target) > target) {
       try {
         if (readFileSync(join(dir, targetName), 'utf8') === mine) unlinkSync(join(dir, targetName));
@@ -154,9 +192,10 @@ function takeNumberedLock(dir: string, say: (line: string) => void): HeldLock {
 
 /**
  * The winner of number n removes every lock lower than n - 1, and the temporary files of starters that are gone. It keeps n - 1 on
- * purpose: while lock n is held, lock n - 1 exists, so a folder listing taken while n was being created always shows at least
- * n - 1, and that starter's link to n fails because n is taken. (Were n - 1 removed too, a starter whose listing showed an even older
- * lock could aim at n - 1, find the name free and link it, and two hubs would hold locks.)
+ * purpose, for ONE of the two reasons the lock is safe: while lock n is held, lock n - 1 exists, so a folder listing taken while n was
+ * being created always shows at least n - 1, and that starter's link to n fails because n is taken. (Were n - 1 removed too, such a
+ * starter could aim at n - 1, find the name free and link it.) The OTHER reason is the re-list after the link in takeNumberedLock, which
+ * covers a starter whose listing is two or more generations old. Neither may be removed.
  */
 function cleanUp(dir: string, n: number): void {
   try {

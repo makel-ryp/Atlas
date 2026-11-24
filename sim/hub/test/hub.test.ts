@@ -1,6 +1,6 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, appendFileSync, existsSync, statSync, writeSync, ftruncateSync, fsyncSync, symlinkSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, chmodSync, unlinkSync, rmSync, readFileSync, writeFileSync, appendFileSync, existsSync, statSync, writeSync, ftruncateSync, fsyncSync, symlinkSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -11,6 +11,7 @@ import type { Readable, Writable } from 'node:stream';
 
 type Kid = ChildProcessByStdio<Writable, Readable, null>;
 import { createHub, type Hub, type HubOptions } from '../src/server.js';
+import { takeLock } from '../src/lock.js';
 import { loadRecording, type Copy } from '../../core/src/index.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -1068,9 +1069,36 @@ async function deadPid(): Promise<number> {
   }
 }
 
-function startStarters(dir: string, starters: number): Kid[] {
+function startStarters(dir: string, starters: number, mode = 'plain', arg = ''): Kid[] {
   const startAt = Date.now() + 700;
-  return Array.from({ length: starters }, () => spawn(process.execPath, ['--experimental-strip-types', '--no-warnings', join(HERE, 'lock-child.mjs'), dir, String(startAt)], { stdio: ['pipe', 'pipe', 'inherit'] }));
+  return Array.from({ length: starters }, () => spawn(process.execPath, ['--experimental-strip-types', '--no-warnings', join(HERE, 'lock-child.mjs'), dir, String(startAt), mode, arg], { stdio: ['pipe', 'pipe', 'inherit'] }));
+}
+
+/** The lines a starter says, one at a time. A starter that exits says DIED. */
+function lineQueue(k: Kid): { next(): Promise<string> } {
+  const ready: string[] = [];
+  const waiting: Array<(line: string) => void> = [];
+  let partial = '';
+  let exited = false;
+  k.stdout.on('data', (c: Buffer) => {
+    partial += c.toString('utf8');
+    for (let i = partial.indexOf('\n'); i >= 0; i = partial.indexOf('\n')) {
+      const line = partial.slice(0, i);
+      partial = partial.slice(i + 1);
+      const w = waiting.shift();
+      if (w) w(line);
+      else ready.push(line);
+    }
+  });
+  k.on('exit', () => {
+    exited = true;
+    for (const w of waiting.splice(0)) w('DIED');
+  });
+  return { next: () => (ready.length > 0 ? Promise.resolve(ready.shift()!) : exited ? Promise.resolve('DIED') : new Promise<string>((resolve) => waiting.push(resolve))) };
+}
+
+async function waitExit(k: Kid): Promise<void> {
+  if (k.exitCode === null && k.signalCode === null) await new Promise<void>((resolve) => k.once('exit', () => resolve()));
 }
 
 function firstLine(k: Kid): Promise<string> {
@@ -1090,7 +1118,7 @@ async function stopStarters(kids: Kid[]): Promise<void> {
     k.stdin.end();
     k.kill();
   }
-  await Promise.all(kids.map((k) => new Promise<void>((resolve) => (k.exitCode !== null ? resolve() : k.once('exit', () => resolve())))));
+  await Promise.all(kids.map((k) => waitExit(k)));
 }
 
 type Trial = { redraw: true } | { redraw: false; results: string[]; winnerPid: number; dir: string; journalSame: boolean };
@@ -1118,7 +1146,7 @@ async function raceOnStaleLock(starters: number, leftovers: boolean): Promise<Tr
 }
 
 for (const [starters, leftovers] of [[2, false], [4, false], [2, true], [4, true]] as const) {
-  test(`35-${starters}${leftovers ? 'L' : ''}. 40 trials of ${starters} starters racing on a stale lock${leftovers ? ' (with a leftover takeover file and a dead starter\'s temporary file)' : ''}: exactly one wins every time`, async (t) => {
+  test(`35-${starters}${leftovers ? 'L' : ''}. 40 trials of ${starters} starters racing on a stale lock${leftovers ? ' (with a leftover takeover file and a dead starter\'s temporary file)' : ''}: exactly one wins every time`, { timeout: 400000 }, async (t) => {
     const TRIALS = 40;
     let done = 0;
     let redraws = 0;
@@ -1143,7 +1171,7 @@ for (const [starters, leftovers] of [[2, false], [4, false], [2, true], [4, true
   });
 }
 
-test('35-chain. six generations: start, kill without close, start again: at most two numbered lock files each time', async () => {
+test('35-chain. six generations: start, kill without close, start again: at most two numbered lock files each time', { timeout: 120000 }, async () => {
   const dir = tempDir();
   for (let g = 1; g <= 6; g++) {
     const kids = startStarters(dir, 1);
@@ -1153,7 +1181,7 @@ test('35-chain. six generations: start, kill without close, start again: at most
       assert.deepEqual(locks, g === 1 ? ['hub.lock.1'] : [`hub.lock.${g - 1}`, `hub.lock.${g}`], `generation ${g}: at most two, the newest and its predecessor`);
     } finally {
       kids[0]!.kill(); // hard: no close, the lock is left behind
-      await new Promise<void>((resolve) => (kids[0]!.exitCode !== null ? resolve() : kids[0]!.once('exit', () => resolve())));
+      await waitExit(kids[0]!);
     }
   }
 });
@@ -1326,4 +1354,168 @@ test('41. while the journal is replayed every request answers 503 busy; afterwar
   } finally {
     await hub.close();
   }
+});
+
+// ---- round 7: the re-list is guarded; crashes and Windows races at the hooks; no folder path from the journal ----
+
+const GOOD_TOKEN = '0'.repeat(24);
+
+test('43. a starter asleep while two generations pass is refused, and exactly one hub holds a lock (10 trials)', { timeout: 240000 }, async (t) => {
+  const TRIALS = 10;
+  let done = 0;
+  let redraws = 0;
+  while (done < TRIALS) {
+    const dir = tempDir();
+    const dead = await deadPid();
+    writeFileSync(join(dir, 'hub.lock.1'), `${dead} ${GOOD_TOKEN}\n`);
+    const go = join(tempDir(), 'go');
+    const slow = startStarters(dir, 1, 'slow', go)[0]!;
+    const slowSays = lineQueue(slow);
+    const others: Kid[] = [];
+    try {
+      assert.equal(await slowSays.next(), 'PAUSED', 'the slow starter has listed the folder and is waiting before its link');
+      // two hubs are started and killed without their close, then a live one takes the lock
+      let live: Kid | undefined;
+      for (let g = 1; g <= 3; g++) {
+        const k = startStarters(dir, 1)[0]!;
+        others.push(k);
+        assert.equal(await lineQueue(k).next(), 'WON', `generation ${g}`);
+        if (g < 3) {
+          k.kill();
+          await waitExit(k);
+        } else live = k;
+      }
+      writeFileSync(go, 'go');
+      const verdict = await slowSays.next();
+      if (isRunning(dead)) {
+        redraws++;
+        continue;
+      }
+      assert.equal(verdict, 'REFUSED', `trial ${done}: the slow starter must end refused`);
+      assert.deepEqual(lockFiles(dir), ['hub.lock.3', 'hub.lock.4'], `trial ${done}`);
+      assert.equal(Number(readFileSync(join(dir, 'hub.lock.4'), 'utf8').split(' ')[0]), live!.pid, `trial ${done}: the one lock is the live hub's`);
+      done++;
+    } finally {
+      await stopStarters([slow, ...others]);
+    }
+  }
+  t.diagnostic(`${done} trials, ${redraws} drawn again; the slow starter was refused and one hub held the lock in every trial`);
+});
+
+test('44. a starter that exits at the hook (no close) leaves no numbered lock; its temporary file goes with the next winner', { timeout: 120000 }, async () => {
+  const dir = tempDir();
+  const dead = await deadPid();
+  writeFileSync(join(dir, 'hub.lock.1'), `${dead} ${GOOD_TOKEN}\n`);
+  const crash = startStarters(dir, 1, 'crash')[0]!;
+  try {
+    await waitExit(crash);
+  } finally {
+    crash.kill();
+  }
+  assert.deepEqual(lockFiles(dir), ['hub.lock.1'], 'the crashed starter made no lock');
+  assert.equal(readdirSync(dir).filter((n) => n.startsWith('hub.lock.tmp-')).length, 1, 'its temporary file is left behind');
+  await withHub(dir, {}, async (url) => {
+    assert.equal((await fetch(`${url}/healthz`)).status, 200, 'the next start succeeds');
+    assert.deepEqual(readdirSync(dir).filter((n) => n.startsWith('hub.lock.tmp-')), [], 'the next winner removed the temporary file');
+    assert.deepEqual(lockFiles(dir), ['hub.lock.1', 'hub.lock.2']);
+  });
+});
+
+test('45. the lock file is made whole by a hard link: right after the link it is a whole lock with two names', () => {
+  const dir = tempDir();
+  let seen: { text: string; links: number } | undefined;
+  const held = takeLock(dir, () => undefined, {
+    afterLink: (target) => {
+      seen = { text: readFileSync(target, 'utf8'), links: statSync(target).nlink };
+    },
+  });
+  try {
+    assert.ok(seen, 'the hook ran');
+    assert.match(seen.text, /^[1-9][0-9]* [0-9a-f]{24}\n$/);
+    assert.equal(seen.links, 2, 'the lock is a hard link of the starter\'s temporary file, not a file created and then written');
+  } finally {
+    held.release();
+  }
+});
+
+test('46. a current lock that vanishes between the listing and the read is looked at again, and the start succeeds', () => {
+  const dir = tempDir();
+  writeFileSync(join(dir, 'hub.lock.1'), `${process.pid} ${GOOD_TOKEN}\n`);
+  let once = true;
+  const held = takeLock(dir, () => undefined, {
+    beforeRead: () => {
+      if (once) {
+        once = false;
+        unlinkSync(join(dir, 'hub.lock.1')); // its hub let go of it just now
+      }
+    },
+  });
+  try {
+    assert.deepEqual(lockFiles(dir), ['hub.lock.1']);
+    assert.equal(readFileSync(join(dir, 'hub.lock.1'), 'utf8').split(' ')[0], String(process.pid));
+  } finally {
+    held.release();
+  }
+});
+
+test('47. a temporary file of a running starter is left alone by a winner', { timeout: 120000 }, async () => {
+  const dir = tempDir();
+  const dead = await deadPid();
+  writeFileSync(join(dir, 'hub.lock.1'), `${dead} ${GOOD_TOKEN}\n`);
+  const mine = `hub.lock.tmp-${process.pid}-keep`; // this test's own process is running
+  writeFileSync(join(dir, mine), 'x');
+  const gone = `hub.lock.tmp-${dead}-gone`;
+  writeFileSync(join(dir, gone), 'x');
+  const kids = startStarters(dir, 1);
+  try {
+    assert.equal(await lineQueue(kids[0]!).next(), 'WON');
+    assert.ok(existsSync(join(dir, mine)), 'a running starter\'s temporary file is not removed');
+    assert.ok(!existsSync(join(dir, gone)), 'a dead starter\'s temporary file is removed');
+  } finally {
+    await stopStarters(kids);
+  }
+});
+
+test('48. the highest number is the current lock: a live lock above a dead one refuses the start', { timeout: 60000 }, () => {
+  const dir = tempDir();
+  writeFileSync(join(dir, 'hub.lock.1'), `99999999 ${GOOD_TOKEN}\n`); // no such process
+  writeFileSync(join(dir, 'hub.lock.2'), `${process.pid} ${GOOD_TOKEN}\n`);
+  assert.throws(() => takeLock(dir, () => undefined), /already using this data folder/);
+  assert.deepEqual(lockFiles(dir), ['hub.lock.1', 'hub.lock.2']);
+});
+
+test('49. createHub never passes test hooks to the lock', () => {
+  const source = readFileSync(join(HERE, '../src/server.ts'), 'utf8');
+  const strict = /takeLock\(options\.dataDir, warn\)/;
+  assert.match(source, strict);
+  assert.equal(source.match(/takeLock\(/g)?.length, 1, 'one call');
+  assert.ok(!/beforeLink|beforeRead|afterLink/.test(source), 'no hook is named in the server');
+  // the guard bites: a call with a third argument does not match
+  assert.ok(!strict.test('takeLock(options.dataDir, warn, { beforeLink() {} })'));
+});
+
+test('50. a journal that cannot be opened gives a plain message with no part of the folder path', async () => {
+  const dir = tempDir();
+  const file = join(dir, 'journal.jsonl');
+  writeFileSync(file, '');
+  chmodSync(file, 0o444);
+  let message = '';
+  try {
+    const hub = createHub({ dataDir: dir, port: 0, ...quiet });
+    try {
+      await hub.listen();
+      assert.fail('the start should have been refused');
+    } catch (e) {
+      message = e instanceof Error ? e.message : String(e);
+    } finally {
+      await hub.close();
+    }
+  } finally {
+    chmodSync(file, 0o666);
+  }
+  assert.match(message, /journal\.jsonl/);
+  assert.match(message, /E[A-Z]+/);
+  assert.ok(!message.includes(dir), message);
+  assert.ok(!message.toLowerCase().includes(basename(dir).toLowerCase()), message);
+  assert.deepEqual(lockFiles(dir), [], 'the lock is given back');
 });
