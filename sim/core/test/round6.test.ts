@@ -134,8 +134,8 @@ test('B4. an object reached a second time (a shared reference or a cycle) is ref
   const loop: Record<string, unknown> = { a: 1 };
   loop['self'] = loop;
   assert.throws(() => new RoundBook().ingest([{ ...rec(), G: loop } as unknown as ShotRecord]), UnknownLayoutError);
-  // two records that share a nested object are refused too; equal but separate objects are fine
-  assert.throws(() => new RoundBook().ingest([{ ...rec({ ShotID: 'x' }), A: shared } as unknown as ShotRecord, { ...rec({ ShotID: 'y' }), A: shared } as unknown as ShotRecord]), UnknownLayoutError);
+  // two records of one call may share a nested object (each record is walked and copied by itself); equal but separate objects are fine too
+  assert.equal(new RoundBook().ingest([{ ...rec({ ShotID: 'x' }), A: shared } as unknown as ShotRecord, { ...rec({ ShotID: 'y' }), A: shared } as unknown as ShotRecord]).added, 2);
   assert.equal(new RoundBook().ingest([{ ...rec(), A: [1], B: [1] } as unknown as ShotRecord]).added, 1);
   // nothing from a file is refused by this: parsed records never share objects
   assert.equal(parseRoundFile(JSON.stringify([{ ...rec(), A: [1], B: [1] }])).length, 1);

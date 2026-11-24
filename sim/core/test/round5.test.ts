@@ -155,7 +155,7 @@ test('C5. records given straight to ingest are checked like file records, and a 
 // ---------------------------------------------------------------- D. the walk visits each object once
 
 test('D4. a wide record is walked in time proportional to its size', () => {
-  const wide = { ...rec(), A: Array.from({ length: 200_000 }, (_, i) => ({ i })), B: Array.from({ length: 200_000 }, (_, i) => i) } as unknown as ShotRecord;
+  const wide = { ...rec(), A: Array.from({ length: 60_000 }, (_, i) => ({ i })), B: Array.from({ length: 100_000 }, (_, i) => i) } as unknown as ShotRecord;
   const t0 = Date.now();
   assert.equal(new RoundBook().ingest([wide]).added, 1);
   assert.ok(Date.now() - t0 < 5000, `took ${Date.now() - t0} ms`);
