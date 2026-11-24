@@ -1933,14 +1933,18 @@ test('70. an ordinary post is 200 and the journal grows by exactly its line; a f
 test('71. the last look comes after the table is updated: a removal just before it gives 500 and a read address shows what the path holds', { timeout: 120000 }, async () => {
   const dir = tempDir();
   let armed = false;
-  await withHub(dir, { hooks: { beforeLastLook: () => {
-    if (armed) unlinkSync(join(dir, 'hub.lock.1'));
+  let tableSizeSeen = -1;
+  await withHub(dir, { hooks: { beforeLastLook: (tableSize) => {
+    if (!armed) return;
+    tableSizeSeen = tableSize;
+    unlinkSync(join(dir, 'hub.lock.1'));
   } } }, async (url) => {
     assert.equal((await post(url, [REC(0)])).status, 200);
     armed = true;
     const r = await post(url, [REC(1)]);
     armed = false;
     assert.equal(r.status, 500, 'a line was written and then found lost');
+    assert.equal(tableSizeSeen, 2, 'the table already knew both shots when the last look was made (it comes after the table update)');
     assert.deepEqual(await rounds(url), await referenceOf(0, 1), 'the journal path holds both lines, and the book is rebuilt from it');
     assert.equal((await post(url, [REC(2)])).status, 503);
   });

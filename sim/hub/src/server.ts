@@ -33,8 +33,8 @@ export interface HubOptions {
 export interface HubHooks {
   /** After all of a post's work and the bytes of its line are ready, immediately before the look at the lock that guards the write. */
   beforeWriteLook?: () => void;
-  /** After the table is updated, immediately before the last look and the answer. */
-  beforeLastLook?: () => void;
+  /** After the table is updated, immediately before the last look and the answer. It is told how many ShotIDs the table holds. */
+  beforeLastLook?: (tableSize: number) => void;
 }
 
 export interface Hub {
@@ -300,7 +300,7 @@ export function createHub(options: HubOptions): Hub {
     updateTable(table, records, counts);
     // the last look, last before the answer: a line in a file that has lost its name, or under a lock that is not ours, is not a 200.
     // rebuild() restores both the book and the table from what the path holds, and the answer is 500.
-    options.hooks?.beforeLastLook?.();
+    options.hooks?.beforeLastLook?.(table.size);
     if (kept.length > 0 && lost()) {
       markLost();
       try {
