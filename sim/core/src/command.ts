@@ -1,13 +1,25 @@
 import { basename } from 'node:path';
 import { RoundBook, type BookIssue } from './book.js';
 import { formatScorecard } from './format.js';
-import { MAX_TEXT_CHARS, parseRoundFile } from './parse.js';
+import { parseRoundFile } from './parse.js';
 import { loadRecording } from './recording.js';
+import { cleanText } from './text.js';
 
-/** The two things the command asks of the file system, so a test can watch what is read. */
+/** The most bytes the command reads from one file. (The parser's own limit is a count of characters and stays as it is.) */
+const MAX_FILE_BYTES = 50_000_000;
+
+/** One opened file. Every call goes to the same handle, so a file replaced after the open is never what is asked about. */
+export interface OpenFile {
+  /** The size in bytes of the file as opened. */
+  size(): number;
+  /** At most `maxBytes` bytes from the start of the same file. */
+  read(maxBytes: number): Uint8Array;
+  close(): void;
+}
+
+/** The one thing the command asks of the file system, so a test can watch what is read. */
 export interface FileAccess {
-  size(path: string): number;
-  read(path: string): string;
+  open(path: string): OpenFile;
 }
 
 export interface CommandResult {
@@ -33,17 +45,29 @@ export function runScorecard(arg: string | undefined, files: FileAccess, recordi
     if (arg === undefined) {
       for (const copy of loadRecording(recordingDir)) refused += book.ingest(copy.records).conflicts;
     } else {
-      const name = basename(arg);
+      // the file name is text from outside: cleaned before it enters any message
+      const name = cleanText(basename(arg));
+      const tooLarge = { stdout: '', stderr: `Cannot read ${name}: the file is larger than ${MAX_FILE_BYTES} bytes`, exitCode: 1 };
       let text: string;
+      let file: OpenFile | undefined;
       try {
-        // the size is checked before the file is read
-        if (files.size(arg) > MAX_TEXT_CHARS) {
-          return { stdout: '', stderr: `Cannot read ${name}: the file is larger than ${MAX_TEXT_CHARS} bytes`, exitCode: 1 };
-        }
-        text = files.read(arg);
+        // one open: the size and the bytes both come from this handle
+        file = files.open(arg);
+        if (file.size() > MAX_FILE_BYTES) return tooLarge;
+        // never more than the limit plus one byte; one byte over means the file is over, whatever size() said
+        const bytes = file.read(MAX_FILE_BYTES + 1);
+        if (bytes.byteLength > MAX_FILE_BYTES) return tooLarge;
+        // the same decoding as readFileSync(path, 'utf8')
+        text = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('utf8');
       } catch (e) {
         const code = (e as { code?: unknown }).code;
         return { stdout: '', stderr: `Cannot read ${name}${typeof code === 'string' ? ` (${code})` : ''}`, exitCode: 1 };
+      } finally {
+        try {
+          file?.close();
+        } catch {
+          // the file was only read; a failing close changes nothing that was printed
+        }
       }
       refused += book.ingest(parseRoundFile(text)).conflicts;
     }

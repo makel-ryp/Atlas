@@ -142,8 +142,11 @@ test('V6. the same object twice in one call, or a sub-object shared by two recor
 
 function fake(files: Record<string, string>): FileAccess {
   return {
-    size: (p) => Buffer.byteLength(files[p] ?? ''),
-    read: (p) => files[p] ?? '',
+    open: (p) => ({
+      size: () => Buffer.byteLength(files[p] ?? ''),
+      read: (maxBytes) => Buffer.from(files[p] ?? '').subarray(0, maxBytes),
+      close: () => undefined,
+    }),
   };
 }
 
