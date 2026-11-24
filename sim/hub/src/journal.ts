@@ -22,6 +22,18 @@ export interface JournalIO {
   write(fd: number, buf: Buffer, off: number, len: number, position: number): number;
   sync(fd: number): void;
   truncate(fd: number, length: number): void;
+  /** The size of the file the descriptor holds, read from the descriptor itself. */
+  size(fd: number): number;
+  /** Closes the descriptor. */
+  close(fd: number): void;
+}
+
+/** A line was NOT written because the journal, or the lock beside it, is not as this hub left it. Nothing was cut back. */
+export class JournalNotWritten extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'JournalNotWritten';
+  }
 }
 
 export interface JournalOptions {
@@ -37,6 +49,8 @@ const REAL_IO: JournalIO = {
   write: (fd, buf, off, len, position) => writeSync(fd, buf, off, len, position),
   sync: (fd) => fsyncSync(fd),
   truncate: (fd, length) => ftruncateSync(fd, length),
+  size: (fd) => fstatSync(fd).size,
+  close: (fd) => closeSync(fd),
 };
 
 export interface ReplayResult {
@@ -205,6 +219,8 @@ export class Journal {
     try {
       const held = fstatSync(this.fd, { bigint: true });
       const named = statSync(this.file, { bigint: true });
+      // The device half of this comparison has no test: two devices cannot be made in a test, and on one volume a different device
+      // with the same file number does not occur, so dropping it changes nothing here. It is kept because a path may cross volumes.
       return held.dev === named.dev && held.ino === named.ino;
     } catch {
       return false;
@@ -216,15 +232,32 @@ export class Journal {
     return this.broken;
   }
 
+  /** The bytes of the line for these records. All the work that grows with the post is done here, before the look at the lock. */
+  line(records: unknown[]): Buffer {
+    return Buffer.from(`${JSON.stringify(records)}\n`, 'utf8');
+  }
+
   /**
-   * Writes one line and returns only when all of it is written and on the disk (fsync). When anything fails part-way the
-   * file is cut back to its last good length; if that fails too the journal is unavailable until a restart.
+   * Writes one line (built by line()) and returns only when all of it is written and on the disk (fsync).
+   *
+   * Before the first write call two things are checked, in this order, and if either fails NOTHING is written and the file is NOT cut
+   * back (the bytes in it may be another hub's answered lines): the size of the file the journal holds open, read from its own
+   * descriptor, must equal the length this journal remembers (otherwise another writer has added to it or cut it, and the journal
+   * becomes unavailable until a restart); and `look` must say the lock is still this hub's own. The write call follows the look with
+   * nothing between them but the start of the loop (no hashing, no JSON, no allocation).
+   *
+   * When a write of the line itself fails part-way the file is cut back to its last good length; if that fails too the journal is
+   * unavailable until a restart.
    */
-  append(records: unknown[]): void {
+  commit(buf: Buffer, look: () => boolean): void {
     if (this.fd === undefined) throw new JournalError('journal is closed');
     if (this.broken) throw new JournalError('journal is unavailable');
     const fd = this.fd;
-    const buf = Buffer.from(`${JSON.stringify(records)}\n`, 'utf8');
+    if (this.io.size(fd) !== this.goodLength) {
+      this.broken = true;
+      throw new JournalNotWritten('the journal file is not the length this hub left it');
+    }
+    if (!look()) throw new JournalNotWritten('the journal or its lock is not this hub\'s any more');
     try {
       let off = 0;
       while (off < buf.length) off += this.io.write(fd, buf, off, buf.length - off, this.goodLength + off);
@@ -241,14 +274,15 @@ export class Journal {
   }
 
   close(): void {
-    if (this.fd === undefined) return;
+    const fd = this.fd;
+    if (fd === undefined) return;
+    // forgotten BEFORE the close is called: a close that fails is never tried again on a number that may by now be another file's
+    this.fd = undefined;
     try {
-      fsyncSync(this.fd);
+      fsyncSync(fd);
     } catch {
       // a journal that could not be cut back may fail here too; closing must still release the file
-    } finally {
-      closeSync(this.fd);
-      this.fd = undefined;
     }
+    this.io.close(fd);
   }
 }

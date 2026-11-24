@@ -1,6 +1,6 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, chmodSync, unlinkSync, renameSync, rmSync, readFileSync, writeFileSync, appendFileSync, existsSync, statSync, writeSync, ftruncateSync, fsyncSync, symlinkSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, chmodSync, unlinkSync, renameSync, truncateSync, closeSync, rmSync, readFileSync, writeFileSync, appendFileSync, existsSync, statSync, writeSync, ftruncateSync, fsyncSync, symlinkSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -1825,4 +1825,144 @@ test('65. a start gives up after five seconds, with a plain message, when the cu
   assert.match(message, /cannot be read \(ENOENT\)/);
   assert.ok(!message.includes(dir), message);
   assert.ok(took >= 4500 && took <= 8000, `gave up after ${took} ms`);
+});
+
+// ---- round 9: the look at the lock is next to the write, and the journal refuses a file that changed under it ----
+
+const lineOf = (records: unknown[]): string => `${JSON.stringify(records)}\n`;
+
+/** The answer of two shots posted in a row to a fresh hub: what a restart on a journal holding both lines shows. */
+async function referenceOf(...shots: number[]): Promise<any> {
+  let out: any;
+  await withHub(tempDir(), {}, async (url) => {
+    for (const n of shots) assert.equal((await post(url, [REC(n)])).status, 200);
+    out = await rounds(url);
+  });
+  return out;
+}
+
+test('66. the lock removed and a second writer line added after the work of the post, before the look: 503, that line is intact, and the first batch is not in the journal', { timeout: 120000 }, async () => {
+  const dir = tempDir();
+  let armed = false;
+  const second = lineOf([REC(5)]); // what a second hub would have written and answered 200
+  await withHub(dir, { hooks: { beforeWriteLook: () => {
+    if (!armed) return;
+    unlinkSync(join(dir, 'hub.lock.1'));
+    appendFileSync(journalOf(dir), second);
+  } } }, async (url) => {
+    assert.equal((await post(url, [REC(0)])).status, 200);
+    const before = readFileSync(journalOf(dir));
+    armed = true;
+    const r = await post(url, [REC(1)]);
+    armed = false;
+    assert.deepEqual([r.status, r.body], [503, { error: 'journal_unavailable' }], 'a post that wrote nothing is 503');
+    assert.ok(readFileSync(journalOf(dir)).equals(Buffer.concat([before, Buffer.from(second)])), 'the journal is exactly what it was plus the second writer\'s line');
+  });
+  assert.deepEqual(await answerOf(dir), await referenceOf(0, 5), 'the second writer\'s shot is there after a restart and the first hub\'s batch is not');
+});
+
+test('67. the lock removed, nothing else, after the post\'s work and before the look: 503 and nothing written', { timeout: 120000 }, async () => {
+  const dir = tempDir();
+  let armed = false;
+  await withHub(dir, { hooks: { beforeWriteLook: () => {
+    if (armed) unlinkSync(join(dir, 'hub.lock.1'));
+  } } }, async (url) => {
+    assert.equal((await post(url, [REC(0)])).status, 200);
+    const before = readFileSync(journalOf(dir));
+    armed = true;
+    const r = await post(url, [REC(1)]);
+    armed = false;
+    assert.deepEqual([r.status, r.body], [503, { error: 'journal_unavailable' }]);
+    assert.ok(readFileSync(journalOf(dir)).equals(before), 'nothing was written');
+    assert.deepEqual((await rounds(url)).rounds.length, 1, 'the book was rebuilt from the file: only the first shot');
+  });
+  assert.deepEqual(await answerOf(dir), await referenceOf(0));
+});
+
+test('68. a complete line added to the journal from outside, the lock left alone: 503, the line intact byte for byte, the file not cut, the next post 503 too', { timeout: 120000 }, async () => {
+  const dir = tempDir();
+  let armed = false;
+  const outside = lineOf([REC(5)]);
+  await withHub(dir, { hooks: { beforeWriteLook: () => {
+    if (armed) appendFileSync(journalOf(dir), outside);
+  } } }, async (url) => {
+    assert.equal((await post(url, [REC(0)])).status, 200);
+    const before = readFileSync(journalOf(dir));
+    armed = true;
+    const r = await post(url, [REC(1)]);
+    armed = false;
+    assert.deepEqual([r.status, r.body], [503, { error: 'journal_unavailable' }]);
+    assert.ok(readFileSync(journalOf(dir)).equals(Buffer.concat([before, Buffer.from(outside)])), 'the outside line is intact and the file is not cut');
+    assert.deepEqual([(await post(url, [REC(2)])).status], [503], 'unavailable until a restart');
+  });
+});
+
+test('69. the journal cut shorter from outside after the post\'s work: 503 and nothing written', { timeout: 120000 }, async () => {
+  const dir = tempDir();
+  let armed = false;
+  await withHub(dir, { hooks: { beforeWriteLook: () => {
+    if (armed) truncateSync(journalOf(dir), statSync(journalOf(dir)).size - 5);
+  } } }, async (url) => {
+    assert.equal((await post(url, [REC(0)])).status, 200);
+    const size = statSync(journalOf(dir)).size;
+    armed = true;
+    const r = await post(url, [REC(1)]);
+    armed = false;
+    assert.deepEqual([r.status, r.body], [503, { error: 'journal_unavailable' }]);
+    assert.equal(statSync(journalOf(dir)).size, size - 5, 'nothing was written, and the file was not touched');
+  });
+});
+
+test('70. an ordinary post is 200 and the journal grows by exactly its line; a failed write of the hub\'s own line is still cut back', { timeout: 120000 }, async () => {
+  const dir = tempDir();
+  const { f, io } = faults();
+  await withHub(dir, { journal: { io } }, async (url) => {
+    assert.equal((await post(url, [REC(0)])).status, 200);
+    const size = statSync(journalOf(dir)).size;
+    assert.equal((await post(url, [REC(1)])).status, 200);
+    assert.equal(statSync(journalOf(dir)).size, size + Buffer.byteLength(lineOf([REC(1)])), 'grew by exactly its line');
+    const size2 = statSync(journalOf(dir)).size;
+    f.write = 'half';
+    assert.equal((await post(url, [REC(2)])).status, 500);
+    f.write = 'none';
+    assert.equal(statSync(journalOf(dir)).size, size2, 'cut back to the last good length');
+    assert.equal((await post(url, [REC(2)])).status, 200, 'and the hub goes on');
+  });
+});
+
+test('71. the last look comes after the table is updated: a removal just before it gives 500 and a read address shows what the path holds', { timeout: 120000 }, async () => {
+  const dir = tempDir();
+  let armed = false;
+  await withHub(dir, { hooks: { beforeLastLook: () => {
+    if (armed) unlinkSync(join(dir, 'hub.lock.1'));
+  } } }, async (url) => {
+    assert.equal((await post(url, [REC(0)])).status, 200);
+    armed = true;
+    const r = await post(url, [REC(1)]);
+    armed = false;
+    assert.equal(r.status, 500, 'a line was written and then found lost');
+    assert.deepEqual(await rounds(url), await referenceOf(0, 1), 'the journal path holds both lines, and the book is rebuilt from it');
+    assert.equal((await post(url, [REC(2)])).status, 503);
+  });
+});
+
+test('72. a journal whose close fails: the hub\'s close still removes its lock, a new hub can start, a second close does nothing', { timeout: 120000 }, async () => {
+  const dir = tempDir();
+  let calls = 0;
+  const io = {
+    close: (fd: number): void => {
+      calls++;
+      closeSync(fd); // the descriptor really is closed, then the close reports a failure
+      throw new Error('close failed (test)');
+    },
+  };
+  const hub = createHub({ dataDir: dir, port: 0, ...quiet, journal: { io } });
+  await hub.listen();
+  await assert.rejects(() => hub.close(), /close failed/);
+  assert.deepEqual(lockFiles(dir), [], 'the lock is gone although the journal\'s close threw');
+  await hub.close(); // a second close does nothing
+  assert.equal(calls, 1, 'the descriptor was closed once and never again');
+  await withHub(dir, {}, async (url) => {
+    assert.equal((await fetch(`${url}/healthz`)).status, 200, 'a new hub starts on the folder in this process');
+  });
 });

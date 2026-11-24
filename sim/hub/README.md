@@ -43,6 +43,22 @@ hub was killed, its lock is stale: the next start sees the process is gone, repl
 in one line. A start that fails on the lock or on a busy port changes nothing in the folder (the folder itself may be created, for the lock), and the journal is read only after the port is bound; a request that arrives while it is being read gets 503 busy. The refusal names the lock file and the process id in it, and says that the process may be another program: a lock only holds an id, and after a restart of the PC that id can belong to anything. Stop nothing; delete the named lock file and start again. (A lock that names the starting process itself, with a token no hub here holds, is a leftover and is replaced with one line.) If a start ever refuses wrongly (for example the lock names a process id that now belongs to
 some other program), make sure no hub is running and delete the `hub.lock.<n>` file the message names from the data folder (any `hub.lock.tmp-*` leftover of a crash is removed by the next start; a plain `hub.lock` or `hub.lock.takeover` from an older build is ignored and may be deleted). The lock needs a file system that supports hard links (NTFS and ordinary Linux or macOS folders do; some network or removable drives do not): on one that does not, the hub refuses to start and says so, and `SIM_HUB_DATA` must point somewhere else.
 
+## When the folder or the lock is removed under a running hub
+
+The look at the lock is made next to the write, not before the post's work: the hub does all of a post's work first (checks,
+fingerprints, the library, the bytes of the line), then checks that the journal is still the file at its path and the lock is
+still its own, then writes. The journal itself also refuses to write if its file is not the length it remembers (another writer
+has added to it or cut it): it writes nothing, does not cut the file back (those bytes may be another hub's answered lines),
+and the hub takes no more posts until restarted. A post that wrote nothing is answered 503; a post whose line was written and
+then found lost is answered 500. The last look is made after the table is updated, just before the answer.
+
+What can still be lost, measured on the development PC (three posts, one of 16.7 MB): from the look to the first write call about
+4 to 15 microseconds; from the last look to the start of the answer about 9 to 17 microseconds, and handing the answer to the
+socket took 0.16 to 1.6 milliseconds. If the lock is removed inside the first gap, the line can still go in over the bytes of a second
+hub that answered 200 in that gap, and the size check cannot see it if that hub's line had not yet reached the file; if it is
+removed between the last look and the answer, one answered post is in a file that has lost its name. Both need another program to act
+inside those gaps. The hub notices at the next post.
+
 ## Tests
 
 `npm run test:sim` runs the library's tests and the hub's (`sim/hub/test`).

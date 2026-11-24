@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { RoundBook, UnknownLayoutError, validateRecord, MAX_RECORDS, type IngestCounts, type ShotRecord } from '../../core/src/index.js';
-import { Journal, JournalError, replayFile, JOURNAL_NAME, MAX_LINE_BYTES, type JournalOptions } from './journal.js';
+import { Journal, JournalError, JournalNotWritten, replayFile, JOURNAL_NAME, MAX_LINE_BYTES, type JournalOptions } from './journal.js';
 import { takeLock, type HeldLock } from './lock.js';
 
 export const HOST = '127.0.0.1';
@@ -26,6 +26,15 @@ export interface HubOptions {
   journal?: JournalOptions;
   /** How long a post may take to send its whole body, from its headers. Default 30 seconds; settable for tests. */
   bodyTimeoutMs?: number;
+  /** Test hooks, never set outside the tests. Each runs at a fixed point of a post and lets a test change the world there. */
+  hooks?: HubHooks;
+}
+
+export interface HubHooks {
+  /** After all of a post's work and the bytes of its line are ready, immediately before the look at the lock that guards the write. */
+  beforeWriteLook?: () => void;
+  /** After the table is updated, immediately before the last look and the answer. */
+  beforeLastLook?: () => void;
 }
 
 export interface Hub {
@@ -216,6 +225,9 @@ export function createHub(options: HubOptions): Hub {
   /**
    * The journal this hub holds open is still the file at its path, and this hub's own lock is still its own. If either is gone the
    * hub must never write again: a line written now would go into a file that has lost its name, or over another hub's lines.
+   * It is called in three places. At the top of acceptBatch it is only a cheap refusal before any work is spent. THE LOOK THAT
+   * PROTECTS THE WRITE is the one passed to Journal.commit: it runs after all of the post's work and the line's bytes are ready,
+   * immediately before the first write call. The LAST look, after the table is updated, decides whether the answer may be 200.
    */
   function lost(): boolean {
     return !(journal as Journal).sameFile() || !(lock as HeldLock).stillHeld();
@@ -233,7 +245,7 @@ export function createHub(options: HubOptions): Hub {
   /** Runs in the queue. The library's ingest and the journal write have no await between them. */
   function acceptBatch(records: ShotRecord[]): { status: number; body: unknown } {
     if (unavailable) return { status: 503, body: { error: 'journal_unavailable' } };
-    // first of two looks: before anything is written (or the book touched)
+    // a cheap refusal before any work is spent; it does NOT protect the write (the post's work takes as long as the post is big)
     if (lost()) {
       markLost();
       return { status: 503, body: { error: 'journal_unavailable' } };
@@ -263,32 +275,41 @@ export function createHub(options: HubOptions): Hub {
       throw e;
     }
     if (kept.length > 0) {
+      // all the work that grows with the post is done: the bytes of the line are built here, before the look
+      const bytes = (journal as Journal).line(kept);
+      options.hooks?.beforeWriteLook?.();
       try {
-        (journal as Journal).append(kept);
+        // the look at the lock runs inside commit, after the size check and immediately before the first write call
+        (journal as Journal).commit(bytes, () => !lost());
       } catch (e) {
-        // The book holds a batch the file does not (the journal has cut the file back to its last good length).
+        // The book holds a batch the file does not. If the line was written and failed, the journal has cut the file back to its last
+        // good length; if it was not written at all (JournalNotWritten) nothing was cut: the file may hold another hub's lines.
+        const notWritten = e instanceof JournalNotWritten;
+        if (notWritten) markLost();
         if ((journal as Journal).unavailable) unavailable = true;
         try {
           rebuild();
         } catch {
           unavailable = true;
         }
+        // 503 means this post wrote nothing; 500 means a line was written and then found lost or failed
+        if (notWritten) return { status: 503, body: { error: 'journal_unavailable' } };
         throw e;
-      }
-      // second look: the line is on the disk, but is it in a file that still has its name, under a lock that is still ours? If not the
-      // post is handled as a failed write is: the book is rebuilt from what the path now holds, and the answer is 500. (The file is
-      // not cut back here: it may by now be another hub's journal.)
-      if (lost()) {
-        markLost();
-        try {
-          rebuild();
-        } catch {
-          // the book is then whatever it was; the hub takes no more posts
-        }
-        throw new Error('the journal was lost while a line was being written');
       }
     }
     updateTable(table, records, counts);
+    // the last look, last before the answer: a line in a file that has lost its name, or under a lock that is not ours, is not a 200.
+    // rebuild() restores both the book and the table from what the path holds, and the answer is 500.
+    options.hooks?.beforeLastLook?.();
+    if (kept.length > 0 && lost()) {
+      markLost();
+      try {
+        rebuild();
+      } catch {
+        // the book is then whatever it was; the hub takes no more posts
+      }
+      throw new Error('the journal was lost while a line was being written');
+    }
     return { status: 200, body: counts };
   }
 
@@ -463,10 +484,15 @@ export function createHub(options: HubOptions): Hub {
         });
       }
       await chain; // let a batch in flight finish its write
-      journal?.close();
+      const j = journal;
+      const l = lock;
       journal = undefined;
-      lock?.release();
       lock = undefined;
+      try {
+        j?.close();
+      } finally {
+        l?.release(); // a close that throws must not leave the lock behind
+      }
     },
     address: () => bound,
   };
