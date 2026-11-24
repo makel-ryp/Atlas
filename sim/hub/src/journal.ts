@@ -54,7 +54,7 @@ export interface ReplayResult {
  * warn is called once, with no file content, and `cutAt` says where it began. A bad line anywhere else is an error:
  * it is never skipped silently. A batch that onBatch throws on is an error too.
  */
-export function replayFile(file: string, onBatch: (records: unknown[]) => void, warn: (line: string) => void, options: JournalOptions = {}): ReplayResult {
+function* replaySteps(file: string, onBatch: (records: unknown[]) => void, warn: (line: string) => void, options: JournalOptions): Generator<void, ReplayResult> {
   if (!existsSync(file)) return { cutAt: undefined, missingNewline: false, size: 0 };
   const pieceBytes = Math.max(1, Math.floor(options.pieceBytes ?? DEFAULT_PIECE_BYTES));
   const maxLine = options.maxLineBytes ?? MAX_LINE_BYTES;
@@ -123,6 +123,7 @@ export function replayFile(file: string, onBatch: (records: unknown[]) => void, 
         from = nl + 1;
       }
       pos += n;
+      yield; // one piece done: the asynchronous reader lets the event loop run here
     }
     // what is left has no newline after it
     if (lineLen > 0) {
@@ -138,6 +139,25 @@ export function replayFile(file: string, onBatch: (records: unknown[]) => void, 
     return { cutAt: undefined, missingNewline: false, size: pos };
   } finally {
     closeSync(fd);
+  }
+}
+
+/** The whole replay in one go. */
+export function replayFile(file: string, onBatch: (records: unknown[]) => void, warn: (line: string) => void, options: JournalOptions = {}): ReplayResult {
+  const steps = replaySteps(file, onBatch, warn, options);
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** The same replay, but the event loop runs between pieces, so a server that is already listening can answer "busy". */
+export async function replayFileAsync(file: string, onBatch: (records: unknown[]) => void, warn: (line: string) => void, options: JournalOptions = {}): Promise<ReplayResult> {
+  const steps = replaySteps(file, onBatch, warn, options);
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
 }
 
@@ -159,10 +179,10 @@ export class Journal {
   }
 
   /** Replays the file through onBatch in order, repairs a cut-short last line, and opens the file for appending. */
-  static open(dir: string, onBatch: (records: unknown[]) => void, warn: (line: string) => void, options: JournalOptions = {}): Journal {
+  static async open(dir: string, onBatch: (records: unknown[]) => void, warn: (line: string) => void, options: JournalOptions = {}): Promise<Journal> {
     mkdirSync(dir, { recursive: true });
     const file = join(dir, JOURNAL_NAME);
-    const r = replayFile(file, onBatch, warn, options);
+    const r = await replayFileAsync(file, onBatch, warn, options);
     let good = r.size;
     if (r.cutAt !== undefined) {
       truncateSync(file, r.cutAt); // so the next append starts on a clean line

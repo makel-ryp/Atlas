@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { RoundBook, UnknownLayoutError, type IngestCounts, type ShotRecord } from '../../core/src/index.js';
+import { RoundBook, UnknownLayoutError, validateRecord, MAX_RECORDS, type IngestCounts, type ShotRecord } from '../../core/src/index.js';
 import { Journal, replayFile, JOURNAL_NAME, MAX_LINE_BYTES, type JournalOptions } from './journal.js';
 import { takeLock, type HeldLock } from './lock.js';
 
@@ -88,6 +88,8 @@ export function createHub(options: HubOptions): Hub {
   // True when a journal write failed and the file could not be cut back: no more posts until a restart.
   let unavailable = false;
   let lock: HeldLock | undefined;
+  // True from the moment the port is bound until the journal has been replayed: every request answers 503 busy.
+  let starting = false;
   const maxLine = options.journal?.maxLineBytes ?? MAX_LINE_BYTES;
   let activePosts = 0;
   // Everything that changes the book runs one at a time, in arrival order.
@@ -206,6 +208,17 @@ export function createHub(options: HubOptions): Hub {
     // exactly it: the library would count it unchanged and change nothing, so a replay cannot differ without it.
     // The line this post would write is known now, from the post and the table alone, and it is measured before the
     // library sees the post: the hub never writes a line it would refuse to read at the next start.
+    // The library judges the post first: a record it would refuse is a 400, as it always was, and only a record it accepts
+    // as a layout is fingerprinted and measured (JSON.stringify of a record nested too deep would throw here).
+    if (records.length > MAX_RECORDS) return { status: 400, body: { error: 'unknown_layout' } };
+    for (let i = 0; i < records.length; i++) {
+      try {
+        validateRecord(records[i], `record ${i}`);
+      } catch (e) {
+        if (e instanceof UnknownLayoutError || e instanceof RangeError) return { status: 400, body: { error: 'unknown_layout' } };
+        throw e;
+      }
+    }
     const kept = keptRecords(records);
     if (kept.length > 0 && lineTooLong(kept, maxLine)) return { status: 413, body: { error: 'too_large' } };
     let counts: IngestCounts;
@@ -278,6 +291,11 @@ export function createHub(options: HubOptions): Hub {
     let status: number | 'aborted' = 500;
     let note = '';
     try {
+      if (starting) {
+        status = 503;
+        refuseAndDrain(req, res, 503, { error: 'busy' }, { 'Retry-After': '1' });
+        return;
+      }
       // Who is asking comes first: a web page open in a browser on this PC reaches 127.0.0.1 too, but it cannot choose
       // its Host header. Nothing else is looked at and no body is read.
       const host = req.headers.host?.toLowerCase();
@@ -339,12 +357,12 @@ export function createHub(options: HubOptions): Hub {
       table = new Map<string, string>();
       unavailable = false;
       activePosts = 0;
-      // Order: the lock, then the journal is opened and replayed, then the port. A refused start touches nothing.
+      // Order: take the lock; bind the port; then open and replay the journal. Until the replay is done every request
+      // answers 503 busy. A start that fails on the lock or on the port touches nothing in the folder but the lock.
       lock = takeLock(options.dataDir, warn);
       const s = createServer((req, res) => void handle(req, res));
+      starting = true;
       try {
-        journal = Journal.open(options.dataDir, (records) => void apply(book, table, records as ShotRecord[]), warn, options.journal);
-        server = s;
         await new Promise<void>((resolve, reject) => {
           s.once('error', reject);
           s.listen(wantedPort, HOST, () => {
@@ -352,17 +370,30 @@ export function createHub(options: HubOptions): Hub {
             resolve();
           });
         });
+        server = s;
+        const a = s.address() as AddressInfo;
+        bound = { host: a.address, port: a.port };
+        journal = await Journal.open(options.dataDir, (records) => void apply(book, table, records as ShotRecord[]), warn, options.journal);
+        starting = false;
       } catch (e) {
+        starting = false;
         server = undefined;
+        bound = undefined;
+        await new Promise<void>((resolve) => {
+          if (!s.listening) {
+            resolve();
+            return;
+          }
+          s.close(() => resolve());
+          s.closeAllConnections();
+        });
         journal?.close();
         journal = undefined;
         lock?.release();
         lock = undefined;
         throw e;
       }
-      const a = s.address() as AddressInfo;
-      bound = { host: a.address, port: a.port };
-      return bound;
+      return bound as { host: string; port: number };
     },
     async close() {
       const s = server;

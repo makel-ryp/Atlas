@@ -46,7 +46,7 @@ Request: `Content-Type: application/json`, body `{ "records": [ ... ] }`, at mos
 | 413 | `{ "error": "too_large" }` | The body is over 32 MB, or the record would be too long to keep: the journal line this post would write (numbers such as `1e20` are longer written out than sent) is over 64 MB, the longest line the hub will read back at the next start. Nothing changes |
 | 415 | `{ "error": "unsupported_media_type" }` | The `Content-Type` is not `application/json` |
 | 500 | `{ "error": "internal" }` | Anything unexpected, including a journal write that failed (the file is cut back to its last good length, the scores are as before the post, and the hub carries on). The cause is not given |
-| 503 | `{ "error": "busy" }` with `Retry-After: 1` | Four posts are already being read or waiting for their turn. Send it again after a second |
+| 503 | `{ "error": "busy" }` with `Retry-After: 1` | Four posts are already being read or waiting for their turn, or the hub has only just started and is still reading its journal (every request, on every address, gets this until it is done). Send it again after a second |
 | 503 | `{ "error": "journal_unavailable" }` | A journal write failed and the file could not be cut back. The hub takes no more posts until it is restarted; the two `GET` addresses still answer |
 
 `added` counts new shots, `revised` shots re-sent with different content, `unchanged` exact
@@ -102,6 +102,6 @@ Example: `GET /v0/rounds` gives `200 { "rounds": [ { "roundId": 19, "courseKey":
   On start the hub reads the journal in pieces (never the whole file at once) and replays it, so
   stopping and starting ends on the same answer. A half-written last line is skipped with a
   warning; a damaged line anywhere else, or a line over 64 MB, stops the start.
-- One hub per data folder: the hub takes `hub.lock` in the data folder (created exclusively, holding its process id) before it opens the journal, and removes it when it stops. A second hub on the same folder refuses to start and touches nothing. A lock whose process is gone is replaced, with one line on the console.
+- One hub per data folder: the hub takes `hub.lock` in the data folder (created exclusively, holding its process id and a token only it knows) before it does anything else, and removes it when it stops, but only if it still holds its own id and token. A second hub on the same folder refuses to start and touches nothing. A lock whose process is gone is replaced by one starter only, with one line on the console. Start order: the lock, then the port, then the journal is read (503 busy meanwhile). A start that fails on the lock or the port leaves the folder as it was, except that the folder itself may have been made for the lock.
 - The hub's console shows only methods, fixed address words, status codes and counts (a post the client dropped before its body ended is logged as `aborted`). It never
   prints a name, an id or anything else from a request.

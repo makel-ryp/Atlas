@@ -6,7 +6,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { request } from 'node:http';
 import { connect, createServer as createNetServer } from 'node:net';
-import { execFile, execFileSync } from 'node:child_process';
+import { execFile, execFileSync, spawn } from 'node:child_process';
 import { createHub, type Hub, type HubOptions } from '../src/server.js';
 import { loadRecording, type Copy } from '../../core/src/index.js';
 
@@ -937,7 +937,7 @@ test('30. a stale lock (its process is gone) is taken over, with one line saying
   await withHub(dir, { warn: (l) => said.push(l) }, async (url) => {
     assert.equal(said.length, 1);
     assert.match(said[0]!, /stale/);
-    assert.equal(readFileSync(join(dir, 'hub.lock'), 'utf8').trim(), String(process.pid));
+    assert.equal(readFileSync(join(dir, 'hub.lock'), 'utf8').split(' ')[0], String(process.pid));
     assert.equal((await fetch(`${url}/healthz`)).status, 200);
   });
   assert.equal(existsSync(join(dir, 'hub.lock')), false);
@@ -1029,4 +1029,184 @@ test('34. the journal is synced after each write and before the answer is sent',
     events.push('answer');
     assert.deepEqual(events, ['write', 'sync', 'answer']);
   });
+});
+
+// ---- round 5: one winner on a stale lock; the library judges a post first; a failed start leaves the folder alone ----
+
+/** A process id that is certainly not running: a child that has already exited. */
+function deadPid(): number {
+  return Number(execFileSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }));
+}
+
+/** N starters, separate processes, leave the line together on one folder that holds a stale lock. */
+async function raceOnStaleLock(starters: number): Promise<{ results: string[]; lockPid: number; winnerPid: number; leftovers: string[] }> {
+  const dir = tempDir();
+  writeFileSync(join(dir, 'hub.lock'), `${deadPid()} oldtoken\n`);
+  const startAt = Date.now() + 700;
+  const kids = Array.from({ length: starters }, () =>
+    spawn(process.execPath, ['--experimental-strip-types', '--no-warnings', join(HERE, 'lock-child.mjs'), dir, String(startAt)], { stdio: ['pipe', 'pipe', 'inherit'] }),
+  );
+  try {
+    const results = await Promise.all(
+      kids.map(
+        (k) =>
+          new Promise<string>((resolve, reject) => {
+            let text = '';
+            k.stdout!.on('data', (c: Buffer) => {
+              text += c.toString('utf8');
+              if (text.includes('\n')) resolve(text.trim());
+            });
+            k.on('error', reject);
+            k.on('exit', () => resolve(text.trim() || 'DIED'));
+          }),
+      ),
+    );
+    const winner = kids[results.indexOf('WON')];
+    const lockPid = Number(readFileSync(join(dir, 'hub.lock'), 'utf8').split(' ')[0]);
+    return { results, lockPid, winnerPid: winner?.pid ?? -1, leftovers: readdirSync(dir).filter((n) => n !== 'hub.lock') };
+  } finally {
+    for (const k of kids) {
+      k.stdin!.end();
+      k.kill();
+    }
+    await Promise.all(kids.map((k) => new Promise<void>((resolve) => (k.exitCode !== null ? resolve() : k.once('exit', () => resolve())))));
+  }
+}
+
+for (const starters of [2, 4]) {
+  test(`35-${starters}. 40 trials of ${starters} starters racing on one stale lock: exactly one wins every time`, async () => {
+    const TRIALS = 40;
+    for (let t = 0; t < TRIALS; t++) {
+      const r = await raceOnStaleLock(starters);
+      assert.equal(r.results.filter((x) => x === 'WON').length, 1, `trial ${t}: ${r.results.join(',')}`);
+      assert.equal(r.results.filter((x) => x === 'REFUSED').length, starters - 1, `trial ${t}: ${r.results.join(',')}`);
+      assert.equal(r.lockPid, r.winnerPid, `trial ${t}: the lock names the winner`);
+      assert.deepEqual(r.leftovers, [], `trial ${t}: the renamed stale lock is removed`);
+    }
+  });
+}
+
+test('36. a hub whose lock was replaced by another hub leaves that lock in place on close', async () => {
+  const dir = tempDir();
+  const other = `${process.pid} some-other-hubs-token\n`;
+  await withHub(dir, {}, async () => {
+    writeFileSync(join(dir, 'hub.lock'), other); // another hub's lock now sits where this hub's was
+  });
+  assert.equal(readFileSync(join(dir, 'hub.lock'), 'utf8'), other);
+  rmSync(join(dir, 'hub.lock'));
+  const foreign = `${deadPid()} foreign\n`;
+  await withHub(dir, {}, async () => {
+    writeFileSync(join(dir, 'hub.lock'), foreign);
+  });
+  assert.equal(readFileSync(join(dir, 'hub.lock'), 'utf8'), foreign);
+});
+
+for (const depth of [10000, 100000]) {
+  test(`37-${depth}. a record nested ${depth} deep answers 400 unknown_layout (not 500), changes nothing, and a restart equals live`, async () => {
+    const dir = tempDir();
+    const base = JSON.stringify(copies[37]!.records[1]!);
+    const body = `{"records":[${base.slice(0, -1)},"Deep":${'['.repeat(depth)}${']'.repeat(depth)}}]}`;
+    await withHub(dir, {}, async (url, hub) => {
+      await postCopies(url, 0, 3);
+      const before = await rounds(url);
+      const size = journalSize(dir);
+      const r = await raw(url, { method: 'POST', path: '/v0/shots', headers: { 'Content-Type': 'application/json' }, body });
+      assert.deepEqual([r.status, r.body], [400, { error: 'unknown_layout' }]);
+      assert.equal(journalSize(dir), size);
+      assert.deepEqual(await rounds(url), before);
+      await assertRestartEqualsLive(dir, hub, url, 'restart after a record nested too deep');
+    });
+  });
+}
+
+test('38. the line check counts bytes, and to the byte', async () => {
+  const rec = structuredClone(copies[37]!.records[0]!) as any;
+  const wide = { ...structuredClone(rec), Pad: '\u00e9'.repeat(200) }; // 200 characters, 400 bytes in the line
+  const lineBytes = (r: unknown): number => Buffer.byteLength(JSON.stringify([r]), 'utf8');
+  const lineChars = (r: unknown): number => JSON.stringify([r]).length;
+  assert.equal(lineBytes(wide), lineChars(wide) + 200);
+  const tryPost = async (record: unknown, maxLineBytes: number): Promise<number> => {
+    let status = 0;
+    await withHub(tempDir(), { journal: { maxLineBytes } }, async (url) => {
+      status = (await post(url, [record])).status;
+    });
+    return status;
+  };
+  // under the limit in characters, over it in bytes: refused
+  assert.equal(await tryPost(wide, lineChars(wide)), 413);
+  assert.equal(await tryPost(wide, lineChars(wide) + 199), 413);
+  // exactly the limit passes, one byte more does not
+  assert.equal(await tryPost(wide, lineBytes(wide)), 200);
+  assert.equal(await tryPost(wide, lineBytes(wide) - 1), 413);
+  assert.equal(await tryPost(rec, lineBytes(rec)), 200);
+  assert.equal(await tryPost(rec, lineBytes(rec) - 1), 413);
+});
+
+test('39. a busy port on a brand-new folder leaves no journal', async () => {
+  const dir = join(tempDir(), 'fresh');
+  const blocker = createNetServer();
+  await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', () => resolve()));
+  try {
+    const hub = createHub({ dataDir: dir, port: (blocker.address() as { port: number }).port, ...quiet });
+    try {
+      await assert.rejects(() => hub.listen());
+      assert.deepEqual(readdirSync(dir), [], 'nothing but the folder itself is left (it was made for the lock)');
+    } finally {
+      await hub.close();
+    }
+  } finally {
+    await new Promise<void>((resolve) => blocker.close(() => resolve()));
+  }
+});
+
+test('40. a busy port leaves a journal with a cut-short last line byte for byte as it was', async () => {
+  const dir = tempDir();
+  await withHub(dir, {}, async (url) => {
+    await postCopies(url, 0, 5);
+  });
+  appendFileSync(journalOf(dir), '[{"ShotID":"cut');
+  const before = readFileSync(journalOf(dir));
+  const blocker = createNetServer();
+  await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', () => resolve()));
+  try {
+    const hub = createHub({ dataDir: dir, port: (blocker.address() as { port: number }).port, ...quiet });
+    try {
+      await assert.rejects(() => hub.listen());
+      assert.ok(readFileSync(journalOf(dir)).equals(before));
+      assert.deepEqual(readdirSync(dir).sort(), ['journal.jsonl']);
+    } finally {
+      await hub.close();
+    }
+  } finally {
+    await new Promise<void>((resolve) => blocker.close(() => resolve()));
+  }
+});
+
+test('41. while the journal is replayed every request answers 503 busy; afterwards the hub answers', async () => {
+  const dir = tempDir();
+  await withHub(dir, {}, async (url) => {
+    await postCopies(url, 0, 38);
+  });
+  const hub = createHub({ dataDir: dir, port: 0, ...quiet, journal: { pieceBytes: 256 } });
+  try {
+    let done = false;
+    const started = hub.listen().finally(() => {
+      done = true;
+    });
+    let address: { host: string; port: number } | undefined;
+    while (!done && (address = hub.address()) === undefined) await new Promise((r) => setImmediate(r));
+    assert.ok(address, 'the port is bound before the replay: the address is known while it runs');
+    let busy: Raw | undefined;
+    while (!done && busy === undefined) {
+      const r = await raw(`http://${address.host}:${address.port}`, { path: '/healthz', headers: { Host: `127.0.0.1:${address.port}` } });
+      if (r.status === 503) busy = r;
+    }
+    assert.ok(busy, 'a request during the replay was never answered busy');
+    assert.deepEqual(busy.body, { error: 'busy' });
+    assert.equal(busy.headers['retry-after'], '1');
+    await started;
+    assertKnownAnswer(await rounds(`http://${address.host}:${address.port}`));
+  } finally {
+    await hub.close();
+  }
 });
