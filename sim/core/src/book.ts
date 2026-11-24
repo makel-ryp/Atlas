@@ -83,12 +83,23 @@ export class RoundBook {
     const firstInCall = new Map<string, ShotRecord>();
     const found: Array<{ issue: BookIssue; rounds: number[] }> = [];
     if (!Array.isArray(records)) throw new UnknownLayoutError('records must be an array');
-    const seen = new Set<object>(); // objects already walked in this call: none may be reached twice
-    for (let i = 0; i < records.length; i++) {
-      // the book keeps its own plain copy, checked like a file record; the caller's object is never stored
-      const copy = plainCopy(records[i], `record ${i}`, seen);
-      validateRecord(copy, `record ${i}`);
-      const rec: ShotRecord = copy;
+    // Only what a record is can be refused here: reading the list, walking, copying and checking each record
+    // are guarded, and anything that throws becomes an UnknownLayoutError. Nothing after that is guarded.
+    const copies: ShotRecord[] = [];
+    try {
+      const length = records.length;
+      for (let i = 0; i < length; i++) {
+        // the book keeps its own plain copy, checked like a file record; the caller's object is never stored.
+        // Each record has its own walk: the same object may appear as two records of one call.
+        const copy = plainCopy(records[i], `record ${i}`, new Set<object>());
+        validateRecord(copy, `record ${i}`);
+        copies.push(copy);
+      }
+    } catch (e) {
+      if (e instanceof UnknownLayoutError) throw e;
+      throw new UnknownLayoutError('the records could not be read');
+    }
+    for (const rec of copies) {
       const first = firstInCall.get(rec.ShotID);
       if (first !== undefined) {
         if (isDeepStrictEqual(first, rec)) {

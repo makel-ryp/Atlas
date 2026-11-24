@@ -6,13 +6,19 @@ export function cleanText(s: string): string {
   return s.replace(UNPRINTABLE, ' ');
 }
 
+/** The bar and its look-alikes: broken bar, dental click, divides sign, parallel to, box-drawing verticals, full-width bar and the like. */
+const BAR_LIKE = /[|¦ǀ∣∥│┃┆┇┊┋╎╏║❘⏐｜￤]/g;
+
+/** Letters that print as nothing: the Hangul fillers and the braille blank. */
+const BLANK_LOOKING = /[ᅟᅠㅤﾠ⠀]/g;
+
 /**
- * Text from the file is untrusted: cleaned as above, every bar replaced by a space (the formatter puts a bar
+ * Text from the file is untrusted: cleaned as above, every bar (and look-alike of the bar) replaced by a space (the formatter puts a bar
  * between a name and the scores, so nothing from a file can put text to the right of it), and capped at
  * 64 code points (never splitting a pair), so a crafted name cannot forge lines or reorder what is shown.
  */
 export function safeText(s: string): string {
-  return Array.from(cleanText(s).replace(/\|/g, ' ')).slice(0, 64).join('');
+  return Array.from(cleanText(s).replace(BAR_LIKE, ' ')).slice(0, 64).join('');
 }
 
 /**
@@ -25,6 +31,7 @@ export function safeText(s: string): string {
  */
 export function normalisedName(name: string): string {
   return cleanText(name.replace(/\p{Cf}/gu, ''))
+    .replace(BLANK_LOOKING, ' ')
     .replace(/[\p{Pd}−﹣－]/gu, '-')
     .normalize('NFKD')
     .replace(/\p{M}/gu, '')

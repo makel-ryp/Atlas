@@ -32,11 +32,14 @@ hyphen) removed, other control and separator characters turned into spaces, ever
 character and the minus sign taken as a plain hyphen, compatibility normalisation, accents ignored
 (decompose, drop combining marks), runs of spaces collapsed, trimmed and lower-cased. Only the
 comparison changes; the printed name does not. Letters from different alphabets that only look alike
-are not detected. That is why every player line starts with the player's number in the round, `P1`, `P2`
+are not detected, and a real space inside a name keeps it a different name from one without the space.
+The blank-looking letters (the Hangul fillers and the braille blank) count as spaces in the comparison.
+That is why every player line starts with the player's number in the round, `P1`, `P2`
 and so on in the order the players were first seen (`playerNumber` in `rounds()`): two lines in one
 round are never identical, whatever the names or ids are, and no part of an id is printed. For
 example `P1 ZZTEST-A | hole 3: 6  hole 12: 4  hole 15: 8  total 18`. A bar separates the name from the
-scores, and every bar in a printed name or course key is replaced by a space, so nothing a file
+scores, and every bar in a printed name or course key (and every look-alike of the bar: the full-width
+bar, the box-drawing verticals, the broken bar, the divides sign and so on) is replaced by a space, so nothing a file
 contains can put text to the right of the bar.
 
 Player numbers are first-seen order within one book: a fresh book reading the same records in another
@@ -58,10 +61,14 @@ integer, a `Hole` outside 0 to 99 and a `HoleShot` outside 1 to 999, a `ShotID` 
 than 128 characters, a `PlayerName` or `CourseKey` longer than 256, and any record nested more than
 32 levels deep (the record itself is level 1). One validator does all of this, and `ingest` runs it
 on every record it is given, so a record passed straight in (not through the parser) is checked the
-same way. `ingest` first walks each record it is given, refusing any object reached a second time (a
-shared reference or a cycle; records read from a file never share objects), then stores its own plain
-copy (converted to JSON text and back) and checks the copy, so a getter, a prototype field, a symbol
-key or a later change by the caller cannot alter what the book holds. Any failure on the way is an
+same way. `ingest` first walks each record it is given, refusing any object reached a second time
+inside that record (a shared reference or a cycle; records read from a file never share objects; the
+same object as two records of one call, or a sub-object shared between two records, is not refused,
+because each record is walked and copied by itself), an array of more than 100,000 entries, an array
+with holes, and a record with more than 250,000 values in all (lengths and counts are read before
+anything is expanded). It then stores its own plain copy (converted to JSON text and back) and checks
+the copy, so a getter, a prototype field, a symbol key or a later change by the caller cannot alter
+what the book holds. Anything that throws while a record is walked, copied or checked is an
 `UnknownLayoutError`. It works in two passes: a call that throws leaves the book as it was. Each
 record is checked twice per read (once by the parser, once by `ingest`), so a crafted file near the
 size limit can take several seconds. The text formatter replaces control, format

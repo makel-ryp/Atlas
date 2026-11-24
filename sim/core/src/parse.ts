@@ -49,22 +49,44 @@ const CHECK_ORDER = [
   'ShotResult',
 ] as const;
 
+/** The longest array a record may hold, and the most values (every entry of every array and object) in one record. */
+export const MAX_ARRAY_LENGTH = 100_000;
+export const MAX_VALUES = 250_000;
+
 /**
- * Refuses a value nested more than MAX_DEPTH levels deep (the value itself is level 1) and any object
- * reached a second time (a shared reference or a cycle). Walks with its own stack, never by recursion,
- * and visits each object once, so the time is in proportion to the size of the value. `seen` lets one
- * walk cover several values (every record of one `ingest` call). Records read from a file never share
- * objects, so nothing from a file is refused by the sharing rule.
+ * Refuses a record that would cost too much to copy or compare: nested more than MAX_DEPTH levels deep (the
+ * value itself is level 1), an object reached a second time (a shared reference or a cycle), an array longer
+ * than MAX_ARRAY_LENGTH, an array with holes (its length is not the number of entries it has), or more than
+ * MAX_VALUES values in all, counted as the walk goes. Lengths and counts are read before anything is
+ * expanded, so a record that will be refused is refused quickly and cheaply. Walks with its own stack, never
+ * by recursion, and visits each object once. `seen` and the value count belong to one record: the objects of
+ * one record may not repeat, but a different record may hold the same object. Records read from a file never
+ * share objects, so nothing from a file is refused by the sharing rule.
  */
 export function assertShallow(value: unknown, where: string, seen: Set<object> = new Set()): void {
   const stack: Array<[unknown, number]> = [[value, 1]];
+  let values = 0;
   while (stack.length > 0) {
     const [v, depth] = stack.pop()!;
     if (v === null || typeof v !== 'object') continue;
     if (seen.has(v)) throw new UnknownLayoutError(`${where} refers to the same object more than once`);
     seen.add(v);
     if (depth > MAX_DEPTH) throw new UnknownLayoutError(`${where} is nested more than ${MAX_DEPTH} levels deep`);
-    for (const child of Object.values(v)) stack.push([child, depth + 1]);
+    let kids: unknown[];
+    if (Array.isArray(v)) {
+      const length = v.length;
+      if (length > MAX_ARRAY_LENGTH) throw new UnknownLayoutError(`${where} holds an array of more than ${MAX_ARRAY_LENGTH} entries`);
+      values += length;
+      if (values > MAX_VALUES) throw new UnknownLayoutError(`${where} holds more than ${MAX_VALUES} values`);
+      if (Object.keys(v).length !== length) throw new UnknownLayoutError(`${where} holds an array with holes`);
+      kids = Object.values(v);
+    } else {
+      const keys = Object.keys(v);
+      values += keys.length;
+      if (values > MAX_VALUES) throw new UnknownLayoutError(`${where} holds more than ${MAX_VALUES} values`);
+      kids = Object.values(v);
+    }
+    for (const child of kids) stack.push([child, depth + 1]);
   }
 }
 
