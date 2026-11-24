@@ -1,3 +1,5 @@
+import { types } from 'node:util';
+
 /** Reader for GSPro's `currentRound.dat`. The file is untrusted input: check what we rely on, refuse the rest. */
 
 export const MAX_TEXT_CHARS = 50_000_000;
@@ -54,55 +56,133 @@ export const MAX_ARRAY_LENGTH = 100_000;
 export const MAX_VALUES = 250_000;
 
 /**
- * Refuses a record that would cost too much to copy or compare: nested more than MAX_DEPTH levels deep (the
- * value itself is level 1), an object reached a second time (a shared reference or a cycle), an array longer
- * than MAX_ARRAY_LENGTH, an array with holes (its length is not the number of entries it has), or more than
- * MAX_VALUES values in all, counted as the walk goes. Lengths and counts are read before anything is
- * expanded, so a record that will be refused is refused quickly and cheaply. Walks with its own stack, never
- * by recursion, and visits each object once. `seen` and the value count belong to one record: the objects of
- * one record may not repeat, but a different record may hold the same object. Records read from a file never
- * share objects, so nothing from a file is refused by the sharing rule.
+ * Whether the walk may look inside an object. The tests run in this order and none of them runs any code of
+ * the caller's: not a proxy (every proxy is refused, whatever it wraps); not a view of a buffer, not a buffer,
+ * not a boxed primitive, not a module namespace object (these look at what the value really is, so a swapped
+ * prototype does not fool them); then a true array (prototype exactly Array.prototype) or an object whose
+ * prototype is exactly Object.prototype or null. Everything JSON.parse returns passes.
  */
-export function assertShallow(value: unknown, where: string, seen: Set<object> = new Set()): void {
-  const stack: Array<[unknown, number]> = [[value, 1]];
-  let values = 0;
-  while (stack.length > 0) {
-    const [v, depth] = stack.pop()!;
-    if (v === null || typeof v !== 'object') continue;
-    if (seen.has(v)) throw new UnknownLayoutError(`${where} refers to the same object more than once`);
-    seen.add(v);
-    if (depth > MAX_DEPTH) throw new UnknownLayoutError(`${where} is nested more than ${MAX_DEPTH} levels deep`);
-    let kids: unknown[];
-    if (Array.isArray(v)) {
-      const length = v.length;
-      if (length > MAX_ARRAY_LENGTH) throw new UnknownLayoutError(`${where} holds an array of more than ${MAX_ARRAY_LENGTH} entries`);
-      values += length;
-      if (values > MAX_VALUES) throw new UnknownLayoutError(`${where} holds more than ${MAX_VALUES} values`);
-      if (Object.keys(v).length !== length) throw new UnknownLayoutError(`${where} holds an array with holes`);
-      kids = Object.values(v);
-    } else {
-      const keys = Object.keys(v);
-      values += keys.length;
-      if (values > MAX_VALUES) throw new UnknownLayoutError(`${where} holds more than ${MAX_VALUES} values`);
-      kids = Object.values(v);
-    }
-    for (const child of kids) stack.push([child, depth + 1]);
-  }
+function mayLookInside(v: object): boolean {
+  if (types.isProxy(v)) return false;
+  if (ArrayBuffer.isView(v) || types.isAnyArrayBuffer(v) || types.isBoxedPrimitive(v) || types.isModuleNamespaceObject(v)) return false;
+  const proto = Object.getPrototypeOf(v);
+  return Array.isArray(v) ? proto === Array.prototype : proto === Object.prototype || proto === null;
+}
+
+/** An own data property's value, read once through its descriptor; a getter or a setter is refused (nothing is called). */
+function dataValue(owner: object, key: string, where: string): unknown {
+  const d = Object.getOwnPropertyDescriptor(owner, key);
+  if (d === undefined) throw new UnknownLayoutError(`${where} holds an array with holes`);
+  if (d.get !== undefined || d.set !== undefined) throw new UnknownLayoutError(`${where} holds a property that is a getter or a setter`);
+  return d.value;
+}
+
+interface Job {
+  src: object;
+  /** The plain container being filled, or undefined when only checking. */
+  dst: unknown[] | Record<string, unknown> | undefined;
+  depth: number;
+}
+
+function define(dst: Record<string, unknown>, key: string, value: unknown): void {
+  if (key === '__proto__') Object.defineProperty(dst, key, { value, enumerable: true, writable: true, configurable: true });
+  else dst[key] = value;
 }
 
 /**
- * The book's own plain copy of a record given straight to `ingest`: walked first (depth and sharing), then
- * converted to JSON text and back, so a getter, a prototype field, a symbol key or a later change by the
- * caller cannot alter it. Any failure on the way (a getter that throws, a value JSON cannot hold) is an
- * UnknownLayoutError, never another error type. The copy still has to pass `validateRecord`.
+ * One pass over a value: checks it and, when `build` is true, builds the plain copy as it goes. Nothing of the
+ * caller's is called and each value is read once. Rules: a null, string, boolean or number is copied as JSON
+ * writes it (a number that is not finite becomes null, minus zero becomes zero); a bigint is refused; a
+ * function, a symbol or undefined is left out of an object and becomes null in an array. An object is looked
+ * inside only if `mayLookInside`. A true array: its length is read, refused over MAX_ARRAY_LENGTH and counted
+ * against MAX_VALUES before any entry is touched; it may carry no own enumerable key that is not an index; each
+ * entry is read through its own descriptor (a hole, a getter or a setter is refused). A plain object: its own
+ * enumerable string keys are counted against MAX_VALUES, then each is read through its own descriptor (a getter
+ * or a setter is refused); symbol keys and non-enumerable keys are ignored; a property named toJSON is like
+ * any other. Also refused: more than MAX_DEPTH levels (the value itself is level 1) and an object reached a
+ * second time in one record (`seen`). Own stack, no recursion. Refusals are UnknownLayoutError.
+ */
+function walk(root: object, where: string, seen: Set<object>, build: boolean): unknown {
+  const stack: Job[] = [];
+  const enter = (src: object, depth: number): unknown[] | Record<string, unknown> | undefined => {
+    if (!mayLookInside(src)) throw new UnknownLayoutError(`${where} holds a value that is not a plain array or object`);
+    if (seen.has(src)) throw new UnknownLayoutError(`${where} refers to the same object more than once`);
+    seen.add(src);
+    if (depth > MAX_DEPTH) throw new UnknownLayoutError(`${where} is nested more than ${MAX_DEPTH} levels deep`);
+    const dst = build ? (Array.isArray(src) ? [] : {}) : undefined;
+    stack.push({ src, dst, depth });
+    return dst;
+  };
+  /** The copy of a primitive or a leaf; for an object, enters it and returns its container. */
+  const convert = (v: unknown, depth: number, inArray: boolean): { skip: boolean; value: unknown } => {
+    switch (typeof v) {
+      case 'string':
+      case 'boolean':
+        return { skip: false, value: v };
+      case 'number':
+        return { skip: false, value: Number.isFinite(v) ? (Object.is(v, -0) ? 0 : v) : null };
+      case 'bigint':
+        throw new UnknownLayoutError(`${where} holds a bigint`);
+      case 'undefined':
+      case 'function':
+      case 'symbol':
+        return inArray ? { skip: false, value: null } : { skip: true, value: undefined };
+      default:
+        return v === null ? { skip: false, value: null } : { skip: false, value: enter(v as object, depth) };
+    }
+  };
+
+  let values = 0;
+  // the root is level 1
+  const rootDst = enter(root, 1);
+  while (stack.length > 0) {
+    const { src, dst, depth } = stack.pop()!;
+    if (Array.isArray(src)) {
+      const length = src.length;
+      if (length > MAX_ARRAY_LENGTH) throw new UnknownLayoutError(`${where} holds an array of more than ${MAX_ARRAY_LENGTH} entries`);
+      values += length;
+      if (values > MAX_VALUES) throw new UnknownLayoutError(`${where} holds more than ${MAX_VALUES} values`);
+      if (Object.keys(src).length !== length) throw new UnknownLayoutError(`${where} holds an array with holes`);
+      for (let i = 0; i < length; i++) {
+        const c = convert(dataValue(src, String(i), where), depth + 1, true);
+        if (dst !== undefined) (dst as unknown[])[i] = c.value;
+      }
+    } else {
+      const keys = Object.keys(src);
+      values += keys.length;
+      if (values > MAX_VALUES) throw new UnknownLayoutError(`${where} holds more than ${MAX_VALUES} values`);
+      for (const key of keys) {
+        const c = convert(dataValue(src, key, where), depth + 1, false);
+        if (dst !== undefined && !c.skip) define(dst as Record<string, unknown>, key, c.value);
+      }
+    }
+  }
+  return rootDst;
+}
+
+/**
+ * Refuses a record that would cost too much to copy or compare (see `walk` for every rule) and builds nothing.
+ * `seen` and the value count belong to one record: the objects of one record may not repeat, but a different
+ * record may hold the same object. Records read from a file never share objects, so nothing from a file is
+ * refused by the sharing rule.
+ */
+export function assertShallow(value: unknown, where: string, seen: Set<object> = new Set()): void {
+  if (value === null || typeof value !== 'object') return;
+  walk(value, where, seen, false);
+}
+
+/**
+ * The book's own plain copy of a record given straight to `ingest`, built in one pass by `walk`: a getter, a
+ * prototype field, a symbol key, `toJSON` or a later change by the caller cannot alter it, because nothing of
+ * the caller's is called and each value is read once. Any failure on the way is an UnknownLayoutError, never
+ * another error type. The copy still has to pass `validateRecord`.
  */
 export function plainCopy(item: unknown, where: string, seen: Set<object>): unknown {
   if (item === null || typeof item !== 'object' || Array.isArray(item)) {
     throw new UnknownLayoutError(`${where} is not an object`);
   }
   try {
-    assertShallow(item, where, seen);
-    return JSON.parse(JSON.stringify(item));
+    return walk(item, where, seen, true);
   } catch (e) {
     if (e instanceof UnknownLayoutError) throw e;
     throw new UnknownLayoutError(`${where} cannot be read as a plain record`);
