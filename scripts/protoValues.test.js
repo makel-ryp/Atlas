@@ -4,12 +4,12 @@
 // data, calls rosterVals(), profileVals() and intakeVals(), gathers every string they return and
 // applies three rules. No database, no network, no server, no file written, no environment file.
 //
-//   Rule 1  no output string contains `undefined`, `NaN` or `nulld`. Text a person typed is not
-//           tested: a string in the injected data that holds one of the three words and at least four
-//           other characters is taken out of an output string, wherever it occurs in it, before the
-//           test. A data string that is just the word, or the word with up to three other characters
-//           (a name, a one-word note), is never taken out: it is tested like any other output, fails
-//           the check, and the reader settles that by eye.
+//   Rule 1  no output string contains `undefined`, `NaN` or `nulld`. A plain substring test with no
+//           exception: before the page runs, the script copies the injected data with every
+//           occurrence of those three words, inside any string value and any object key, replaced by
+//           the marker `(typed)`. The page runs on that copy and every rule reads its inputs from it,
+//           so a word cannot reach the output from the data (a note, a message, a name, an interview
+//           answer that holds one); any occurrence in the output is the page's own.
 //   Rule 2  every output value built from a handicap, a target handicap, a strokes-gained number or a
 //           handicap-history value whose input is missing is exactly that field's own empty text
 //           (see RULE2_TABLE: the dash, `NA`, `No handicap on record.`, or the form's blank).
@@ -25,8 +25,9 @@
 // is missing (T-142); a change printed from a single strokes-gained read (T-143); numbers that are
 // not a handicap, target, strokes-gained or history value; anything outside the three functions;
 // output built from what a person typed into the page since it loaded (the script never sets that
-// state); a fault that prints a rule 1 word only where the data holds a text with that word and at
-// least four other characters.
+// state); a present number being the right one (the right student's, with its plus sign), which is
+// asserted on one built-in data set only and not under --data; a page fault that depends on a text
+// being exactly one of rule 1's words.
 //
 // Options:
 //   --page <path>   run this copy of the page instead of proto/Dashboard.dc.html (mutation runs
@@ -116,11 +117,14 @@ function loadComponent(scriptSrc, data) {
 // the page was looking at, so rule 2 can read the INPUT. `rowIds[i]` is the id of the student that
 // rosterRows[i] opens (read from the row's own `open` handler), so rows are matched to students by
 // id and not by name.
-function runPage(scriptSrc, data) {
+function runPage(scriptSrc, original) {
+  // The page runs on the copy; the original is not used again. `result.data` is the copy: every rule
+  // reads its inputs from it.
+  const data = sanitize(original)
   const Component = loadComponent(scriptSrc, data)
   const inst = new Component()
   const roster = Array.isArray(data.roster) ? data.roster : []
-  const result = { roster: inst.rosterVals(), rowIds: [], profiles: [], intake: null }
+  const result = { data, roster: inst.rosterVals(), rowIds: [], profiles: [], intake: null }
   const rows = result.roster && Array.isArray(result.roster.rosterRows) ? result.roster.rosterRows : []
   rows.forEach(r => {
     inst.lastSetState = null
@@ -175,35 +179,33 @@ function plain(v) {
 }
 function plainResult(r) {
   return {
-    roster: plain(r.roster), rowIds: r.rowIds ? r.rowIds.slice() : [],
+    data: r.data, roster: plain(r.roster), rowIds: r.rowIds ? r.rowIds.slice() : [],
     profiles: r.profiles.map(p => Object.assign({}, p, { out: plain(p.out) })), intake: plain(r.intake),
   }
 }
 
 // ─── rule 1 ──────────────────────────────────────────────────────────────────────────────────
 const RULE1_WORDS = ['undefined', 'NaN', 'nulld']
-// Every string in the injected data that holds a rule 1 word and at least TYPED_FLOOR other characters
-// (a coach's note, a message, an interview answer): text a person typed. A shorter one (a name that
-// is just the word) is not taken out. Longest first, so a long text goes before a part of it.
-const TYPED_FLOOR = 4
-function typedTexts(data) {
-  const found = new Set()
-  const walk = (v, seen) => {
-    if (typeof v === 'string') { if (RULE1_WORDS.some(w => v.indexOf(w) !== -1 && v.length - w.length >= TYPED_FLOOR)) found.add(v); return }
-    if (v === null || typeof v !== 'object' || seen.has(v)) return
-    seen.add(v)
-    Object.keys(v).forEach(k => walk(v[k], seen))
-  }
-  walk(data, new Set())
-  return Array.from(found).sort((a, b) => b.length - a.length)
+const MARKER = '(typed)'
+const scrub = s => RULE1_WORDS.reduce((acc, w) => acc.split(w).join(MARKER), s)
+// A copy of the injected data in which every occurrence of a rule 1 word (exact case), inside a
+// string value or an object key, is replaced by MARKER. Numbers, booleans and null are kept as they
+// are, strings without a word are unchanged, and the original is not touched. Keys are defined with
+// defineProperty so that a key such as __proto__ stays a plain own key.
+function sanitize(v) {
+  if (typeof v === 'string') return scrub(v)
+  if (v === null || typeof v !== 'object') return v
+  if (Array.isArray(v)) return v.map(sanitize)
+  const o = {}
+  Object.keys(v).forEach(k => {
+    Object.defineProperty(o, scrub(k), { value: sanitize(v[k]), enumerable: true, writable: true, configurable: true })
+  })
+  return o
 }
-function rule1(result, data) {
-  const typed = data ? typedTexts(data) : []
+function rule1(result) {
   const faults = []
   allStrings(result).forEach(s => {
-    let text = s.text
-    typed.forEach(t => { text = text.split(t).join('') })
-    RULE1_WORDS.forEach(w => { if (text.indexOf(w) !== -1) faults.push({ where: s.where, token: w }) })
+    RULE1_WORDS.forEach(w => { if (s.text.indexOf(w) !== -1) faults.push({ where: s.where, token: w }) })
   })
   return faults
 }
@@ -239,6 +241,7 @@ const HIST_KEYS = ['m3', 'm6', 'y1', 'y3', 'y5', 'y10']
 // (Dashboard.dc.html:3291-3298 seeds the state from `me`; 4866 and 5404 fall back to who.*).
 // A blank or non-numeric `me` text counts as missing here, whatever the page does with it.
 function subjectInputs(profile, data) {
+  // `data` is the copy the page ran on (result.data).
   if (profile.kind === 'student') {
     const dna = profile.student.dna
     return { hcp: profile.student.hcp, target: profile.student.target, dna: dna || null }
@@ -257,40 +260,40 @@ function subjectHist(profile, data) {
 }
 
 // The table: each output field, the input it is built from, the page line that builds it
-// (Dashboard.dc.html at dcd1a0d) and the field's own empty text. `refs(result, data)` returns one
+// (Dashboard.dc.html at dcd1a0d) and the field's own empty text. `refs(result)` returns one
 // entry per output value: { where, container, key, missing } so a negative case can overwrite the
 // value in a copy.
 const RULE2_TABLE = [
   { field: 'rosterVals().rosterRows[].hcp', from: 'roster[].hcp', line: 5676, empty: DASH,
-    refs: (r, d) => rosterRefs(r, d, 'hcp', p => missingNum(p.hcp)) },
+    refs: (r) => rosterRefs(r, 'hcp', p => missingNum(p.hcp)) },
   { field: 'rosterVals().rosterRows[].sg', from: 'last of roster[].sg', line: 5679, empty: DASH,
-    refs: (r, d) => rosterRefs(r, d, 'sg', p => missingNum(lastOf(p.sg))) },
+    refs: (r) => rosterRefs(r, 'sg', p => missingNum(lastOf(p.sg))) },
   { field: 'rosterVals().rosterRows[].delta', from: 'first and last of roster[].sg', line: 5686, empty: DASH,
-    refs: (r, d) => rosterRefs(r, d, 'delta', p => missingNum(firstOf(p.sg)) || missingNum(lastOf(p.sg))) },
+    refs: (r) => rosterRefs(r, 'delta', p => missingNum(firstOf(p.sg)) || missingNum(lastOf(p.sg))) },
   { field: 'profileVals().pfHandicapReal', from: 'subject handicap (student hcp; player me.hcp, else meRow.hcp)', line: 5404, empty: DASH,
-    refs: (r, d) => profileRefs(r, d, 'pfHandicapReal', s => missingNum(s.hcp)) },
+    refs: (r) => profileRefs(r, 'pfHandicapReal', s => missingNum(s.hcp)) },
   { field: 'profileVals().pfHandicapTarget', from: 'subject target (student target; player me.target, else meRow.target)', line: 5409, empty: DASH,
-    refs: (r, d) => profileRefs(r, d, 'pfHandicapTarget', s => missingNum(s.target)) },
+    refs: (r) => profileRefs(r, 'pfHandicapTarget', s => missingNum(s.target)) },
   { field: 'profileVals().dnaMiHcp', from: 'subject dna.mi.handicap (no dna counts as missing)', line: 5343, empty: DASH,
-    refs: (r, d) => profileRefs(r, d, 'dnaMiHcp', s => !s.dna || !s.dna.mi || missingNum(s.dna.mi.handicap)) },
+    refs: (r) => profileRefs(r, 'dnaMiHcp', s => !s.dna || !s.dna.mi || missingNum(s.dna.mi.handicap)) },
   { field: 'profileVals().dnaMiGap', from: 'subject dna.mi.gap (no dna counts as missing)', line: 5344, empty: DASH,
-    refs: (r, d) => profileRefs(r, d, 'dnaMiGap', s => !s.dna || !s.dna.mi || missingNum(s.dna.mi.gap)) },
+    refs: (r) => profileRefs(r, 'dnaMiGap', s => !s.dna || !s.dna.mi || missingNum(s.dna.mi.gap)) },
   { field: 'profileVals().pfHist[].value', from: 'one lookback of the subject handicap history', line: 5436, empty: 'NA',
-    refs: (r, d) => histRefs(r) },
+    refs: (r) => histRefs(r) },
   { field: 'profileVals().pfHistNote', from: 'the whole subject handicap history (checked only when every lookback is missing)', line: 5451, empty: 'No handicap on record.',
-    refs: (r, d) => r.profiles.map(p => ({
+    refs: (r) => r.profiles.map(p => ({
       where: p.label + '.pfHistNote', container: p.out, key: 'pfHistNote',
-      missing: HIST_KEYS.every(k => missingNum(subjectHist(p, d)[k])),
+      missing: HIST_KEYS.every(k => missingNum(subjectHist(p, r.data)[k])),
     })) },
   { field: 'intakeVals().inHist[].value', from: 'one lookback of the player\'s own history (state.hist, which this script never sets)', line: 5560, empty: '',
-    refs: (r, d) => (r.intake && Array.isArray(r.intake.inHist) ? r.intake.inHist : []).map((c, i) => ({
+    refs: (r) => (r.intake && Array.isArray(r.intake.inHist) ? r.intake.inHist : []).map((c, i) => ({
       where: 'intakeVals().inHist[' + i + '].value', container: c, key: 'value', missing: true,
     })) },
 ]
 
 // rosterRows are sorted; each row is matched to its student by the id its own `open` handler carries.
-function rosterRefs(result, data, key, isMissing) {
-  const roster = Array.isArray(data.roster) ? data.roster : []
+function rosterRefs(result, key, isMissing) {
+  const roster = Array.isArray(result.data.roster) ? result.data.roster : []
   const rows = result.roster && result.roster.rosterRows ? result.roster.rosterRows : []
   if (rows.length !== roster.length) throw new Error('rosterRows has ' + rows.length + ' rows for ' + roster.length + ' students')
   // Each row's own `open` handler must open one student, and together they must open every student once.
@@ -300,15 +303,16 @@ function rosterRefs(result, data, key, isMissing) {
   return rows.map((row, i) => {
     const matches = roster.filter(p => p.id === result.rowIds[i])
     if (matches.length !== 1) throw new Error('cannot match rosterRows[' + i + '] to one student (' + matches.length + ' matches)')
+    if (row.name !== matches[0].n) throw new Error('rosterRows[' + i + '] shows one student but opens another (the roster rows do not open their own students)')
     return { where: 'rosterVals().rosterRows[' + i + '].' + key, container: row, key, missing: isMissing(matches[0]) }
   })
 }
-function profileRefs(result, data, key, isMissing) {
+function profileRefs(result, key, isMissing) {
   return result.profiles.map(p => ({
-    where: p.label + '.' + key, container: p.out, key, missing: isMissing(subjectInputs(p, data)),
+    where: p.label + '.' + key, container: p.out, key, missing: isMissing(subjectInputs(p, result.data)),
   }))
 }
-function histRefs(result, data) {
+function histRefs(result) {
   const refs = []
   result.profiles.forEach(p => {
     const list = p.out.pfHist
@@ -318,20 +322,20 @@ function histRefs(result, data) {
   return refs
 }
 
-function rule2Refs(result, data) {
+function rule2Refs(result) {
   const refs = []
   RULE2_TABLE.forEach(t => {
-    t.refs(result, data).forEach(r => {
+    t.refs(result).forEach(r => {
       // The history rows need the data to know which lookback is missing.
-      if (r.histKey) r = Object.assign({}, r, { missing: missingNum(subjectHist(r.profile, data)[r.histKey]) })
+      if (r.histKey) r = Object.assign({}, r, { missing: missingNum(subjectHist(r.profile, result.data)[r.histKey]) })
       refs.push(Object.assign({ field: t.field, empty: t.empty }, r))
     })
   })
   return refs
 }
-function rule2(result, data) {
+function rule2(result) {
   const faults = []
-  rule2Refs(result, data).forEach(r => {
+  rule2Refs(result).forEach(r => {
     if (r.missing && r.container[r.key] !== r.empty) faults.push({ where: r.where, token: String(r.container[r.key]), kind: 'value' })
   })
   return faults
@@ -396,6 +400,30 @@ const DATA = {
   coachTargetOnly: () => coachData(coachMe(null, null), [row({ id: 'zz-test-1', n: 'ZZTEST-A', target: 6 })]),
   playerHcpOnly: () => playerData('9.1', null),
   playerTargetOnly: () => playerData(null, '6.0'),
+  // Two students who both have every number: one ordinary, one plus player (stored negative).
+  bothPresent: () => coachData(coachMe(null, null), [
+    row({ id: 'zz-test-1', n: 'ZZTEST-A', hcp: 12.4, target: 8, dna: dna(12.4, 1.5) }),
+    row({ id: 'zz-test-2', n: 'ZZTEST-B', hcp: -1.2, target: -2, dna: dna(-1.2, -0.4) }),
+  ]),
+  // A coach who plays: `me` carries the coach's own numbers; one student has neither, one has both.
+  coachOwn: () => coachData(coachMe('5.0', '3.0'), [
+    row({ id: 'zz-test-1', n: 'ZZTEST-A' }),
+    row({ id: 'zz-test-2', n: 'ZZTEST-B', hcp: 7, target: 4 }),
+  ]),
+  // The page sorts rows by how many submissions wait on the coach, so a submission on the second
+  // student renders that student first.
+  reordered: () => coachData(coachMe(null, null), [
+    row({ id: 'zz-test-1', n: 'ZZTEST-A' }),
+    row({ id: 'zz-test-2', n: 'ZZTEST-B', hcp: 4.2, submitted: { 'plan:2-P1': '2026-01-01T00:00:00Z' } }),
+  ]),
+  // A history with only the three-month value is not a wholly missing history.
+  m3Only: () => coachData(coachMe(null, null), [row({ id: 'zz-test-1', n: 'ZZTEST-A', hcp: 12.4, hist: { m3: 12.4 } })]),
+  // A player whose own history is present in the data (the type allows it; the server sends {} today).
+  playerHist: () => {
+    const d = playerData('12.4', null)
+    d.meRow.hist = { m3: 12.4, m6: 12.9, y1: 13.5, y3: 14, y5: null, y10: null }
+    return d
+  },
   // Two students nobody can tell apart by name (no email, so `dupe` is empty); one has a handicap.
   twins: () => coachData(coachMe(null, null), [row({ id: 'zz-test-1', n: 'ZZTEST-A', hcp: 4.2 }), row({ id: 'zz-test-2', n: 'ZZTEST-A' })]),
   // A coach's note and a message that hold rule 1 words.
@@ -452,13 +480,13 @@ function savedChecks(data, scriptSrc, hook) {
   return [
     {
       name: 'saved data: rule 1 (no undefined, NaN or nulld; rule 3 is not run on saved data)',
-      run: () => expectNone(rule1(result, data), 'rule 1'),
+      run: () => expectNone(rule1(result), 'rule 1'),
     },
     {
       name: 'saved data: rule 2 (a missing number prints its own empty text; rule 3 is not run on saved data)',
       run: () => {
-        if (!rule2Refs(result, data).length) throw new Error('rule 2 found no field to check')
-        expectNone(rule2(result, data), 'rule 2', true)
+        if (!rule2Refs(result).length) throw new Error('rule 2 found no field to check')
+        expectNone(rule2(result), 'rule 2', true)
       },
     },
   ]
@@ -487,9 +515,9 @@ function mainTests(opts) {
   const runs = {}
   const datas = {}
   Object.keys(DATA).forEach(k => { datas[k] = DATA[k](); runs[k] = runPage(scriptSrc, datas[k]) })
-  const r1 = k => rule1(runs[k], datas[k])
-  const r2 = k => rule2(runs[k], datas[k])
-  const refsOf = k => rule2Refs(runs[k], datas[k])
+  const r1 = k => rule1(runs[k])
+  const r2 = k => rule2(runs[k])
+  const refsOf = k => rule2Refs(runs[k])
 
   // Rules against each data set.
   runCase('empty roster: rule 1', () => expectNone(r1('empty'), 'rule 1'))
@@ -602,17 +630,17 @@ function mainTests(opts) {
   runCase('the ids the rows open must be the roster ids, each once (else rule 2 refuses with a plain line)', () => {
     const c = plainResult(runs.twins)
     c.rowIds = ['zz-test-1', 'zz-test-1']
-    const e = failsWith(() => rule2Refs(c, datas.twins))
+    const e = failsWith(() => rule2Refs(c))
     if (!e || e.indexOf('do not open their own students') === -1) throw new Error('every row opening one student was not refused: ' + e)
     c.rowIds = ['zz-test-1']
-    if (!failsWith(() => rule2Refs(c, datas.twins))) throw new Error('a missing id was not refused')
+    if (!failsWith(() => rule2Refs(c))) throw new Error('a missing id was not refused')
     c.rowIds = ['zz-test-2', 'zz-test-1']
-    if (failsWith(() => rule2Refs(c, datas.twins))) throw new Error('the right ids in the other order were refused')
+    if (failsWith(() => rule2Refs(c))) throw new Error('the right ids in the other order were refused')
     // a missing handicap printed as a number must not go unseen when every row opens one student
     const d = plainResult(runs.missing)
     d.rowIds = ['zz-test-1', 'zz-test-1']
     d.roster.rosterRows[1].hcp = '5.0'
-    const e2 = failsWith(() => expectNone(rule2(d, datas.missing), 'rule 2'))
+    const e2 = failsWith(() => expectNone(rule2(d), 'rule 2'))
     if (!e2) throw new Error('rows that all open one student, with a number printed for a missing handicap, passed rule 2')
   })
   runCase('negative: twins, the one with a missing handicap printing a number is reported by rule 2', () => {
@@ -620,73 +648,161 @@ function mainTests(opts) {
     const i = c.rowIds.indexOf('zz-test-2')
     if (i < 0) throw new Error('row for zz-test-2 not found')
     c.roster.rosterRows[i].hcp = '4.2'
-    const hits = rule2(c, datas.twins).filter(f => f.where === 'rosterVals().rosterRows[' + i + '].hcp')
+    const hits = rule2(c).filter(f => f.where === 'rosterVals().rosterRows[' + i + '].hcp')
     if (!hits.length) throw new Error('rule 2 did not report the twin whose handicap is missing')
   })
 
-  // Text a person typed (rule 1 does not test it).
-  runCase('prose: a note and a message holding undefined or NaN are printed, and rule 1 passes them', () => {
-    const where = allStrings(runs.prose).filter(s => s.text === NOTE_TEXT || s.text === MESSAGE_TEXT).map(s => s.where)
+  // ── typed text is kept out at the input ──────────────────────────────────────────────────────
+  const mk = text => ({ roster: { a: text }, profiles: [], intake: {} })
+  runCase('prose: a note and a message holding undefined or NaN are printed (with the marker), and rule 1 passes them', () => {
+    const want = [scrub(NOTE_TEXT), scrub(MESSAGE_TEXT)]
+    const where = allStrings(runs.prose).filter(s => want.indexOf(s.text) !== -1).map(s => s.where)
     if (!where.some(w => /pfNotes\[0\]\.body$/.test(w)) || !where.some(w => /pfThread\[0\]\.body$/.test(w))) throw new Error('the page did not print the note and the message: ' + where.join(', '))
     expectNone(r1('prose'), 'rule 1')
     expectNone(r2('prose'), 'rule 2')
-    if (rule1(runs.prose).length < 2) throw new Error('without the data, rule 1 should have reported the two texts')
   })
-  const mk = text => ({ roster: { a: text }, profiles: [], intake: {} })
-  const typedData = { roster: [{ notes: [{ body: NOTE_TEXT }] }], me: { messages: [{ body: MESSAGE_TEXT }] } }
-  runCase('rule 1: a note body holding undefined, a message body holding NaN, and a note inside a longer string pass', () => {
-    expectNone(rule1(mk(NOTE_TEXT), typedData), 'rule 1 on the note')
-    expectNone(rule1(mk(MESSAGE_TEXT), typedData), 'rule 1 on the message')
-    expectNone(rule1(mk('Note: ' + NOTE_TEXT + ' (shared)'), typedData), 'rule 1 on the note inside a longer string')
-    expectNone(rule1(mk(NOTE_TEXT + ' | ' + NOTE_TEXT), typedData), 'rule 1 on the note twice')
+  runCase('typed text: an interview answer holding undefined passes the saved-data function', () => {
+    const d = coachData(coachMe(null, null), [row({ id: 'zz-test-1', n: 'ZZTEST-A', file: { limits: 'Knee pain of undefined origin, since spring.' } })])
+    const res = runPage(scriptSrc, d)
+    if (!allStrings(res).some(s => s.where.indexOf('pfInterviewIntro') !== -1 && s.text.indexOf(MARKER) !== -1)) throw new Error('the page did not print the (reshaped) answer, so this case proves nothing')
+    savedChecks(d, scriptSrc).forEach(c => { const e = failsWith(c.run); if (e) throw new Error(c.name + ' failed: ' + e) })
   })
-  runCase('rule 1: the note body and a second undefined outside it is reported', () => {
-    expectSome(rule1(mk(NOTE_TEXT + ' and undefined'), typedData), 'rule 1 on the note and a second undefined')
-    expectSome(rule1(mk('undefined ' + MESSAGE_TEXT), typedData), 'rule 1 on a leading undefined')
-  })
-  runCase('rule 1: undefined or NaN when no input string holds it is reported', () => {
-    expectSome(rule1(mk('x undefined y'), typedData), 'rule 1 with data that holds other text')
-    expectSome(rule1(mk('x NaN y'), { roster: [{ n: 'ZZTEST-A' }] }), 'rule 1 with data holding no rule 1 word')
-    expectSome(rule1(mk('nulld ago')), 'rule 1 with no data')
-  })
-  // A data string that is just a rule 1 word, or the word with up to three other characters, is never
-  // taken out, so it cannot hide the same word printed in another field. With four other characters
-  // it is taken out, and the word printed elsewhere is still reported.
   RULE1_WORDS.forEach(w => {
-    runCase('rule 1: a data string that is ' + w + ' (alone, or with one, two or three other characters) does not hide ' + w + ' printed elsewhere', () => {
-      ;['', 'a', 'ab', 'abc'].forEach(extra => {
-        ;[w + extra, extra + w].forEach(s => {
-          ;[{ roster: [{ n: s }] }, { roster: [{ notes: [{ body: s }] }] }].forEach(data => {
-            expectSome(rule1(mk('x ' + w + ' y'), data), 'rule 1 with a data string ' + JSON.stringify(s) + ' printed elsewhere')
-            expectSome(rule1(mk(s), data), 'rule 1 on the string ' + JSON.stringify(s) + ' itself (a name or note that is just the word fails, settled by eye)')
-          })
-        })
-      })
-    })
-    runCase('rule 1: a data string with ' + w + ' and four other characters is taken out; ' + w + ' printed elsewhere is still reported', () => {
-      ;[w + 'abcd', 'abcd' + w, 'ab' + w + 'cd'].forEach(s => {
-        ;[{ roster: [{ n: s }] }, { roster: [{ notes: [{ body: s }] }] }].forEach(data => {
-          expectNone(rule1(mk(s), data), 'rule 1 on ' + JSON.stringify(s))
-          expectNone(rule1(mk('Note: ' + s + ' (shared)'), data), 'rule 1 on ' + JSON.stringify(s) + ' inside a longer string')
-          expectSome(rule1(mk(s + ' and ' + w), data), 'rule 1 on ' + JSON.stringify(s) + ' and a second ' + w)
-          expectSome(rule1({ roster: { a: s, b: 'x ' + w + ' y' }, profiles: [], intake: {} }, data), 'rule 1 on the word in another field')
-        })
-      })
-    })
-    runCase('saved-data mode: a ' + w + ' printed in an unrelated field is reported when the data holds a name or note that is just ' + w, () => {
-      ;[{ n: w }, { notes: [{ body: w }] }, { n: w + 'ab' }].forEach(extra => {
-        const data = DATA.missing()
-        Object.assign(data.roster[0], extra)
-        const checks = savedChecks(data, scriptSrc, res => { res.roster.rosterRows[0].leak = 'x ' + w + ' y' })
-        if (!failsWith(checks[0].run)) throw new Error('rule 1 did not report ' + w + ' with data ' + JSON.stringify(extra))
-      })
+    runCase('typed text: a display name, a note body and a message body that are exactly ' + w + ' pass; the same word printed by a faulty result elsewhere is reported', () => {
+      const d = coachData(coachMe(null, null), [row({
+        id: 'zz-test-1', n: w,
+        notes: [{ id: 'zz-note-1', body: w, visibility: 'shared', author: null, mine: false, createdAt: null }],
+        messages: [{ mine: false, at: null, body: w }],
+      })])
+      savedChecks(d, scriptSrc).forEach(c => { const e = failsWith(c.run); if (e) throw new Error(c.name + ' failed: ' + e) })
+      const checks = savedChecks(d, scriptSrc, res => { res.roster.rosterRows[0].leak = 'x ' + w + ' y' })
+      if (!failsWith(checks[0].run)) throw new Error('rule 1 did not report ' + w + ' printed by a faulty result')
     })
   })
-  runCase('rule 1: only input strings that hold a rule 1 word are taken out (a short string without one is not)', () => {
-    expectSome(rule1(mk('x undefined y'), { roster: [{ a: 'd', b: 'n', c: 'e', d: 'u' }] }), 'rule 1 with short input strings')
+  runCase('the copy: numbers, booleans and null are kept, strings without a rule 1 word are unchanged, the original is not changed', () => {
+    const orig = { a: 4.2, b: true, c: null, d: 'ZZTEST-A', e: [1, 'x', null], f: { g: 0, h: 'plain text' }, u: undefined }
+    const before = JSON.stringify(orig)
+    const copy = sanitize(orig)
+    expectEqual(JSON.stringify(orig), before, 'the original after making the copy')
+    expectEqual(JSON.stringify(copy), JSON.stringify({ a: 4.2, b: true, c: null, d: 'ZZTEST-A', e: [1, 'x', null], f: { g: 0, h: 'plain text' } }), 'the copy')
+    if (copy === orig || copy.f === orig.f || copy.e === orig.e) throw new Error('the copy shares objects with the original')
+    const words = { s: 'undefined NaN nulld', o: { 'a undefined': 'NaN', 'nulld': 1 }, l: ['undefinedundefined'] }
+    const wb = JSON.stringify(words)
+    const wc = sanitize(words)
+    expectEqual(JSON.stringify(words), wb, 'the original with words')
+    expectEqual(JSON.stringify(wc), JSON.stringify({ s: MARKER + ' ' + MARKER + ' ' + MARKER, o: { ['a ' + MARKER]: MARKER, [MARKER]: 1 }, l: [MARKER + MARKER] }), 'words replaced in values and in keys')
+  })
+  runCase('the copy: a key holding a word is replaced, and a key such as __proto__ stays a plain own key', () => {
+    const o = JSON.parse('{"__proto__": {"x": "NaN"}, "k undefined": 1}')
+    const c = sanitize(o)
+    if (Object.keys(c).indexOf('k ' + MARKER) === -1) throw new Error('the key holding a word was not replaced: ' + Object.keys(c).join(','))
+    if (Object.keys(c).indexOf('__proto__') === -1 || Object.getPrototypeOf(c) !== Object.prototype) throw new Error('__proto__ did not stay an own key')
+    expectEqual(c.__proto__ === Object.prototype, false, 'own __proto__ key reads as own data')
+  })
+  runCase('the copy: the marker holds none of the three words', () => {
+    RULE1_WORDS.forEach(w => { if (MARKER.indexOf(w) !== -1) throw new Error('the marker holds ' + w) })
+    expectEqual(scrub(MARKER), MARKER, 'scrubbing the marker')
+  })
+  runCase('the copy: an id that holds a rule 1 word is changed the same way wherever it occurs, so the rows still open their own students', () => {
+    const d = coachData(coachMe(null, null), [row({ id: 'zz-undefined-1', n: 'ZZTEST-A', hcp: 4.2 }), row({ id: 'zz-NaN-2', n: 'ZZTEST-B' })])
+    const res = runPage(scriptSrc, d)
+    expectEqual(res.rowIds.slice().sort().join(','), 'zz-(typed)-2,zz-(typed)-1'.split(',').sort().join(','), 'the ids the rows open')
+    expectEqual(res.data.roster[0].id, 'zz-(typed)-1', 'the roster id in the copy')
+    expectEqual(d.roster[0].id, 'zz-undefined-1', 'the original id')
+    expectNone(rule2(res), 'rule 2')
+    expectNone(rule1(res), 'rule 1')
+  })
+  runCase('rule 1 is a plain substring test: a word in an output string is reported whatever the data holds', () => {
+    expectSome(rule1(mk('x undefined y')), 'rule 1')
+    expectSome(rule1(mk('nulld ago')), 'rule 1')
+    expectSome(rule1(mk('NaN')), 'rule 1')
+    expectNone(rule1(mk('(typed)')), 'rule 1 on the marker')
   })
 
-  // Negative cases: each passes only when the rules report the fault. They edit one string in a
+  // ── present numbers are asserted on one data set (not run under --data) ───────────────────────
+  runCase('present numbers: each student\'s own file and roster row print the exact texts (one ordinary, one plus player)', () => {
+    const res = runs.bothPresent
+    const rowOf = n => res.roster.rosterRows.filter(r => r.name === n)[0]
+    const fileOf = n => res.profiles.filter(p => p.kind === 'student' && p.student.n === n)[0].out
+    // hand-written from what the page prints (page lines: hcpLabel 3179, hcp row 5676, pfHandicapReal 5404,
+    // pfHandicapTarget 5409, dnaMiHcp 5343, dnaMiGap 5344)
+    const expected = {
+      'ZZTEST-A': { row: '12.4', real: '12.4', target: '8', miHcp: '12.4', miGap: '+1.5' },
+      'ZZTEST-B': { row: '+1.2', real: '+1.2', target: '+2', miHcp: '-1.2', miGap: '-0.4' },
+    }
+    Object.keys(expected).forEach(n => {
+      const e = expected[n]
+      const o = fileOf(n)
+      expectEqual(rowOf(n).hcp, e.row, n + ' roster handicap')
+      expectEqual(o.pfHandicapReal, e.real, n + ' pfHandicapReal')
+      expectEqual(o.pfHandicapTarget, e.target, n + ' pfHandicapTarget')
+      expectEqual(o.dnaMiHcp, e.miHcp, n + ' dnaMiHcp')
+      expectEqual(o.dnaMiGap, e.miGap, n + ' dnaMiGap')
+    })
+  })
+  runCase('both students with every number: rule 1 and rule 2', () => {
+    expectNone(r1('bothPresent'), 'rule 1')
+    if (refsOf('bothPresent').some(r => r.missing && /pfHandicap|dnaMi|rosterRows\[\]\.hcp/.test(r.field) && !/no student selected/.test(r.where))) throw new Error('every number of both students should be present')
+    expectNone(r2('bothPresent'), 'rule 2')
+  })
+
+  // ── a coach with their own numbers, and a student with none ──────────────────────────────────
+  runCase('coach with own handicap and target, one student with neither: rules 1 and 2, and nothing of the coach\'s is shown on the student', () => {
+    expectNone(r1('coachOwn'), 'rule 1')
+    expectNone(r2('coachOwn'), 'rule 2')
+    const res = runs.coachOwn
+    const a = res.profiles.filter(p => p.kind === 'student' && p.student.n === 'ZZTEST-A')[0].out
+    const b = res.profiles.filter(p => p.kind === 'student' && p.student.n === 'ZZTEST-B')[0].out
+    const none = res.profiles.filter(p => p.kind === 'none')[0].out
+    expectEqual(a.pfHandicapReal, DASH, 'A handicap')
+    expectEqual(a.pfHandicapTarget, DASH, 'A target')
+    expectEqual(b.pfHandicapReal, '7.0', 'B handicap')
+    expectEqual(b.pfHandicapTarget, '4', 'B target')
+    expectEqual(none.pfHandicapReal, DASH, 'no student selected, handicap')
+    expectEqual(none.pfHandicapTarget, DASH, 'no student selected, target')
+    expectEqual(res.roster.rosterRows.filter(r => r.name === 'ZZTEST-A')[0].hcp, DASH, 'A roster handicap')
+    if (!(res.data.me.hcp === '5.0' && res.data.me.target === '3.0')) throw new Error('the coach must carry own numbers in this set')
+  })
+
+  // ── rows in another order than the roster ────────────────────────────────────────────────────
+  runCase('reordered: the page renders the rows in another order than the roster, and rule 2 passes', () => {
+    const res = runs.reordered
+    expectEqual(res.rowIds.join(','), 'zz-test-2,zz-test-1', 'the ids the rows open, in render order')
+    expectEqual(res.roster.rosterRows[0].name, 'ZZTEST-B', 'first rendered row')
+    expectEqual(res.roster.rosterRows[0].hcp, '4.2', 'its handicap')
+    expectEqual(res.roster.rosterRows[1].hcp, DASH, 'the other row')
+    expectNone(r1('reordered'), 'rule 1')
+    expectNone(r2('reordered'), 'rule 2')
+  })
+  runCase('rows that open each other\'s students are refused, naming the fault (and rule 2 catches them on the reordered set)', () => {
+    const c = plainResult(runs.missing)
+    c.rowIds = ['zz-test-2', 'zz-test-1']
+    const e = failsWith(() => rule2Refs(c))
+    if (!e || e.indexOf('shows one student but opens another') === -1) throw new Error('a swap was not named: ' + e)
+    const d = plainResult(runs.reordered)
+    d.rowIds = ['zz-test-1', 'zz-test-2']
+    if (!failsWith(() => rule2Refs(d))) throw new Error('rows swapped on the reordered set were accepted')
+  })
+
+  // ── the history ──────────────────────────────────────────────────────────────────────────────
+  runCase('a history with only the three-month value is not treated as wholly missing', () => {
+    const refs = refsOf('m3Only').filter(r => /pfHistNote$/.test(r.field) && /roster\[0\]/.test(r.where))
+    if (refs.length !== 1 || refs[0].missing) throw new Error('the m3-only history was taken as wholly missing')
+    const m3 = refsOf('m3Only').filter(r => /pfHist\[\]\.value$/.test(r.field) && /roster\[0\]/.test(r.where))
+    if (m3.length !== 6 || m3[0].missing || !m3.slice(1).every(r => r.missing)) throw new Error('only the m3 lookback should be present')
+    expectNone(r2('m3Only'), 'rule 2')
+  })
+  runCase('a player\'s own history, present in the data, is read', () => {
+    const refs = refsOf('playerHist').filter(r => /pfHist\[\]\.value$/.test(r.field))
+    if (refs.length !== 6) throw new Error('expected six lookbacks')
+    expectEqual(refs.map(r => r.missing).join(','), 'false,false,false,false,true,true', 'which lookbacks are present')
+    expectEqual(runs.playerHist.profiles[0].out.pfHist[0].value, '12.4', 'the page prints the player\'s own m3')
+    expectNone(r2('playerHist'), 'rule 2')
+    const note = refsOf('playerHist').filter(r => /pfHistNote$/.test(r.field))[0]
+    if (note.missing) throw new Error('a player with a history was taken as having none')
+  })
+
+    // Negative cases: each passes only when the rules report the fault. They edit one string in a
   // data-only copy of a real run.
   const missingCopy = () => plainResult(runs.missing)
 
@@ -697,7 +813,7 @@ function mainTests(opts) {
       ;[w, w + ' y', 'x ' + w, 'x ' + w + ' y'].forEach(text => {
         const c = missingCopy()
         c.roster.rosterRows[0].name = text
-        const hits = rule1(c, datas.missing).filter(f => f.where === 'rosterVals().rosterRows[0].name' && f.token === w)
+        const hits = rule1(c).filter(f => f.where === 'rosterVals().rosterRows[0].name' && f.token === w)
         if (!hits.length) throw new Error('rule 1 did not report ' + JSON.stringify(text))
       })
     })
@@ -706,14 +822,14 @@ function mainTests(opts) {
     runCase('negative: a table field holding ' + pair[0] + ' for a missing input is reported by rule 2 (every field in the table)', () => {
       RULE2_TABLE.forEach(t => {
         const c = missingCopy()
-        const targets = rule2Refs(c, datas.missing).filter(r => r.field === t.field)
+        const targets = rule2Refs(c).filter(r => r.field === t.field)
         if (!targets.length) throw new Error('no value collected for ' + t.field)
         targets.forEach(r => {
           const c2 = missingCopy()
-          const r2x = rule2Refs(c2, datas.missing).filter(x => x.where === r.where)[0]
+          const r2x = rule2Refs(c2).filter(x => x.where === r.where)[0]
           if (!r2x.missing) throw new Error(r2x.where + ' should have a missing input')
           r2x.container[r2x.key] = pair[0]
-          const faults = rule2(c2, datas.missing).filter(f => f.where === r.where)
+          const faults = rule2(c2).filter(f => f.where === r.where)
           if (!faults.length) throw new Error('rule 2 did not report ' + pair[0] + ' in ' + r.where + ' (' + pair[1] + ')')
         })
       })
@@ -722,15 +838,15 @@ function mainTests(opts) {
   runCase('negative: +0.0 in a string outside the table, every number missing, is reported by rule 3', () => {
     const c = missingCopy()
     c.roster.rosterBlurb = 'Sorted +0.0'
-    expectNone(rule2(c, datas.missing), 'rule 2 (the string is outside its table)')
+    expectNone(rule2(c), 'rule 2 (the string is outside its table)')
     expectSome(rule3(c), 'rule 3')
   })
   runCase('positive: +0.0, -0.0 and +0.5 from present inputs are not reported', () => {
     const c = plainResult(runs.present)
     const texts = allStrings(c).map(s => s.text)
     ;['+0.0', '-0.0', '+0.5'].forEach(t => { if (texts.indexOf(t) === -1) throw new Error(t + ' is not in the present-numbers output') })
-    expectNone(rule1(c, datas.present), 'rule 1')
-    expectNone(rule2(c, datas.present), 'rule 2')
+    expectNone(rule1(c), 'rule 1')
+    expectNone(rule2(c), 'rule 2')
   })
   runCase('rule 3 reads whole tokens: +0 -0 +0.0 -0.0 and the U+2212 minus are hits', () => {
     ;['+0', '-0', '+0.0', '-0.0', '−0', '−0.0', 'x +0.0 y', '(+0)'].forEach(t => {
@@ -794,7 +910,7 @@ function mainTests(opts) {
         const text = 'x ' + w + ' y'
         if (pl[0] === 'profileVals') c.profiles[0].out.pfName = text
         else c.intake.inStatus = text
-        const hits = rule1(c, datas.missing).filter(f => f.where === where && f.token === w)
+        const hits = rule1(c).filter(f => f.where === where && f.token === w)
         if (!hits.length) throw new Error('rule 1 did not report ' + w + ' at ' + where)
       })
     })
@@ -870,7 +986,7 @@ function mainTests(opts) {
       coachSets++
       if (profiles.length !== roster.length + 1) throw new Error(k + ': expected ' + (roster.length + 1) + ' profileVals calls, got ' + profiles.length)
       if (profiles.filter(p => p.kind === 'none').length !== 1) throw new Error(k + ': no-student-selected call is not there exactly once')
-      roster.forEach(p => {
+      runs[k].data.roster.forEach(p => {
         if (profiles.filter(x => x.kind === 'student' && x.student === p).length !== 1) throw new Error(k + ': ' + p.id + ' is not gathered exactly once')
       })
     })
@@ -884,7 +1000,7 @@ function mainTests(opts) {
     })
   })
   runCase('saved-data mode: a clean data set passes both checks', () => {
-    ;['missing', 'present', 'twins', 'prose', 'playerWithout', 'empty'].forEach(k => {
+    ;['missing', 'present', 'twins', 'prose', 'playerWithout', 'empty', 'bothPresent', 'coachOwn', 'reordered'].forEach(k => {
       savedChecks(datas[k], scriptSrc).forEach(c => {
         const e = failsWith(c.run)
         if (e) throw new Error(k + ': ' + c.name + ' failed: ' + e)

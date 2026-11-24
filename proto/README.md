@@ -114,14 +114,15 @@ asks whether `read` has anything in it, which switches on the empty state his ow
 ## Verifying it
 
 Sign in as the demo coach, POST `/api/session`, GET `/proto/dashboard` with the cookie. Grep alone is
-not enough — it passes while the page throws on first paint. Extract the injected blob and run his
-*actual* inline script against it (`class Component` in a `vm` context with `DCLogic` stubbed), then
-call `rosterVals()`, `profileVals()` and `intakeVals()`, and apply three rules to every string they return:
+not enough — it passes while the page throws on first paint. Save the injected data to a file and run
+`node scripts/protoValues.test.js --data <file>`: it runs his *actual* inline script against it (`class Component`
+in a `vm` context with `DCLogic` stubbed), calls `rosterVals()`, `profileVals()` and `intakeVals()`, and applies
+rules 1 and 2 to every string they return. The three rules are:
 
-- **Rule 1.** No output string contains `undefined`, `NaN` or `nulld`. Text a person typed is not tested: a
-  string in the injected data that holds one of those words and at least four other characters (a coach's note, a
-  message) is taken out of an output string before the test. A name or note that is just the word, or the word
-  with up to three other characters, is not taken out: it fails the check, and the reader settles that by eye.
+- **Rule 1.** No output string contains `undefined`, `NaN` or `nulld`. A plain test, with no exception. Before
+  the page runs, the script copies the injected data with each of those three words, inside any string or object
+  key, replaced by `(typed)`, and runs the page on the copy: a note, message, name or interview answer that holds
+  one of the words cannot put it in the output, so any occurrence there is the page's own.
 - **Rule 2.** Every output value built from a missing input is exactly that field's own empty text: `—` for a
   handicap, a target handicap or a strokes-gained number (missing means null, undefined, absent, or an empty
   strokes-gained series); `NA` for a handicap-history value; `No handicap on record.` for the history note when
@@ -152,5 +153,6 @@ on that file does not run rule 3.
 - Anything outside `rosterVals()`, `profileVals()` and `intakeVals()`.
 - Output the page builds from what a person has typed into the page since it loaded (the intake form's entries, an
   unsaved target or handicap, a history typed in): the script never sets that state.
-- A fault that prints one of rule 1's words only where the data holds a text with that word and at least four other
-  characters.
+- A present number being the right one (the right student's, with its plus sign): it is asserted on one built-in
+  data set only, and not under `--data`.
+- A fault that depends on a text being exactly one of rule 1's words.
