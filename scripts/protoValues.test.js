@@ -308,7 +308,7 @@ function runCase(name, fn) {
 // Under --data the value of a rule 2 fault is the file's own text, so it is printed only when it is
 // short and made only of digits, + - U+2212 . space and the dash; otherwise only its length.
 function safeValue(s) {
-  return s.length <= 12 && /^[0-9+-−. —]*$/.test(s) ? JSON.stringify(s) : 'text of length ' + s.length
+  return s.length <= 12 && /^[0-9+\-\u2212. \u2014]*$/.test(s) ? JSON.stringify(s) : 'text of length ' + s.length
 }
 function fmt(faults, safe) {
   const show = f => (safe && f.kind === 'value' ? safeValue(f.token) : JSON.stringify(f.token))
@@ -553,6 +553,43 @@ function mainTests(opts) {
     expectEqual(safeValue('−1.5 —'), JSON.stringify('−1.5 —'), 'minus, space, dash')
     expectEqual(safeValue('ZZ-FILE-CONTENT-TOKEN'), 'text of length 21', 'file text')
     expectEqual(safeValue('1234567890123'), 'text of length 13', 'over 12 characters')
+    // Short texts that are not numeric must be reduced to their length (a hyphen inside a class once
+    // read as a range and let every short text through).
+    ;[['Zzname', 6], ['ab@c.de', 7], ['Жж', 2], ['  ж  ', 5], ['   a   ', 7], ['1a', 2], ['4.2%', 4]].forEach(p => {
+      expectEqual(safeValue(p[0]), 'text of length ' + p[1], JSON.stringify(p[0]))
+    })
+    // Numeric texts are printed in full, including a 12-character one; 13 characters is a length.
+    ;['+0.0', '-0.0', '−0.0', '—', '12.4', '123456789.01', '', ' '].forEach(s => {
+      expectEqual(safeValue(s), JSON.stringify(s), JSON.stringify(s))
+    })
+    expectEqual(safeValue('123456789.012'), 'text of length 13', '13-character numeric text')
+  })
+  runCase('profileVals is gathered once with no student selected and once per student, in every coach data set', () => {
+    let coachSets = 0
+    SETS_RULE1.forEach(k => {
+      const roster = Array.isArray(datas[k].roster) ? datas[k].roster : []
+      const profiles = runs[k].profiles
+      if (roster.length === 0) {
+        if (profiles.length !== 1 || profiles[0].kind !== 'self') throw new Error(k + ': expected one self profile, got ' + profiles.length)
+        return
+      }
+      coachSets++
+      if (profiles.length !== roster.length + 1) throw new Error(k + ': expected ' + (roster.length + 1) + ' profileVals calls, got ' + profiles.length)
+      if (profiles.filter(p => p.kind === 'none').length !== 1) throw new Error(k + ': no-student-selected call is not there exactly once')
+      roster.forEach(p => {
+        if (profiles.filter(x => x.kind === 'student' && x.student === p).length !== 1) throw new Error(k + ': ' + p.id + ' is not gathered exactly once')
+      })
+    })
+    if (!coachSets) throw new Error('no coach data set was checked')
+  })
+  runCase('the no-number walk finds a number planted under each key of its list, alone', () => {
+    if (SCOPE_KEYS.length < 6) throw new Error('the key list of the walk has shrunk to ' + SCOPE_KEYS.length)
+    SCOPE_KEYS.forEach(key => {
+      if (!numbersIn({ [key]: 4.2 }, 'x', false, []).length) throw new Error('a number under ' + key + ' was not found')
+      if (!numbersIn({ a: { [key]: '4.2' } }, 'x', false, []).length) throw new Error('numeric text under ' + key + ' was not found')
+      if (!numbersIn({ a: { b: { [key]: [1] } } }, 'x', false, []).length) throw new Error('a number in a list under ' + key + ' was not found')
+    })
+    if (numbersIn({ tendency: 50, days: 3 }, 'x', false, []).length) throw new Error('the walk flagged a key outside its list')
   })
 }
 
