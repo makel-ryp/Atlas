@@ -957,11 +957,12 @@ test('31. a busy port leaves the folder as it was and removes the lock', async (
     const hub = createHub({ dataDir: dir, port, ...quiet });
     try {
       await assert.rejects(() => hub.listen());
+      // checked before close(): a failed start must clean up after itself, not leave it to close()
+      assert.deepEqual(readdirSync(dir).sort(), files);
+      assert.ok(readFileSync(journalOf(dir)).equals(before));
     } finally {
       await hub.close();
     }
-    assert.deepEqual(readdirSync(dir).sort(), files);
-    assert.ok(readFileSync(journalOf(dir)).equals(before));
   } finally {
     await new Promise<void>((resolve) => blocker.close(() => resolve()));
   }
