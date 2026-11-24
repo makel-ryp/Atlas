@@ -153,6 +153,7 @@ on that file does not run rule 3.
 - Anything outside `rosterVals()`, `profileVals()` and `intakeVals()`.
 - Output the page builds from what a person has typed into the page since it loaded (the intake form's entries, an
   unsaved target or handicap, a history typed in): the script never sets that state.
+- The mechanics card's handicap for a plus player, which the page prints with a minus (T-144).
 - A present number being the right one (the right student's, with its plus sign): it is asserted on one built-in
   data set only, and not under `--data`.
 - A fault that depends on a text being exactly one of rule 1's words.
