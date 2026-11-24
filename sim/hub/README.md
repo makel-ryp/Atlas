@@ -37,11 +37,11 @@ restart must answer what the live hub answered.
 
 ## One hub per data folder
 
-The hub takes a lock, the file `hub.lock` in the data folder, before it opens the journal. A second hub on
+The hub takes a lock, a numbered file `hub.lock.<n>` in the data folder, before it opens the journal. A second hub on
 the same folder refuses to start and changes nothing; give it its own folder with `SIM_HUB_DATA`. If a
 hub was killed, its lock is stale: the next start sees the process is gone, replaces the lock and says so
 in one line. A start that fails on the lock or on a busy port changes nothing in the folder (the folder itself may be created, for the lock), and the journal is read only after the port is bound; a request that arrives while it is being read gets 503 busy. If a start ever refuses wrongly (for example the lock names a process id that now belongs to
-some other program), make sure no hub is running and delete `hub.lock` from the data folder (and a leftover `hub.lock.takeover`, if one is there after a crash).
+some other program), make sure no hub is running and delete the `hub.lock.<n>` file the message names from the data folder (any `hub.lock.tmp-*` leftover of a crash is removed by the next start; a plain `hub.lock` or `hub.lock.takeover` from an older build is ignored and may be deleted). The lock needs a file system that supports hard links (NTFS and ordinary Linux or macOS folders do; some network or removable drives do not): on one that does not, the hub refuses to start and says so, and `SIM_HUB_DATA` must point somewhere else.
 
 ## Tests
 

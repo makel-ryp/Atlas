@@ -1,12 +1,15 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, appendFileSync, existsSync, statSync, writeSync, ftruncateSync, fsyncSync, symlinkSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, appendFileSync, existsSync, statSync, writeSync, ftruncateSync, fsyncSync, symlinkSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { request } from 'node:http';
 import { connect, createServer as createNetServer } from 'node:net';
-import { execFile, execFileSync, spawn } from 'node:child_process';
+import { execFile, spawn, type ChildProcessByStdio } from 'node:child_process';
+import type { Readable, Writable } from 'node:stream';
+
+type Kid = ChildProcessByStdio<Writable, Readable, null>;
 import { createHub, type Hub, type HubOptions } from '../src/server.js';
 import { loadRecording, type Copy } from '../../core/src/index.js';
 
@@ -914,7 +917,8 @@ test('29. a second hub on the same data folder is refused and changes nothing, w
     // a cut-short last line, as a crash would leave it: a second hub that opened the journal first would repair it
     appendFileSync(journalOf(dir), '[{"ShotID":"cut');
     const size = journalSize(dir);
-    const lock = readFileSync(join(dir, 'hub.lock'), 'utf8');
+    assert.deepEqual(lockFiles(dir), ['hub.lock.1']);
+    const lock = readFileSync(join(dir, 'hub.lock.1'), 'utf8');
     const second = createHub({ dataDir: dir, port: 0, ...quiet });
     try {
       await assert.rejects(() => second.listen(), /already using this data folder/);
@@ -923,24 +927,26 @@ test('29. a second hub on the same data folder is refused and changes nothing, w
       await second.close();
     }
     assert.equal(journalSize(dir), size, 'the refused hub did not touch the journal');
-    assert.equal(readFileSync(join(dir, 'hub.lock'), 'utf8'), lock, 'the lock is the first hub\'s');
+    assert.equal(readFileSync(join(dir, 'hub.lock.1'), 'utf8'), lock, 'the lock is the first hub\'s');
+    assert.deepEqual(lockFiles(dir), ['hub.lock.1']);
     assert.equal((await fetch(`${url}/healthz`)).status, 200);
   });
-  assert.equal(existsSync(join(dir, 'hub.lock')), false, 'close removes the lock');
+  assert.deepEqual(lockFiles(dir), [], 'close removes the lock');
 });
 
 test('30. a stale lock (its process is gone) is taken over, with one line saying so', async () => {
   const dir = tempDir();
-  const gone = Number(execFileSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }));
-  writeFileSync(join(dir, 'hub.lock'), `${gone}\n`);
+  const gone = await deadPid();
+  writeFileSync(join(dir, 'hub.lock.1'), `${gone} 000000000000000000000000\n`);
   const said: string[] = [];
   await withHub(dir, { warn: (l) => said.push(l) }, async (url) => {
     assert.equal(said.length, 1);
-    assert.match(said[0]!, /stale/);
-    assert.equal(readFileSync(join(dir, 'hub.lock'), 'utf8').split(' ')[0], String(process.pid));
+    assert.match(said[0]!, /replaced/);
+    assert.deepEqual(lockFiles(dir), ['hub.lock.1', 'hub.lock.2'], 'the new lock is the next number; its predecessor is kept');
+    assert.equal(readFileSync(join(dir, 'hub.lock.2'), 'utf8').split(' ')[0], String(process.pid));
     assert.equal((await fetch(`${url}/healthz`)).status, 200);
   });
-  assert.equal(existsSync(join(dir, 'hub.lock')), false);
+  assert.deepEqual(lockFiles(dir), ['hub.lock.1'], 'close removes its own lock only');
 });
 
 test('31. a busy port leaves the folder as it was and removes the lock', async () => {
@@ -1033,72 +1039,183 @@ test('34. the journal is synced after each write and before the answer is sent',
 
 // ---- round 5: one winner on a stale lock; the library judges a post first; a failed start leaves the folder alone ----
 
-/** A process id that is certainly not running: a child that has already exited. */
-function deadPid(): number {
-  return Number(execFileSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' }));
-}
+let redrawn = 0;
 
-/** N starters, separate processes, leave the line together on one folder that holds a stale lock. */
-async function raceOnStaleLock(starters: number): Promise<{ results: string[]; lockPid: number; winnerPid: number; leftovers: string[] }> {
-  const dir = tempDir();
-  writeFileSync(join(dir, 'hub.lock'), `${deadPid()} oldtoken\n`);
-  const startAt = Date.now() + 700;
-  const kids = Array.from({ length: starters }, () =>
-    spawn(process.execPath, ['--experimental-strip-types', '--no-warnings', join(HERE, 'lock-child.mjs'), dir, String(startAt)], { stdio: ['pipe', 'pipe', 'inherit'] }),
-  );
+function isRunning(pid: number): boolean {
   try {
-    const results = await Promise.all(
-      kids.map(
-        (k) =>
-          new Promise<string>((resolve, reject) => {
-            let text = '';
-            k.stdout!.on('data', (c: Buffer) => {
-              text += c.toString('utf8');
-              if (text.includes('\n')) resolve(text.trim());
-            });
-            k.on('error', reject);
-            k.on('exit', () => resolve(text.trim() || 'DIED'));
-          }),
-      ),
-    );
-    const winner = kids[results.indexOf('WON')];
-    const lockPid = Number(readFileSync(join(dir, 'hub.lock'), 'utf8').split(' ')[0]);
-    return { results, lockPid, winnerPid: winner?.pid ?? -1, leftovers: readdirSync(dir).filter((n) => n !== 'hub.lock') };
-  } finally {
-    for (const k of kids) {
-      k.stdin!.end();
-      k.kill();
-    }
-    await Promise.all(kids.map((k) => new Promise<void>((resolve) => (k.exitCode !== null ? resolve() : k.once('exit', () => resolve())))));
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM';
   }
 }
 
-for (const starters of [2, 4]) {
-  test(`35-${starters}. 40 trials of ${starters} starters racing on one stale lock: exactly one wins every time`, async () => {
-    const TRIALS = 40;
-    for (let t = 0; t < TRIALS; t++) {
-      const r = await raceOnStaleLock(starters);
-      assert.equal(r.results.filter((x) => x === 'WON').length, 1, `trial ${t}: ${r.results.join(',')}`);
-      assert.equal(r.results.filter((x) => x === 'REFUSED').length, starters - 1, `trial ${t}: ${r.results.join(',')}`);
-      assert.equal(r.lockPid, r.winnerPid, `trial ${t}: the lock names the winner`);
-      assert.deepEqual(r.leftovers, [], `trial ${t}: the renamed stale lock is removed`);
-    }
+/** The numbered lock files of a folder, lowest number first. */
+function lockFiles(dir: string): string[] {
+  return readdirSync(dir)
+    .filter((n) => /^hub\.lock\.[1-9][0-9]*$/.test(n))
+    .sort((x, y) => Number(x.slice(9)) - Number(y.slice(9)));
+}
+
+/** A process id that is not running: a child the test started and waited to exit, checked just before it is used. */
+async function deadPid(): Promise<number> {
+  for (;;) {
+    const child = spawn(process.execPath, ['-e', '0'], { stdio: 'ignore' });
+    const pid = child.pid!;
+    await new Promise<void>((resolve) => child.once('exit', () => resolve()));
+    if (!isRunning(pid)) return pid;
+    redrawn++;
+  }
+}
+
+function startStarters(dir: string, starters: number): Kid[] {
+  const startAt = Date.now() + 700;
+  return Array.from({ length: starters }, () => spawn(process.execPath, ['--experimental-strip-types', '--no-warnings', join(HERE, 'lock-child.mjs'), dir, String(startAt)], { stdio: ['pipe', 'pipe', 'inherit'] }));
+}
+
+function firstLine(k: Kid): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    let text = '';
+    k.stdout.on('data', (c: Buffer) => {
+      text += c.toString('utf8');
+      if (text.includes('\n')) resolve(text.trim());
+    });
+    k.on('error', reject);
+    k.on('exit', () => resolve(text.trim() || 'DIED'));
   });
 }
+
+async function stopStarters(kids: Kid[]): Promise<void> {
+  for (const k of kids) {
+    k.stdin.end();
+    k.kill();
+  }
+  await Promise.all(kids.map((k) => new Promise<void>((resolve) => (k.exitCode !== null ? resolve() : k.once('exit', () => resolve())))));
+}
+
+type Trial = { redraw: true } | { redraw: false; results: string[]; winnerPid: number; dir: string; journalSame: boolean };
+
+/** N starters, separate processes, leave the line together on a folder whose current lock's holder is not running. */
+async function raceOnStaleLock(starters: number, leftovers: boolean): Promise<Trial> {
+  const dir = tempDir();
+  const dead = await deadPid();
+  const journal = Buffer.from('[{"kept":"as it is"}]\n');
+  writeFileSync(join(dir, 'journal.jsonl'), journal);
+  writeFileSync(join(dir, 'hub.lock.1'), `${dead} 000000000000000000000000\n`);
+  if (leftovers) {
+    writeFileSync(join(dir, 'hub.lock.takeover'), `${dead}\n`); // a guard left by the round-5 layout
+    writeFileSync(join(dir, `hub.lock.tmp-${dead}-abcdef`), `${dead} half\n`); // a temporary file of a starter that died
+  }
+  const kids = startStarters(dir, starters);
+  try {
+    const results = await Promise.all(kids.map(firstLine));
+    if (isRunning(dead)) return { redraw: true }; // the "dead" id turned out to be running again: draw again
+    const winner = kids[results.indexOf('WON')];
+    return { redraw: false, results, winnerPid: winner?.pid ?? -1, dir, journalSame: readFileSync(join(dir, 'journal.jsonl')).equals(journal) };
+  } finally {
+    await stopStarters(kids);
+  }
+}
+
+for (const [starters, leftovers] of [[2, false], [4, false], [2, true], [4, true]] as const) {
+  test(`35-${starters}${leftovers ? 'L' : ''}. 40 trials of ${starters} starters racing on a stale lock${leftovers ? ' (with a leftover takeover file and a dead starter\'s temporary file)' : ''}: exactly one wins every time`, async (t) => {
+    const TRIALS = 40;
+    let done = 0;
+    let redraws = 0;
+    while (done < TRIALS) {
+      const r = await raceOnStaleLock(starters, leftovers);
+      if (r.redraw) {
+        redraws++;
+        continue;
+      }
+      const label = `trial ${done}: ${r.results.join(',')}`;
+      assert.equal(r.results.filter((x) => x === 'WON').length, 1, label);
+      assert.equal(r.results.filter((x) => x === 'REFUSED').length, starters - 1, label);
+      const locks = lockFiles(r.dir);
+      assert.deepEqual(locks, ['hub.lock.1', 'hub.lock.2'], `${label}: the winner's lock and its predecessor`);
+      assert.equal(Number(readFileSync(join(r.dir, 'hub.lock.2'), 'utf8').split(' ')[0]), r.winnerPid, `${label}: the lock names the winner`);
+      assert.deepEqual(readdirSync(r.dir).filter((n) => n.startsWith('hub.lock.tmp-')), [], `${label}: no temporary file is left`);
+      if (leftovers) assert.ok(existsSync(join(r.dir, 'hub.lock.takeover')), 'a leftover takeover file is not a lock and is left alone');
+      assert.ok(r.journalSame, `${label}: the journal is as it was`);
+      done++;
+    }
+    t.diagnostic(`${done} trials of ${starters} starters, ${redraws} drawn again because the dead id was running again; all had exactly one winner`);
+  });
+}
+
+test('35-chain. six generations: start, kill without close, start again: at most two numbered lock files each time', async () => {
+  const dir = tempDir();
+  for (let g = 1; g <= 6; g++) {
+    const kids = startStarters(dir, 1);
+    try {
+      assert.equal(await firstLine(kids[0]!), 'WON', `generation ${g}`);
+      const locks = lockFiles(dir);
+      assert.deepEqual(locks, g === 1 ? ['hub.lock.1'] : [`hub.lock.${g - 1}`, `hub.lock.${g}`], `generation ${g}: at most two, the newest and its predecessor`);
+    } finally {
+      kids[0]!.kill(); // hard: no close, the lock is left behind
+      await new Promise<void>((resolve) => (kids[0]!.exitCode !== null ? resolve() : kids[0]!.once('exit', () => resolve())));
+    }
+  }
+});
 
 test('36. a hub whose lock was replaced by another hub leaves that lock in place on close', async () => {
   const dir = tempDir();
   const other = `${process.pid} some-other-hubs-token\n`;
   await withHub(dir, {}, async () => {
-    writeFileSync(join(dir, 'hub.lock'), other); // another hub's lock now sits where this hub's was
+    writeFileSync(join(dir, 'hub.lock.1'), other); // another hub's lock now sits where this hub's was
   });
-  assert.equal(readFileSync(join(dir, 'hub.lock'), 'utf8'), other);
-  rmSync(join(dir, 'hub.lock'));
-  const foreign = `${deadPid()} foreign\n`;
+  assert.equal(readFileSync(join(dir, 'hub.lock.1'), 'utf8'), other);
+  rmSync(join(dir, 'hub.lock.1'));
+  const foreign = `${await deadPid()} foreign\n`;
   await withHub(dir, {}, async () => {
-    writeFileSync(join(dir, 'hub.lock'), foreign);
+    writeFileSync(join(dir, 'hub.lock.1'), foreign);
   });
-  assert.equal(readFileSync(join(dir, 'hub.lock'), 'utf8'), foreign);
+  assert.equal(readFileSync(join(dir, 'hub.lock.1'), 'utf8'), foreign);
+});
+
+test('42. a start that fails on the lock gives a plain message with no part of the folder path', async () => {
+  const messages: string[] = [];
+  const attempt = async (dir: string): Promise<void> => {
+    const hub = createHub({ dataDir: dir, port: 0, ...quiet });
+    let started = false;
+    try {
+      await hub.listen();
+      started = true;
+    } catch (e) {
+      messages.push(e instanceof Error ? e.message : String(e));
+    } finally {
+      await hub.close();
+    }
+    assert.equal(started, false, 'the start should have been refused');
+  };
+  const noPath = (dir: string, message: string): void => {
+    assert.ok(!message.includes(dir), message);
+    assert.ok(!message.toLowerCase().includes(basename(dir).toLowerCase()), message);
+    assert.ok(!message.toLowerCase().includes(basename(dirname(dir)).toLowerCase()), message);
+  };
+  // 1. a folder that is not a folder
+  const notAFolder = join(tempDir(), 'plain-file');
+  writeFileSync(notAFolder, 'x');
+  await attempt(notAFolder);
+  noPath(notAFolder, messages[0]!);
+  // 2. a lock file that cannot be read (a directory by that name)
+  const dir2 = tempDir();
+  mkdirSync(join(dir2, 'hub.lock.3'));
+  await attempt(dir2);
+  noPath(dir2, messages[1]!);
+  assert.match(messages[1]!, /hub\.lock\.3/);
+  // 3. a lock file that is not one this hub could have written
+  const dir3 = tempDir();
+  writeFileSync(join(dir3, 'hub.lock.2'), 'not a lock');
+  await attempt(dir3);
+  noPath(dir3, messages[2]!);
+  assert.match(messages[2]!, /hub\.lock\.2/);
+  assert.match(messages[2]!, /delete/);
+  // 4. a folder with a read-only numbered lock of a running process is a plain live-holder refusal
+  const dir4 = tempDir();
+  writeFileSync(join(dir4, 'hub.lock.5'), `${process.pid} abcdef\n`);
+  await attempt(dir4);
+  noPath(dir4, messages[3]!);
 });
 
 for (const depth of [10000, 100000]) {

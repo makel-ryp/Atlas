@@ -1,8 +1,20 @@
-import { closeSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from 'node:fs';
+import { closeSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, unlinkSync, writeSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 
 export const LOCK_NAME = 'hub.lock';
+
+export interface HeldLock {
+  /** Removes this hub's own lock file, only if it still holds this hub's own process id and token. */
+  release(): void;
+}
+
+/** A refusal with a plain message. It names a file by its name only, never the data folder's path. */
+class LockRefused extends Error {}
+
+const NUMBERED = /^hub\.lock\.([1-9][0-9]*)$/;
+const TEMPORARY = /^hub\.lock\.tmp-([0-9]+)-/;
+const CONTENT = /^([1-9][0-9]*) ([0-9a-f]{24})\n$/;
 
 /** True when a process with this id is running (a process we may not signal still counts as running). */
 function isRunning(pid: number): boolean {
@@ -14,113 +26,152 @@ function isRunning(pid: number): boolean {
   }
 }
 
-export interface HeldLock {
-  /** Removes the lock file, only if it still holds this hub's own process id and token. */
-  release(): void;
-}
-
-function readLock(file: string): string | undefined {
-  try {
-    return readFileSync(file, 'utf8');
-  } catch {
-    return undefined;
-  }
-}
-
 function pause(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+function codeOf(e: unknown): string {
+  const c = (e as NodeJS.ErrnoException | undefined)?.code;
+  return typeof c === 'string' ? c : 'error';
+}
+
+/** The numbers of the lock files in the folder, highest first. Other names (a plain hub.lock, hub.lock.takeover) are not locks. */
+function lockNumbers(dir: string): number[] {
+  const out: number[] = [];
+  for (const name of readdirSync(dir)) {
+    const m = NUMBERED.exec(name);
+    if (m !== null) {
+      const n = Number(m[1]);
+      if (Number.isSafeInteger(n)) out.push(n);
+    }
+  }
+  return out.sort((a, b) => b - a);
+}
+
 /**
- * Takes the data folder's lock: the file hub.lock, created with the exclusive flag, holding this process's id and a
- * token only this hub knows. If the file exists and its process is still running, the start is refused and nothing
- * in the folder is touched.
+ * Takes the data folder's lock. The lock is a numbered series of files, hub.lock.<n>; the current lock is the one with the
+ * highest n, and no file is ever deleted and re-created under the same name. A starter lists the folder; with no lock the
+ * target is 1; with a lock whose holder is running it is refused; with a lock whose holder is gone the target is n + 1.
+ * It writes its whole lock (process id and token) to a temporary file of its own and then makes the target with a hard link,
+ * which is created whole or not at all and fails if the name is taken, so a lock file is never seen half-written and only
+ * one starter can ever create a given number. If the name was taken, the starter starts again from the listing.
  *
- * If that process is gone the lock is stale, and only one starter may deal with it. A starter that found it stale never
- * just deletes it and creates its own (two starters could then both win). It first creates hub.lock.takeover, exclusively,
- * so that one starter at a time handles the stale lock; under that guard it checks the file is still the stale lock it
- * read, moves it to a name of its own and removes it, and lets go of the guard. Then every starter tries the exclusive
- * create once more: whoever creates the file holds the lock, anyone else finds a live holder and is refused.
+ * Nothing of this takes a file name from the folder and prints a path: a failure is a plain message with a file's name.
  */
 export function takeLock(dir: string, say: (line: string) => void): HeldLock {
+  try {
+    return takeNumberedLock(dir, say);
+  } catch (e) {
+    if (e instanceof LockRefused) throw e;
+    // a file-system error that is not a race: a plain refusal, with no path in it
+    throw new LockRefused(`could not take the lock in the data folder (${codeOf(e)}); check the folder set by SIM_HUB_DATA`);
+  }
+}
+
+function takeNumberedLock(dir: string, say: (line: string) => void): HeldLock {
   mkdirSync(dir, { recursive: true });
-  const file = join(dir, LOCK_NAME);
-  const guardFile = `${file}.takeover`;
   const mine = `${process.pid} ${randomBytes(12).toString('hex')}\n`;
   const giveUpAt = Date.now() + 5000;
+  const busy = (): LockRefused => new LockRefused('another hub is starting on this data folder (the SIM_HUB_DATA setting); try again in a moment');
   for (;;) {
-    try {
-      const fd = openSync(file, 'wx');
+    if (Date.now() > giveUpAt) throw busy();
+    const numbers = lockNumbers(dir);
+    let target = 1;
+    let replaced: number | undefined;
+    const current = numbers[0];
+    if (current !== undefined) {
+      const name = `${LOCK_NAME}.${current}`;
+      let text: string;
       try {
-        writeSync(fd, mine);
-      } finally {
-        closeSync(fd);
+        text = readFileSync(join(dir, name), 'utf8');
+      } catch (e) {
+        if (codeOf(e) === 'ENOENT') continue; // its hub just let go of it: look again
+        throw new LockRefused(`${name} cannot be read (${codeOf(e)}); if no hub is running, delete it (the folder is set by SIM_HUB_DATA)`);
       }
-      return {
-        release() {
-          // only a lock that is still this hub's own: another hub's lock, or one a person replaced, is left alone
-          if (readLock(file) !== mine) return;
-          try {
-            unlinkSync(file);
-          } catch {
-            // already gone
-          }
-        },
-      };
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-    }
-    const seen = readLock(file);
-    if (seen === undefined) continue; // it vanished between the two calls: try the create again
-    const pid = Number.parseInt(seen.trim(), 10);
-    if (!Number.isInteger(pid) || pid <= 0) {
-      throw new Error(`the data folder holds a ${LOCK_NAME} that cannot be read; if no hub is running, delete that file (the folder is set by SIM_HUB_DATA)`);
-    }
-    if (isRunning(pid)) {
-      throw new Error(`another hub (process ${pid}) is already using this data folder (the SIM_HUB_DATA setting); stop it, or give this one its own folder`);
-    }
-    // stale: one starter at a time deals with it
-    let guard: number;
-    try {
-      guard = openSync(guardFile, 'wx');
-      writeSync(guard, `${process.pid}\n`);
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      if (Date.now() > giveUpAt) {
-        // the guard has been held far too long: if its holder is gone it is a leftover of a crash
-        const holder = Number.parseInt((readLock(guardFile) ?? '').trim(), 10);
-        if (Number.isInteger(holder) && holder > 0 && !isRunning(holder)) {
-          try {
-            unlinkSync(guardFile);
-          } catch {
-            // already gone
-          }
-          continue;
-        }
-        throw new Error('another hub is starting on this data folder (the SIM_HUB_DATA setting); try again in a moment');
+      const m = CONTENT.exec(text);
+      if (m === null) throw new LockRefused(`${name} is not a lock this hub wrote; if no hub is running, delete it (the folder is set by SIM_HUB_DATA)`);
+      const pid = Number(m[1]);
+      if (isRunning(pid)) {
+        throw new LockRefused(`another hub (process ${pid}) is already using this data folder (the SIM_HUB_DATA setting); stop it, or give this one its own folder`);
       }
-      pause(25);
-      continue;
+      target = current + 1;
+      replaced = pid;
     }
+    const targetName = `${LOCK_NAME}.${target}`;
+    const tmpName = `${LOCK_NAME}.tmp-${process.pid}-${randomBytes(6).toString('hex')}`;
+    const tmpPath = join(dir, tmpName);
+    const fd = openSync(tmpPath, 'wx');
     try {
-      if (readLock(file) === seen) {
-        // still the stale lock that was judged: move it to a name of our own, then remove it
-        const aside = `${file}.stale-${process.pid}-${randomBytes(6).toString('hex')}`;
-        renameSync(file, aside);
-        say(`${LOCK_NAME}: the hub that held it (process ${pid}) is gone; the stale lock was replaced`);
-        try {
-          unlinkSync(aside);
-        } catch {
-          // already gone
-        }
+      writeSync(fd, mine);
+    } finally {
+      closeSync(fd);
+    }
+    let linked = false;
+    try {
+      linkSync(tmpPath, join(dir, targetName));
+      linked = true;
+    } catch (e) {
+      if (codeOf(e) !== 'EEXIST') {
+        throw new LockRefused(`the file system of the data folder refused to make ${targetName} (${codeOf(e)}); the lock needs hard links, so this folder cannot be used (set SIM_HUB_DATA to another)`);
       }
     } finally {
-      closeSync(guard);
       try {
-        unlinkSync(guardFile);
+        unlinkSync(tmpPath);
       } catch {
         // already gone
       }
     }
+    if (!linked) {
+      pause(10); // the name was taken by another starter: start again from the listing
+      continue;
+    }
+    // A lock lower than one that now exists is not the current lock (a very slow starter could land on a number that was cleaned up):
+    // take it back and start again.
+    if ((lockNumbers(dir)[0] ?? target) > target) {
+      try {
+        if (readFileSync(join(dir, targetName), 'utf8') === mine) unlinkSync(join(dir, targetName));
+      } catch {
+        // gone already
+      }
+      continue;
+    }
+    cleanUp(dir, target);
+    if (replaced !== undefined) say(`${LOCK_NAME}: the hub that held the last lock (process ${replaced}) is gone; its lock was replaced`);
+    return {
+      release() {
+        // only this hub's own number, and only while it still holds this hub's id and token: another hub's lock is left alone
+        const path = join(dir, targetName);
+        try {
+          if (readFileSync(path, 'utf8') !== mine) return;
+          unlinkSync(path);
+        } catch {
+          // already gone
+        }
+      },
+    };
+  }
+}
+
+/**
+ * The winner of number n removes every lock lower than n - 1, and the temporary files of starters that are gone. It keeps n - 1 on
+ * purpose: while lock n is held, lock n - 1 exists, so a folder listing taken while n was being created always shows at least
+ * n - 1, and that starter's link to n fails because n is taken. (Were n - 1 removed too, a starter whose listing showed an even older
+ * lock could aim at n - 1, find the name free and link it, and two hubs would hold locks.)
+ */
+function cleanUp(dir: string, n: number): void {
+  try {
+    for (const name of readdirSync(dir)) {
+      const numbered = NUMBERED.exec(name);
+      const tmp = TEMPORARY.exec(name);
+      const remove = (numbered !== null && Number(numbered[1]) < n - 1) || (tmp !== null && Number(tmp[1]) !== process.pid && !isRunning(Number(tmp[1])));
+      if (!remove) continue;
+      try {
+        unlinkSync(join(dir, name));
+      } catch {
+        // another starter is removing it too
+      }
+    }
+  } catch {
+    // clean-up is best effort: a file another starter is removing too is not a failure
   }
 }

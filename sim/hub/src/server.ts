@@ -215,7 +215,7 @@ export function createHub(options: HubOptions): Hub {
       try {
         validateRecord(records[i], `record ${i}`);
       } catch (e) {
-        if (e instanceof UnknownLayoutError || e instanceof RangeError) return { status: 400, body: { error: 'unknown_layout' } };
+        if (e instanceof UnknownLayoutError) return { status: 400, body: { error: 'unknown_layout' } };
         throw e;
       }
     }
