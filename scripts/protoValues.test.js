@@ -19,6 +19,10 @@
 //                   on a scratch copy; the page is executed as code, so only pass a file you trust)
 //   --data <path>   run rules 1 and 2 only, against a saved copy of the injected data (JSON)
 //
+// node:vm is not a security boundary. The page is run as trusted repo code (pass --page only a file you
+// trust); the only untrusted input is the --data text, which is why it is parsed with JSON.parse and
+// never evaluated or joined into source.
+//
 // Plain JavaScript, Node built-ins only. Exits 1 if any case fails.
 
 import fs from 'node:fs'
@@ -32,13 +36,14 @@ const MAX_DATA_CHARS = 5000000
 
 // ─── arguments ───────────────────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
-  const out = { page: path.resolve(HERE, '..', 'proto', 'Dashboard.dc.html'), data: null }
+  const out = { page: path.resolve(HERE, '..', 'proto', 'Dashboard.dc.html'), data: null, dataArg: null }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--page' || a === '--data') {
       const v = argv[++i]
       if (!v) throw new Error(a + ' needs a path')
       out[a.slice(2)] = path.resolve(v)
+      if (a === '--data') out.dataArg = v
     } else {
       throw new Error('unknown argument ' + a + ' (use --page <path> or --data <path>)')
     }
@@ -229,7 +234,7 @@ function rule2Refs(result, data) {
 function rule2(result, data) {
   const faults = []
   rule2Refs(result, data).forEach(r => {
-    if (r.missing && r.container[r.key] !== DASH) faults.push({ where: r.where, token: String(r.container[r.key]) })
+    if (r.missing && r.container[r.key] !== DASH) faults.push({ where: r.where, token: String(r.container[r.key]), kind: 'value' })
   })
   return faults
 }
@@ -251,9 +256,13 @@ const dna = (handicap, gap) => ({
 })
 
 const coachMe = (hcp, target) => ({
-  name: null, displayName: null, hcp, target, hand: null, carry: null, tier: '', zone: '', drills: {},
+  name: null, displayName: null, hcp, target, hand: null, carry: null, tier: '', zone: '', drills: {}, notes: [],
 })
-const coachData = (me, roster) => ({ view: 'roster', hidden: [], reviewItems: [], me, roster })
+// The server sends a coach a `meRow` as well (server/protoData.ts); its numbers follow `me`.
+const coachData = (me, roster) => ({
+  view: 'roster', hidden: [], reviewItems: [], me, roster,
+  meRow: row({ id: 'zz-test-0', n: '', hcp: me.hcp === null ? null : Number(me.hcp), target: me.target === null ? null : Number(me.target) }),
+})
 
 // Every number present. 0.03 prints '+0.0', -0.03 prints '-0.0', 0.5 prints '+0.5'.
 const presentA = () => row({
@@ -296,11 +305,17 @@ function runCase(name, fn) {
     console.log('FAIL ' + name + ' :: ' + (e && e.message ? e.message : String(e)))
   }
 }
-function fmt(faults) {
-  return faults.slice(0, 6).map(f => f.where + ' holds ' + JSON.stringify(f.token)).join('; ') + (faults.length > 6 ? ' (+' + (faults.length - 6) + ' more)' : '')
+// Under --data the value of a rule 2 fault is the file's own text, so it is printed only when it is
+// short and made only of digits, + - U+2212 . space and the dash; otherwise only its length.
+function safeValue(s) {
+  return s.length <= 12 && /^[0-9+-−. —]*$/.test(s) ? JSON.stringify(s) : 'text of length ' + s.length
 }
-function expectNone(faults, label) {
-  if (faults.length) throw new Error(label + ' reported ' + faults.length + ': ' + fmt(faults))
+function fmt(faults, safe) {
+  const show = f => (safe && f.kind === 'value' ? safeValue(f.token) : JSON.stringify(f.token))
+  return faults.slice(0, 6).map(f => f.where + ' holds ' + show(f)).join('; ') + (faults.length > 6 ? ' (+' + (faults.length - 6) + ' more)' : '')
+}
+function expectNone(faults, label, safe) {
+  if (faults.length) throw new Error(label + ' reported ' + faults.length + ': ' + fmt(faults, safe))
 }
 function expectSome(faults, label) {
   if (!faults.length) throw new Error(label + ' reported nothing, and it must')
@@ -313,9 +328,12 @@ function expectEqual(actual, expected, label) {
 function mainData(opts) {
   // Rules 1 and 2 against a saved copy of the injected data. The file is parsed with JSON.parse
   // and handed to the page as data; its text is never joined into script source or evaluated.
-  const size = fs.statSync(opts.data).size
+  let size
+  let text
+  const unreadable = () => new Error('the data file ' + opts.dataArg + ' cannot be read; refusing it')
+  try { size = fs.statSync(opts.data).size } catch (e) { throw unreadable() }
   if (size > MAX_DATA_CHARS * 4) throw new Error('the data file is larger than ' + MAX_DATA_CHARS + ' characters; refusing it')
-  const text = fs.readFileSync(opts.data, 'utf8')
+  try { text = fs.readFileSync(opts.data, 'utf8') } catch (e) { throw unreadable() }
   if (text.length > MAX_DATA_CHARS) throw new Error('the data file is larger than ' + MAX_DATA_CHARS + ' characters; refusing it')
   let data
   try { data = JSON.parse(text) } catch (e) { throw new Error('the data file is not valid JSON; refusing it') }
@@ -326,7 +344,7 @@ function mainData(opts) {
   runCase('saved data: rule 2 (a missing handicap, target or strokes gained prints the dash)', () => {
     const refs = rule2Refs(result, data)
     if (!refs.length) throw new Error('rule 2 found no field to check')
-    expectNone(rule2(result, data), 'rule 2')
+    expectNone(rule2(result, data), 'rule 2', true)
   })
 }
 
@@ -458,6 +476,83 @@ function mainTests(opts) {
     ;['+0.5', '2026-09-07', '+00:00', '+0.05', '10+0', '12-0.5'].forEach(t => {
       expectNone(rule3({ roster: { a: t }, profiles: [], intake: {} }), 'rule 3 on ' + JSON.stringify(t))
     })
+  })
+
+  // ── the gathering is pinned: rules 1 and 3 must really see all three functions ──────────────
+  const SETS_RULE1 = Object.keys(datas)
+  const SETS_RULE3 = ['empty', 'missing', 'playerWithout']
+  const HEAD = { roster: 'rosterVals()', profile: 'profileVals(', intake: 'intakeVals()' }
+  runCase('gathering: each function contributes strings, and a text only it holds is found, in every data set', () => {
+    SETS_RULE1.forEach(k => {
+      const g = allStrings(runs[k])
+      const from = pre => g.filter(s => s.where.indexOf(pre) === 0)
+      ;[HEAD.roster, HEAD.profile, HEAD.intake].forEach(pre => {
+        if (!from(pre).length) throw new Error(k + ': no string gathered from ' + pre)
+      })
+      const n = Array.isArray(datas[k].roster) ? datas[k].roster.length : 0
+      const one = (where, text) => {
+        const hit = g.filter(s => s.where === where)
+        if (hit.length !== 1 || hit[0].text !== text) throw new Error(k + ': ' + where + ' should be gathered once as ' + JSON.stringify(text))
+      }
+      one('rosterVals().rosterCount', n + ' active')
+      one('intakeVals().inStatus', 'Incomplete. Your coach cannot write a block from a half-filled form.')
+      runs[k].profiles.forEach(p => one(p.label + '.dnaTitle', n === 0 ? 'What your coach sees of your read.' : 'What this player sees.'))
+    })
+  })
+  const planted = [
+    ['profileVals', c => { c.profiles[0].out.pfName = 'PLANT'; return c.profiles[0].label + '.pfName' }],
+    ['intakeVals', c => { c.intake.inStatus = 'PLANT'; return 'intakeVals().inStatus' }],
+  ]
+  planted.forEach(pl => {
+    ;['undefined', 'NaN', 'nulld'].forEach(w => {
+      runCase('negative: ' + w + ' planted in a ' + pl[0] + ' string is reported by rule 1', () => {
+        const c = missingCopy()
+        const where = pl[1](c)
+        const text = 'x ' + w + ' y'
+        if (pl[0] === 'profileVals') c.profiles[0].out.pfName = text
+        else c.intake.inStatus = text
+        const hits = rule1(c).filter(f => f.where === where && f.token === w)
+        if (!hits.length) throw new Error('rule 1 did not report ' + w + ' at ' + where)
+      })
+    })
+    runCase('negative: +0.0 planted in a ' + pl[0] + ' string, every number missing, is reported by rule 3', () => {
+      const c = missingCopy()
+      const where = pl[1](c)
+      if (pl[0] === 'profileVals') c.profiles[0].out.pfName = 'Sorted +0.0'
+      else c.intake.inStatus = 'Sorted +0.0'
+      const hits = rule3(c).filter(f => f.where === where)
+      if (!hits.length) throw new Error('rule 3 did not report +0.0 at ' + where)
+    })
+  })
+
+  // Rule 3 is only sound when the data holds no number a signed zero could come from.
+  const SCOPE_KEYS = ['hcp', 'target', 'sg', 'hist', 'mi', 'realHcp']
+  function numbersIn(v, where, inScope, acc) {
+    if (typeof v === 'number') { if (inScope && isFinite(v)) acc.push(where); return acc }
+    if (typeof v === 'string') { if (inScope && v.trim() !== '' && isFinite(Number(v))) acc.push(where); return acc }
+    if (v === null || typeof v !== 'object') return acc
+    Object.keys(v).forEach(k => numbersIn(v[k], where + '.' + k, inScope || SCOPE_KEYS.indexOf(k) !== -1, acc))
+    return acc
+  }
+  runCase('rule 3 data sets hold no handicap, target, strokes-gained, history or mechanics number', () => {
+    SETS_RULE3.forEach(k => {
+      const found = numbersIn(datas[k], k, false, [])
+      if (found.length) throw new Error(k + ' holds a number at ' + found.slice(0, 4).join(', '))
+    })
+  })
+  runCase('the number walk finds numbers where there are some', () => {
+    ;['present', 'playerWith'].forEach(k => {
+      if (!numbersIn(datas[k], k, false, []).length) throw new Error('the walk found nothing in ' + k)
+    })
+    const seeded = DATA.empty()
+    seeded.me = coachMe('4.2', null)
+    if (!numbersIn(seeded, 'x', false, []).length) throw new Error('the walk missed me.hcp')
+  })
+  runCase('under --data a rule 2 value is printed only when short and numeric', () => {
+    expectEqual(safeValue('+0.0'), '"+0.0"', 'short numeric')
+    expectEqual(safeValue('−1.5 —'), JSON.stringify('−1.5 —'), 'minus, space, dash')
+    expectEqual(safeValue('ZZ-FILE-CONTENT-TOKEN'), 'text of length 21', 'file text')
+    expectEqual(safeValue('1234567890123'), 'text of length 13', 'over 12 characters')
   })
 }
 

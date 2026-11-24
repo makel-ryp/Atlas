@@ -137,3 +137,7 @@ The text alone cannot tell the two cases apart: `fmtSG(0.03)` and an unguarded `
 described above.
 
 Repeat with `{ roster: [] }` for the coach-with-no-students case.
+
+**What this check does not cover.** The handicap-history note under the profile is not checked when part of
+the history is missing: the page today can print a change computed from a missing three-month value. It is
+tracked as T-142.
