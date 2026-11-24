@@ -116,5 +116,24 @@ asks whether `read` has anything in it, which switches on the empty state his ow
 Sign in as the demo coach, POST `/api/session`, GET `/proto/dashboard` with the cookie. Grep alone is
 not enough — it passes while the page throws on first paint. Extract the injected blob and run his
 *actual* inline script against it (`class Component` in a `vm` context with `DCLogic` stubbed), then
-call `rosterVals()`, `profileVals()` and `intakeVals()`, and assert no output string contains
-`undefined`, `NaN`, `nulld` or `+0`. Repeat with `{ roster: [] }` for the coach-with-no-students case.
+call `rosterVals()`, `profileVals()` and `intakeVals()`, and apply three rules to every string they return:
+
+- **Rule 1.** No output string contains `undefined`, `NaN` or `nulld`.
+- **Rule 2.** Every output value built from a handicap, a target handicap or a strokes-gained number whose
+  input is missing (null, undefined, absent, or an empty history) is exactly `—`.
+- **Rule 3.** With every number missing from the data, no output string holds a signed zero (`+0`, `-0`,
+  `+0.0`, `-0.0`, with `-` or `−`) as a whole token: not preceded by a digit, not followed by a digit or by
+  a point and a digit. So `+0.5`, `2026-09-07` and `+00:00` are not hits.
+
+A `+0.0`, `-0.0` or `+0.5` that comes from present numbers is correct output and passes: a strokes-gained value
+keeps its decimal place (owner's ruling, 2026-11-24). This check used to fail any output containing `+0`, which
+rejected those.
+
+The text alone cannot tell the two cases apart: `fmtSG(0.03)` and an unguarded `hcpLabel(null)` both print
+`+0.0`. So the check is driven by the input.
+
+`node scripts/protoValues.test.js` runs the three rules against test data, with no database. With
+`--data <file>` it runs rules 1 and 2 against a saved copy of the injected data, for the signed-in run
+described above.
+
+Repeat with `{ roster: [] }` for the coach-with-no-students case.
