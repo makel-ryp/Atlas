@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
-import { UnknownLayoutError, plainCopy, validateRecord } from './parse.js';
+import { UnknownLayoutError, checkRecordFields, plainCopy, readList } from './parse.js';
 import { normalisedName } from './text.js';
 import type { ShotRecord } from './parse.js';
 
@@ -82,17 +82,17 @@ export class RoundBook {
     // The first record with each ShotID in this call. Every repeat is judged against it, never against the book.
     const firstInCall = new Map<string, ShotRecord>();
     const found: Array<{ issue: BookIssue; rounds: number[] }> = [];
-    if (!Array.isArray(records)) throw new UnknownLayoutError('records must be an array');
-    // Only what a record is can be refused here: reading the list, walking, copying and checking each record
-    // are guarded, and anything that throws becomes an UnknownLayoutError. Nothing after that is guarded.
+    // Only what the list and the records are can be refused here: the list is read by the same rules as any
+    // array, then each record is copied once and the copy checked once. Anything that throws becomes an
+    // UnknownLayoutError. Nothing after that is guarded.
     const copies: ShotRecord[] = [];
     try {
-      const length = records.length;
-      for (let i = 0; i < length; i++) {
+      const entries = readList(records, 'records');
+      for (let i = 0; i < entries.length; i++) {
         // the book keeps its own plain copy, checked like a file record; the caller's object is never stored.
         // Each record has its own walk: the same object may appear as two records of one call.
-        const copy = plainCopy(records[i], `record ${i}`, new Set<object>());
-        validateRecord(copy, `record ${i}`);
+        const copy = plainCopy(entries[i], `record ${i}`, new Set<object>());
+        checkRecordFields(copy, `record ${i}`);
         copies.push(copy);
       }
     } catch (e) {
