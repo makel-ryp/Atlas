@@ -17,20 +17,21 @@ export interface CommandResult {
 }
 
 /** One line: how many issues and how many of each kind. Fixed words only; no id or other file text. */
-export function issuesLine(issues: readonly BookIssue[]): string | undefined {
+export function issuesLine(issues: readonly BookIssue[], refused?: number): string | undefined {
   if (issues.length === 0) return undefined;
   const byKind = new Map<string, number>();
   for (const i of issues) byKind.set(i.kind, (byKind.get(i.kind) ?? 0) + 1);
   const parts = [...byKind.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([k, n]) => `${k} ${n}`);
-  return `Issues: ${issues.length} (${parts.join(', ')})`;
+  return `Issues: ${issues.length} (${parts.join(', ')})${refused === undefined ? '' : `; records refused: ${refused}`}`;
 }
 
 /** Reads one file (or replays the recording when there is no path) and returns what to print. Writes and prints nothing itself. */
 export function runScorecard(arg: string | undefined, files: FileAccess, recordingDir: string): CommandResult {
   const book = new RoundBook();
+  let refused = 0; // conflicts over every read made
   try {
     if (arg === undefined) {
-      for (const copy of loadRecording(recordingDir)) book.ingest(copy.records);
+      for (const copy of loadRecording(recordingDir)) refused += book.ingest(copy.records).conflicts;
     } else {
       const name = basename(arg);
       let text: string;
@@ -44,9 +45,9 @@ export function runScorecard(arg: string | undefined, files: FileAccess, recordi
         const code = (e as { code?: unknown }).code;
         return { stdout: '', stderr: `Cannot read ${name}${typeof code === 'string' ? ` (${code})` : ''}`, exitCode: 1 };
       }
-      book.ingest(parseRoundFile(text));
+      refused += book.ingest(parseRoundFile(text)).conflicts;
     }
-    const extra = issuesLine(book.issues());
+    const extra = issuesLine(book.issues(), refused);
     return { stdout: extra === undefined ? formatScorecard(book) : `${formatScorecard(book)}\n${extra}`, stderr: '', exitCode: 0 };
   } catch (e) {
     return { stdout: '', stderr: e instanceof Error ? `${e.name}: ${e.message}` : String(e), exitCode: 1 };

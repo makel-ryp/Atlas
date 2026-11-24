@@ -50,53 +50,40 @@ const CHECK_ORDER = [
 ] as const;
 
 /**
- * Refuses a value nested more than MAX_DEPTH levels deep (the value itself is level 1) and a value that
- * contains itself. Walks with its own stack, never by recursion, and visits each object once, so the
- * time is in proportion to the size of the graph however many references share an object.
+ * Refuses a value nested more than MAX_DEPTH levels deep (the value itself is level 1) and any object
+ * reached a second time (a shared reference or a cycle). Walks with its own stack, never by recursion,
+ * and visits each object once, so the time is in proportion to the size of the value. `seen` lets one
+ * walk cover several values (every record of one `ingest` call). Records read from a file never share
+ * objects, so nothing from a file is refused by the sharing rule.
  */
-export function assertShallow(value: unknown, where: string): void {
-  interface Frame {
-    kids: unknown[];
-    next: number;
-    /** Levels in this object's subtree, itself included. */
-    height: number;
-    obj: object;
-  }
-  const heights = new Map<object, number>(); // finished objects and their heights
-  const path = new Set<object>(); // objects on the way down from the top
-  const stack: Frame[] = [];
-  const tooDeep = () => new UnknownLayoutError(`${where} is nested more than ${MAX_DEPTH} levels deep`);
-
-  /** Enters `v`; returns its height now when it needs no walk (not an object, or already finished). */
-  const enter = (v: unknown): number | undefined => {
-    if (v === null || typeof v !== 'object') return 0;
-    if (path.has(v)) throw new UnknownLayoutError(`${where} contains itself`);
-    const depth = stack.length + 1;
-    if (depth > MAX_DEPTH) throw tooDeep();
-    const known = heights.get(v);
-    if (known !== undefined) {
-      if (depth + known - 1 > MAX_DEPTH) throw tooDeep();
-      return known;
-    }
-    path.add(v);
-    stack.push({ kids: Object.values(v), next: 0, height: 1, obj: v });
-    return undefined;
-  };
-
-  const top = enter(value);
-  if (top !== undefined) return;
+export function assertShallow(value: unknown, where: string, seen: Set<object> = new Set()): void {
+  const stack: Array<[unknown, number]> = [[value, 1]];
   while (stack.length > 0) {
-    const frame = stack[stack.length - 1]!;
-    if (frame.next < frame.kids.length) {
-      const h = enter(frame.kids[frame.next++]);
-      if (h !== undefined) frame.height = Math.max(frame.height, h + 1);
-    } else {
-      stack.pop();
-      path.delete(frame.obj);
-      heights.set(frame.obj, frame.height);
-      const parent = stack[stack.length - 1];
-      if (parent) parent.height = Math.max(parent.height, frame.height + 1);
-    }
+    const [v, depth] = stack.pop()!;
+    if (v === null || typeof v !== 'object') continue;
+    if (seen.has(v)) throw new UnknownLayoutError(`${where} refers to the same object more than once`);
+    seen.add(v);
+    if (depth > MAX_DEPTH) throw new UnknownLayoutError(`${where} is nested more than ${MAX_DEPTH} levels deep`);
+    for (const child of Object.values(v)) stack.push([child, depth + 1]);
+  }
+}
+
+/**
+ * The book's own plain copy of a record given straight to `ingest`: walked first (depth and sharing), then
+ * converted to JSON text and back, so a getter, a prototype field, a symbol key or a later change by the
+ * caller cannot alter it. Any failure on the way (a getter that throws, a value JSON cannot hold) is an
+ * UnknownLayoutError, never another error type. The copy still has to pass `validateRecord`.
+ */
+export function plainCopy(item: unknown, where: string, seen: Set<object>): unknown {
+  if (item === null || typeof item !== 'object' || Array.isArray(item)) {
+    throw new UnknownLayoutError(`${where} is not an object`);
+  }
+  try {
+    assertShallow(item, where, seen);
+    return JSON.parse(JSON.stringify(item));
+  } catch (e) {
+    if (e instanceof UnknownLayoutError) throw e;
+    throw new UnknownLayoutError(`${where} cannot be read as a plain record`);
   }
 }
 

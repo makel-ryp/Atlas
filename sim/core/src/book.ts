@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
-import { validateRecord } from './parse.js';
+import { UnknownLayoutError, plainCopy, validateRecord } from './parse.js';
 import { normalisedName } from './text.js';
 import type { ShotRecord } from './parse.js';
 
@@ -82,8 +82,13 @@ export class RoundBook {
     // The first record with each ShotID in this call. Every repeat is judged against it, never against the book.
     const firstInCall = new Map<string, ShotRecord>();
     const found: Array<{ issue: BookIssue; rounds: number[] }> = [];
-    for (const [i, rec] of records.entries()) {
-      validateRecord(rec, `record ${i}`);
+    if (!Array.isArray(records)) throw new UnknownLayoutError('records must be an array');
+    const seen = new Set<object>(); // objects already walked in this call: none may be reached twice
+    for (let i = 0; i < records.length; i++) {
+      // the book keeps its own plain copy, checked like a file record; the caller's object is never stored
+      const copy = plainCopy(records[i], `record ${i}`, seen);
+      validateRecord(copy, `record ${i}`);
+      const rec: ShotRecord = copy;
       const first = firstInCall.get(rec.ShotID);
       if (first !== undefined) {
         if (isDeepStrictEqual(first, rec)) {

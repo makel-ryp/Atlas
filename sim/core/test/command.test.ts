@@ -69,7 +69,7 @@ test('K2. with no issues the command prints the rounds and nothing extra', () =>
   const text = JSON.stringify([rec()]);
   const res = runScorecard('/p/ok.dat', fake({ '/p/ok.dat': text }).access, RECORDING_DIR);
   assert.equal(res.exitCode, 0);
-  assert.equal(res.stdout, 'Round 1  test_course\nP1 ZZTEST-A  hole 1: 4  total 4');
+  assert.equal(res.stdout, 'Round 1  test_course\nP1 ZZTEST-A | hole 1: 4  total 4');
   assert.ok(!res.stdout.includes('Issues'));
 });
 
@@ -83,7 +83,7 @@ test('K3. refused records are reported as one Issues line with the count of each
   const res = runScorecard('/p/bad.dat', fake({ '/p/bad.dat': text }).access, RECORDING_DIR);
   assert.equal(res.exitCode, 0);
   const lines = res.stdout.split('\n');
-  assert.equal(lines.at(-1), 'Issues: 2 (duplicate_shot_in_copy 2)');
+  assert.equal(lines.at(-1), 'Issues: 2 (duplicate_shot_in_copy 2); records refused: 2');
   assert.ok(!res.stdout.includes('SECRET-SHOT') && !res.stdout.includes('SECRET-NAME'));
   assert.equal(lines.filter((l) => l.startsWith('Issues')).length, 1);
 });
@@ -95,6 +95,7 @@ test('K3b. the Issues line counts each kind, in alphabetical order', () => {
     'Issues: 3 (duplicate_shot_in_copy 1, shot_owner_changed 2)',
   );
   assert.equal(issuesLine([]), undefined);
+  assert.equal(issuesLine([issue('shot_owner_changed', 'a')], 4), 'Issues: 1 (shot_owner_changed 1); records refused: 4');
 });
 
 test('K4. the recording prints the known scores with player numbers, no mark and no Issues line', () => {
@@ -104,11 +105,11 @@ test('K4. the recording prints the known scores with player numbers, no mark and
     res.stdout,
     [
       'Round 18  bluejack_gsp',
-      'P1 ZZTEST-A  hole 1: in play (1 stroke)  total 0',
-      'P2 ZZTEST-B  hole 1: in play (1 stroke)  total 0',
+      'P1 ZZTEST-A | hole 1: in play (1 stroke)  total 0',
+      'P2 ZZTEST-B | hole 1: in play (1 stroke)  total 0',
       'Round 19  bluejack_gsp',
-      'P1 ZZTEST-A  hole 3: 6  hole 12: 4  hole 15: 8  total 18',
-      'P2 ZZTEST-B  hole 3: 5  hole 12: 5  hole 15: 10  total 20',
+      'P1 ZZTEST-A | hole 3: 6  hole 12: 4  hole 15: 8  total 18',
+      'P2 ZZTEST-B | hole 3: 5  hole 12: 5  hole 15: 10  total 20',
     ].join('\n'),
   );
 });

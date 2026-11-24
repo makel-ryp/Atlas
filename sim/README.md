@@ -27,13 +27,20 @@ refused a record that touched it (below). `rounds()` returns the mark at all thr
 formatter prints ` (needs review)` after a marked hole, after a marked player's total and on a
 marked round's heading.
 
-"Share a name" is decided by `normalisedName`: the name cleaned as the formatter cleans it (control,
-format and separator characters to spaces), Unicode compatibility normalisation (NFKC), runs of
-spaces collapsed, trimmed and lower-cased. Letters from different alphabets that only look alike are
-not detected. That is why every player line starts with the player's number in the round, `P1`, `P2`
+"Share a name" is decided by `normalisedName`: format characters (zero-width characters, the soft
+hyphen) removed, other control and separator characters turned into spaces, every dash-like
+character and the minus sign taken as a plain hyphen, compatibility normalisation, accents ignored
+(decompose, drop combining marks), runs of spaces collapsed, trimmed and lower-cased. Only the
+comparison changes; the printed name does not. Letters from different alphabets that only look alike
+are not detected. That is why every player line starts with the player's number in the round, `P1`, `P2`
 and so on in the order the players were first seen (`playerNumber` in `rounds()`): two lines in one
 round are never identical, whatever the names or ids are, and no part of an id is printed. For
-example `P1 ZZTEST-A  hole 3: 6  hole 12: 4  hole 15: 8  total 18`.
+example `P1 ZZTEST-A | hole 3: 6  hole 12: 4  hole 15: 8  total 18`. A bar separates the name from the
+scores, and every bar in a printed name or course key is replaced by a space, so nothing a file
+contains can put text to the right of the bar.
+
+Player numbers are first-seen order within one book: a fresh book reading the same records in another
+order can number the players differently, so a number is only meaningful inside one book's output.
 
 A shot never changes owner. If a record arrives whose `ShotID` the book already holds under another
 `UserGuid` or another `RoundID`, it is not applied: `ingest` counts it in `conflicts`, and `issues()`
@@ -49,15 +56,22 @@ A later record with the same `ShotID`, owner and round and different content is 
 The reader refuses (with `UnknownLayoutError`, naming the field) any integer field that is not a safe
 integer, a `Hole` outside 0 to 99 and a `HoleShot` outside 1 to 999, a `ShotID` or `UserGuid` longer
 than 128 characters, a `PlayerName` or `CourseKey` longer than 256, and any record nested more than
-32 levels deep (the record itself is level 1) or containing itself. One validator does all of this,
-and `ingest` runs it on every record it is given, so a record passed straight in (not through the
-parser) is checked the same way. `ingest` works in two passes: a call that throws leaves the book as
-it was. The text formatter replaces control, format
+32 levels deep (the record itself is level 1). One validator does all of this, and `ingest` runs it
+on every record it is given, so a record passed straight in (not through the parser) is checked the
+same way. `ingest` first walks each record it is given, refusing any object reached a second time (a
+shared reference or a cycle; records read from a file never share objects), then stores its own plain
+copy (converted to JSON text and back) and checks the copy, so a getter, a prototype field, a symbol
+key or a later change by the caller cannot alter what the book holds. Any failure on the way is an
+`UnknownLayoutError`. It works in two passes: a call that throws leaves the book as it was. Each
+record is checked twice per read (once by the parser, once by `ingest`), so a crafted file near the
+size limit can take several seconds. The text formatter replaces control, format
 and line or paragraph separator characters (Unicode classes Cc, Cf, Zl, Zp) in names and course
-keys with a space and cuts them to 64 code points; `rounds()` returns them exactly as the file had
+keys with a space (a name that uses joined emoji prints with spaces between the parts) and cuts them
+to 64 code points; `rounds()` returns them exactly as the file had
 them. The command refuses a file over 50,000,000 bytes without reading it. After the rounds it
 prints one line when the book refused anything, for example
-`Issues: 2 (duplicate_shot_in_copy 1, shot_owner_changed 1)`: the count of each kind, fixed words only.
+`Issues: 2 (duplicate_shot_in_copy 1, shot_owner_changed 1); records refused: 3`: the count of each
+kind (fixed words only) and the number of records refused over every read the command made.
 
 ## What the book does not do
 
