@@ -9,7 +9,8 @@ npm run sim:hub         # in one window: the server
 npm run sim:collector   # in another: this program
 ```
 
-It prints one line of counts and states whenever one changes, for example
+At start it prints one line naming the round file it watches. Then it prints one line of counts and
+states whenever one changes, for example
 `copies=12 queued=9 sent=9 refused=0 pending=0 server=up file=ok`. It never prints a player name,
 an id or anything else from the file.
 
@@ -17,35 +18,62 @@ an id or anything else from the file.
 
 Read from the environment:
 
-- `SIM_GSPRO_FILE`: the round file. Default: `currentRound.dat` in the GSPro folder under the
-  signed-in Windows user's `AppData\LocalLow` (built from the environment at run time). Set it if
-  GSPro keeps the file elsewhere.
+- `SIM_GSPRO_FILE`: the round file. Default: `currentRound.dat` in the folder `GSPro` inside the
+  folder `GSPro` under the signed-in Windows user's `AppData\LocalLow` (two `GSPro` folders, one in
+  the other; built from the environment at run time). If the file has not been seen for 30 seconds
+  the status says `file=not-found` and the line naming the file is printed again: check the path.
 - `SIM_HUB_URL`: where the hub listens. Default `http://127.0.0.1:5077`.
 - `SIM_COLLECTOR_DATA`: its own folder for the copy, the outbox, the record of what was sent and
   the refused file. Default `sim/collector/.data`, which git ignores.
 
 ## What it never does to GSPro's file
 
-It only reads it. It copies the file into its own data folder and works on the copy. It never
-opens GSPro's file for writing, and never renames, moves, truncates or deletes it. All file access
-is in one module (`src/files.ts`) that has no call able to name GSPro's file for any of those.
+It only reads it. It opens the file for reading, reads it to the end into memory, closes it at
+once, and works on a copy in its own data folder. It never opens GSPro's file for writing, and never
+renames, moves, truncates or deletes it. All file access is in one module (`src/files.ts`) that has
+no call able to name GSPro's file for any of those.
+
+Limits of that: reading this way did not make a writer that saves in place fail in the review's
+test. A program that saves by replacing the file, or that allows no sharing at all, can fail
+against any reader on Windows. The recorder used on 2026-11-23 read the file the same way through a
+full round without trouble. A live check beside GSPro is the owner's, after the merge.
 
 ## Sends only to this PC, for now
 
 `SIM_HUB_URL` must be `http://127.0.0.1:<port>` or `http://localhost:<port>`. Any other address, and
-`https`, is refused at start with a plain message. The hub has no sign-in yet.
+`https`, is refused at start with a plain message. A redirect from the server is never followed.
+Only the hub's own answer counts as sent: a `200` whose body carries the four counts adding up to
+the batch. The hub has no sign-in yet.
 
 ## What it does when things go wrong
+
+The status word `server=` says why: `up`; `down` (no answer); `redirect` (a 3xx, never followed);
+`unexpected` (a 200 that is not the hub's answer); `busy` (a 503); `refusing-<status>` (any other
+answer). In every case except `up` the batch stays and it tries again, waiting longer each time, at
+most 30 seconds; a `Retry-After` in whole seconds is honoured up to 30 seconds. A 400 or 413 moves
+that batch to `refused.jsonl` and it is not retried.
 
 - File missing (GSPro has not started a round): waits, no error.
 - A copy cut off mid-write: tried again on the next look; the status says `broken` after ten seconds.
 - A layout it does not know: sends nothing from that copy and says `layout_unknown`; what is already
   queued stays queued.
-- Hub unreachable or answering 5xx: the records wait in the outbox and it tries again, waiting longer
-  each time, at most 30 seconds. A 400 or 413 moves that batch to `refused.jsonl` and it is not
-  retried.
 - GSPro empties its file at a new round: records of the earlier round still waiting are still sent.
+- A shot is never twice in one post: if a record changes while its first version waits, the later
+  version goes in the next post.
 - Stopped and started again: it carries on from its data folder. A batch can be sent twice after a
   crash; the hub answers `unchanged` for it.
+- A start that fails says what is wrong and to stop the program and move the data folder aside
+  (it may hold shots not yet sent). It never says to delete it.
+
+## Limits
+
+- Shots are captured only while the program runs. If it is down while GSPro starts a new round,
+  shots of the earlier round it had not yet queued are gone.
+- While the hub cannot be reached, waiting shots are kept on disk and in memory (about 13 MB for an
+  eight-player round).
+- The outbox is tidied: when nothing is waiting and the file is over 1 MB it is rewritten to one
+  short line per shot of the current round. Each append is forced onto the disk before it counts.
+  A cut-short last line (a crash mid-write) is dropped at start, and one line says so.
+- `refused.jsonl` is never cleared by the program.
 
 Tests: `npm run test:sim`.

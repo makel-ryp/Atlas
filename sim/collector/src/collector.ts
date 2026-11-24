@@ -1,6 +1,6 @@
 import { parseRoundFile, UnknownLayoutError, type ShotRecord } from '../../core/src/index.js';
 import { createFiles, type Files } from './files.js';
-import { CollectorError, Outbox } from './outbox.js';
+import { CollectorError, Outbox, DEFAULT_PIECE_BYTES } from './outbox.js';
 
 export { CollectorError } from './outbox.js';
 
@@ -8,6 +8,8 @@ export { CollectorError } from './outbox.js';
 export interface PostResult {
   status: number;
   body?: unknown;
+  /** The Retry-After header, when it is a whole number of seconds. */
+  retryAfterSec?: number;
 }
 
 export type PostFn = (url: string, body: string) => Promise<PostResult>;
@@ -38,10 +40,20 @@ export interface CollectorOptions {
   onStatus?: (status: Status) => void;
   /** Called when a timer pass hits a problem with the collector's own files (message is plain). */
   onError?: (error: CollectorError) => void;
+  /** Called for the two events worth a line of their own. Carries nothing from the file. */
+  onEvent?: (event: CollectorEvent) => void;
+  /** The outbox is tidied to short lines when nothing waits and it is larger than this. Default 1 MB. */
+  tidyOverBytes?: number;
+  /** The outbox is read at start in pieces of this many bytes. Default 64 KB. */
+  pieceBytes?: number;
 }
 
-export type FileState = 'starting' | 'waiting' | 'ok' | 'retrying' | 'broken' | 'layout_unknown';
-export type ServerState = 'unknown' | 'up' | 'down';
+/** not-found: the round file has not been seen for 30 seconds. dropped-line: a cut-short last outbox line was dropped at start. */
+export type CollectorEvent = 'not-found' | 'dropped-line';
+
+export type FileState = 'starting' | 'waiting' | 'not-found' | 'ok' | 'retrying' | 'broken' | 'layout_unknown';
+/** up: answered well. down: no answer. redirect: a 3xx (never followed). unexpected: a 200 that is not the hub's counts. busy: 503. refusing-N: any other answer. */
+export type ServerState = 'unknown' | 'up' | 'down' | 'redirect' | 'unexpected' | 'busy' | `refusing-${number}`;
 
 export interface Status {
   /** Copies of GSPro's file read and understood since start. */
@@ -52,7 +64,7 @@ export interface Status {
   refused: number;
   pending: number;
   server: ServerState;
-  /** waiting: no file yet. retrying: a copy could not be read, tried again each pass. broken: that has gone on 10 seconds. layout_unknown: read, but not a layout this program knows. */
+  /** waiting: no file yet. not-found: none seen for 30 seconds. retrying: a copy could not be read, tried again each pass. broken: that has gone on 10 seconds. layout_unknown: read, but not a layout this program knows. */
   file: FileState;
   /** error when the last pass could not write one of the collector's own files. */
   store: 'ok' | 'error';
@@ -73,6 +85,8 @@ export const MAX_RETRY_MS = 30_000;
 const FIRST_RETRY_MS = 1_000;
 const BATCH_RECORDS = 200;
 const POST_TIMEOUT_MS = 10_000;
+export const NOT_FOUND_AFTER_MS = 30_000;
+const DEFAULT_TIDY_BYTES = 1_000_000;
 
 /** Checks the server address and returns it in one fixed form. Nothing but this PC is allowed in this card. */
 export function checkHubUrl(raw: string): string {
@@ -105,8 +119,11 @@ export async function defaultPost(url: string, body: string): Promise<PostResult
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body,
+    // A redirect is never followed: the batch goes to the checked address and nowhere else.
+    redirect: 'manual',
     signal: AbortSignal.timeout(POST_TIMEOUT_MS),
   });
+  const ra = res.headers.get('retry-after');
   const text = await res.text();
   let parsed: unknown;
   try {
@@ -114,7 +131,20 @@ export async function defaultPost(url: string, body: string): Promise<PostResult
   } catch {
     parsed = undefined;
   }
-  return { status: res.status, body: parsed };
+  return { status: res.status, body: parsed, retryAfterSec: ra !== null && /^\d+$/.test(ra) ? Number(ra) : undefined };
+}
+
+/** True only for the hub's own answer: its four counts, whole numbers of zero or more, adding up to the batch. */
+export function countsAddUp(body: unknown, batchSize: number): boolean {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) return false;
+  const b = body as Record<string, unknown>;
+  let sum = 0;
+  for (const key of ['added', 'revised', 'unchanged', 'conflicts']) {
+    const v = b[key];
+    if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0) return false;
+    sum += v;
+  }
+  return sum === batchSize;
 }
 
 /** One line of counts and states. Nothing from the file. */
@@ -130,7 +160,8 @@ export function createCollector(options: CollectorOptions): Collector {
   const now = options.now ?? Date.now;
   const timer: Timer = options.timer ?? { setInterval: (f, ms) => setInterval(f, ms), clearInterval: (h) => clearInterval(h) };
   const pollMs = options.pollMs ?? 500;
-  const outbox = new Outbox(files);
+  const outbox = new Outbox(files, options.pieceBytes ?? DEFAULT_PIECE_BYTES);
+  const tidyOver = options.tidyOverBytes ?? DEFAULT_TIDY_BYTES;
 
   let loaded = false;
   let handle: ReturnType<typeof setInterval> | undefined;
@@ -142,6 +173,8 @@ export function createCollector(options: CollectorOptions): Collector {
   let store: 'ok' | 'error' = 'ok';
   let lastStat: { size: number; mtimeMs: number } | undefined;
   let failureSince: number | undefined;
+  let lastSeenAt: number | undefined;
+  let lastCopy: ShotRecord[] | undefined;
   let failures = 0;
   let retryDelayMs = 0;
   let nextAttemptAt = 0;
@@ -162,13 +195,16 @@ export function createCollector(options: CollectorOptions): Collector {
 
   function ensureLoaded(): void {
     if (loaded) return;
-    outbox.load();
+    const { droppedLine } = outbox.load();
     loaded = true;
+    if (droppedLine) options.onEvent?.('dropped-line');
   }
 
-  function backoff(): void {
+  function backoff(retryAfterSec?: number): void {
     failures++;
-    retryDelayMs = Math.min(MAX_RETRY_MS, FIRST_RETRY_MS * 2 ** (failures - 1));
+    const own = Math.min(MAX_RETRY_MS, FIRST_RETRY_MS * 2 ** (failures - 1));
+    // The server's own Retry-After is honoured, never beyond the ceiling.
+    retryDelayMs = Math.min(MAX_RETRY_MS, Math.max(own, (retryAfterSec ?? 0) * 1000));
     nextAttemptAt = now() + retryDelayMs;
   }
 
@@ -186,12 +222,21 @@ export function createCollector(options: CollectorOptions): Collector {
       copyProblem();
       return true;
     }
+    lastSeenAt ??= now();
     if (st === undefined) {
-      fileState = 'waiting';
       lastStat = undefined;
       failureSince = undefined;
+      if (now() - lastSeenAt >= NOT_FOUND_AFTER_MS) {
+        if (fileState !== 'not-found') {
+          fileState = 'not-found';
+          options.onEvent?.('not-found');
+        }
+      } else {
+        fileState = 'waiting';
+      }
       return true;
     }
+    lastSeenAt = now();
     if (lastStat !== undefined && lastStat.size === st.size && lastStat.mtimeMs === st.mtimeMs) return true;
 
     let text: string;
@@ -232,6 +277,7 @@ export function createCollector(options: CollectorOptions): Collector {
       return false;
     }
     copiesRead++;
+    lastCopy = records;
     fileState = 'ok';
     failureSince = undefined;
     lastStat = st;
@@ -251,7 +297,7 @@ export function createCollector(options: CollectorOptions): Collector {
         backoff();
         return true;
       }
-      if (res.status === 200) {
+      if (res.status === 200 && countsAddUp(res.body, batch.length)) {
         server = 'up';
         try {
           outbox.markSent(batch.length);
@@ -275,8 +321,9 @@ export function createCollector(options: CollectorOptions): Collector {
         retryDelayMs = 0;
         nextAttemptAt = 0;
       } else {
-        server = 'down';
-        backoff();
+        // Nothing is marked: a redirect (never followed), a 200 that is not the hub's own answer, or any other answer.
+        server = res.status === 200 ? 'unexpected' : res.status >= 300 && res.status < 400 ? 'redirect' : res.status === 503 ? 'busy' : `refusing-${res.status}`;
+        backoff(res.retryAfterSec);
         return true;
       }
     }
@@ -286,9 +333,18 @@ export function createCollector(options: CollectorOptions): Collector {
   async function pass(): Promise<void> {
     try {
       ensureLoaded();
+      lastCopy = undefined;
       const readOk = readStage();
       const sendOk = await flushStage();
-      store = readOk && sendOk ? 'ok' : 'error';
+      let tidyOk = true;
+      if (lastCopy !== undefined && outbox.needsTidy(tidyOver)) {
+        try {
+          outbox.tidy(lastCopy);
+        } catch {
+          tidyOk = false;
+        }
+      }
+      store = readOk && sendOk && tidyOk ? 'ok' : 'error';
     } finally {
       emit();
     }

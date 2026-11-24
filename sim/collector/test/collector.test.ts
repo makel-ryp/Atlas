@@ -99,6 +99,10 @@ function rig(hubUrl: string): Rig {
         now: r.now,
         post: async (url, body) => {
           const out = await defaultPost(url, body);
+          if (out.status === 200) {
+            const c = out.body as Record<string, number>;
+            assert.equal(c.added + c.revised + c.unchanged + c.conflicts, (JSON.parse(body).records as unknown[]).length, 'the four counts add up to the batch');
+          }
           r.answers.push(out);
           return out;
         },
@@ -263,10 +267,10 @@ test('6. GSPro file never written: bytes unchanged, the file module saw only rea
   const methods = new Set(spy.calls.map((x) => x[0]));
   assert.ok(methods.has('statSource') && methods.has('copySource'), 'it read the file');
   // The module has no method that takes GSPro's path, so no write, rename or delete can name it.
-  assert.deepEqual(Object.keys(createFiles(r.data, r.gspro)).sort(), ['appendData', 'copySource', 'ensureDataDir', 'readCopy', 'readData', 'statSource', 'writeData']);
+  assert.deepEqual(Object.keys(createFiles(r.data, r.gspro)).sort(), ['appendData', 'appendDurable', 'copySource', 'ensureDataDir', 'keepPrefix', 'readCopy', 'readData', 'readLines', 'statSource', 'writeData']);
   for (const call of spy.calls) {
     const [method, ...args] = call;
-    if (method === 'appendData' || method === 'writeData') {
+    if (method === 'appendData' || method === 'appendDurable' || method === 'writeData' || method === 'keepPrefix') {
       const name = String(args[0]);
       assert.ok(!/[\\/]/.test(name), 'a bare file name in the data folder');
       assert.notEqual(name, 'currentRound.dat');
@@ -383,7 +387,7 @@ test('9b. a 500 answer keeps the batch and the wait grows, never beyond 30 secon
   assert.deepEqual(waits, [1000, 2000, 4000, 8000, 16000, 30000, 30000, 30000, 30000]);
   assert.equal(c.status().pending, 1);
   assert.equal(c.status().refused, 0);
-  assert.equal(c.status().server, 'down');
+  assert.equal(c.status().server, 'refusing-500');
   // within the wait, no new try
   await c.tick();
   assert.equal(calls, 9);
@@ -563,7 +567,7 @@ test('15. a torn last line of the outbox is dropped on start; a damaged line els
   createFiles(r2.data, r2.gspro).ensureDataDir();
   writeFileSync(join(r2.data, 'outbox.jsonl'), 'garbage\n' + rec + '\n');
   const c2 = r2.make();
-  await assert.rejects(c2.tick(), (e: Error) => /outbox/.test(e.message) && !e.message.includes('garbage'));
+  await assert.rejects(c2.tick(), (e: Error) => /outbox/.test(e.message) && !e.message.includes('garbage') && !/delete/i.test(e.message));
 });
 
 test('16. a record whose content changed is sent again, in order', async () => {
@@ -572,7 +576,7 @@ test('16. a record whose content changed is sent again, in order', async () => {
   const c = r.make({
     post: async (_u, body) => {
       sent.push(...JSON.parse(body).records);
-      return { status: 200, body: { added: 0, revised: 0, unchanged: 0, conflicts: 0 } };
+      return { status: 200, body: { added: JSON.parse(body).records.length, revised: 0, unchanged: 0, conflicts: 0 } };
     },
   });
   const recs = JSON.parse(JSON.stringify(copies[4]!.records));
