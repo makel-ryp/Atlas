@@ -161,7 +161,7 @@ on that file does not run rule 3.
 - Output the page builds from what a person has typed into the page since it loaded (the intake form's entries, an
   unsaved target or handicap, a history typed in): the script never sets that state.
 - The mechanics card's handicap for a plus player, which the page prints with a minus (T-144).
-- A present number being the right one (the right student's, with its plus sign): it is asserted on one built-in
-  data set only, and not under `--data`.
+- A present number being the right one (the right student's, with its plus sign): it is asserted on the built-in
+  data sets (the coach's students, the player's own file), and the saved-data run (`--data`) does not assert it.
 - A fault inside a listed typed-text field's own text, and a word the page builds from pieces of typed text (the
   initials of a three-part name, for example).

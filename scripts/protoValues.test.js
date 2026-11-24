@@ -403,14 +403,34 @@ const row = over => Object.assign({
   file: {}, drills: {}, notes: [], submitted: {}, messages: [], dna: null,
 }, over)
 
-const dna = (handicap, gap) => ({
-  depth: 'baseline', depthLabel: 'First read', depthBasis: 'ZZTEST', archetype: 'ZZTEST', archetypeTagline: '',
-  archetypeCoachLine: '', archetypeProvisional: false, archetypeProvisionalNote: '', tendency: 50,
-  tendencyName: 'Blended', tendencyPole: 'Both', tendencyProvisional: false, growthZone: '',
-  growthHeadline: '', growthMoves: [], zones: [], efficiency: null, efficiencyLabel: '',
-  efficiencyMissing: '', pattern: '', patternHeadline: '', patternFix: '', ghostZone: '', chips: [],
-  mi: { state: 'estimated', handicap, value: null, range: null, gap, verdict: '', estimable: true },
-})
+// The scored intake as the dashboard really builds it (shared/practice-dna/scoring.ts:493-530 through
+// server/dnaSummary.ts:350-360; the call has no metrics, server/dnaSummary.ts:237):
+//  - with a handicap, the intake is 'estimated' and carries a mechanics value and a range (miDiagnostic,
+//    scoring.ts:513-524); the gap is null (and estimable false) only when the mechanics scale was not
+//    answered (dnaSummary.ts:275, 357);
+//  - without a handicap, it is the 'none' shape (scoring.ts:529): handicap, value, range and gap all null.
+//    So "the mechanics handicap missing" always comes with the gap missing, from one cause (the intake's
+//    handicap answer); the server never sends a gap beside a missing handicap.
+// The value and range differ from every other number in a set: a counter gives each scored intake its own.
+let miCounter = 0
+const dna = (handicap, gap) => {
+  let mi
+  if (handicap === null) {
+    mi = { state: 'none', handicap: null, value: null, range: null, gap: null, verdict: '', estimable: true }
+  } else {
+    miCounter++
+    const value = 100 + miCounter * 10
+    mi = { state: 'estimated', handicap, value, range: [value - 3, value + 3], gap, verdict: '', estimable: gap !== null }
+  }
+  return {
+    depth: 'baseline', depthLabel: 'First read', depthBasis: 'ZZTEST', archetype: 'ZZTEST', archetypeTagline: '',
+    archetypeCoachLine: '', archetypeProvisional: false, archetypeProvisionalNote: '', tendency: 50,
+    tendencyName: 'Blended', tendencyPole: 'Both', tendencyProvisional: false, growthZone: '',
+    growthHeadline: '', growthMoves: [], zones: [], efficiency: null, efficiencyLabel: '',
+    efficiencyMissing: '', pattern: '', patternHeadline: '', patternFix: '', ghostZone: '', chips: [],
+    mi,
+  }
+}
 
 const coachMe = (hcp, target) => ({
   name: null, displayName: null, hcp, target, hand: null, carry: null, tier: '', zone: '', drills: {}, notes: [],
@@ -439,51 +459,58 @@ const presentB = () => row({
 const missingA = () => row({ id: 'zz-test-1', n: 'ZZTEST-A' })
 const missingB = () => row({ id: 'zz-test-2', n: 'ZZTEST-B', dna: dna(null, null) })
 
-// The set that covers the class: a coach with their own handicap and target, and six students who each
-// have exactly one number missing and every other field present (handicap, target, strokes-gained
-// series, the mechanics handicap, the mechanics gap, one history lookback; the tier, the five
-// interview answers, a note and a message are present for all). Every present number is different
-// from every other, so a number borrowed from another field is seen as wrong. Rows of rule 2's table
-// a student's data cannot make missing alone: the history note (it needs the whole history missing,
-// not one number) and the intake form's history fields (they come from page state, not from data).
+// The set that covers the class: a coach with their own handicap and target, and students who each
+// have exactly one input missing and every other field present (handicap, target, strokes-gained
+// series, the intake's handicap, the mechanics gap, one history lookback; the tier, the five
+// interview answers and a note are present for all). Every present number is different from every
+// other, so a number borrowed from another field is seen as wrong. The intake's handicap missing brings
+// the gap with it (one cause, see dna()). A seventh set of the same kind, `coachEmptyHist`, has the
+// whole history missing, which is what the server sends for every person today (`hist: {}`, protoData.ts:1434).
+// Rows of rule 2's table a student's data cannot make missing: the intake form's history fields (page state).
 const EACH_MISSING = [
   { n: 'ZZTEST-A', hcp: null, target: 3.1, sg: [0.12, 0.62, 0.32, 0.92, 1.12], miHcp: 21.7, miGap: 1.3 },
   { n: 'ZZTEST-B', hcp: 12.2, target: null, sg: [0.23, 0.73, 0.43, 1.33, 2.23], miHcp: 22.8, miGap: 2.4 },
   { n: 'ZZTEST-C', hcp: 13.3, target: 6.2, sg: [], miHcp: 23.9, miGap: 3.6 },
-  { n: 'ZZTEST-D', hcp: 14.4, target: 7.4, sg: [-0.66, 0.84, 1.54, 2.64, 3.34], miHcp: null, miGap: 4.7 },
+  { n: 'ZZTEST-D', hcp: 14.4, target: 7.4, sg: [-0.66, 0.84, 1.54, 2.64, 3.34], miHcp: null, miGap: null },
   { n: 'ZZTEST-E', hcp: 15.5, target: 8.6, sg: [0.46, 1.96, 2.76, 4.36, 5.46], miHcp: 25.4, miGap: null },
   { n: 'ZZTEST-F', hcp: 16.6, target: 9.1, sg: [1.67, 2.87, 3.97, 5.07, 7.67], miHcp: 26.3, miGap: 6.9, noY10: true },
 ]
-const eachMissingData = () => coachData(coachMe('3.3', '1.1'), EACH_MISSING.map((o, i) => row({
+const eachStudent = (i, o) => row({
   id: 'zz-test-' + (i + 1), n: o.n, tier: ['foundation', 'builder', 'competitive'][i % 3], zone: String((i % 4) + 1), days: i + 1,
   hcp: o.hcp, target: o.target, sg: o.sg.slice(),
-  hist: { m3: 30.4 + i * 6, m6: 31.4 + i * 6, y1: 32.4 + i * 6, y3: 33.4 + i * 6, y5: 34.4 + i * 6, y10: o.noY10 ? null : 35.4 + i * 6 },
+  hist: o.emptyHist ? {} : { m3: 30.4 + i * 6, m6: 31.4 + i * 6, y1: 32.4 + i * 6, y3: 33.4 + i * 6, y5: 34.4 + i * 6, y10: o.noY10 ? null : 35.4 + i * 6 },
   dna: dna(o.miHcp, o.miGap),
   file: { sport: 'ZZ sport ' + o.n, years: String(41 + i), limits: 'ZZ limits ' + o.n, time: 'ZZ time ' + o.n, goal: 'ZZ goal ' + o.n },
   notes: [{ id: 'zz-note-' + (i + 1), body: 'ZZ note ' + o.n, visibility: 'shared', author: null, mine: false, createdAt: null }],
   messages: [{ id: 'zz-msg-' + (i + 1), mine: false, who: '', body: 'ZZ message ' + o.n, at: null, read: false }],
-})))
+})
+const eachMissingData = () => coachData(coachMe('3.3', '1.1'), EACH_MISSING.map((o, i) => eachStudent(i, o)))
+const coachEmptyHistData = () => coachData(coachMe('3.3', '1.1'), [
+  eachStudent(1, { n: 'ZZTEST-A', hcp: 12.2, target: 6.2, sg: [0.23, 0.73, 0.43, 1.33, 2.23], miHcp: 22.8, miGap: 2.4, emptyHist: true }),
+])
 
 // The same class for a player looking at their own file (`me` and `meRow` as the server sends them to a
-// player, roster empty): five sets, each with exactly one number missing and everything else present: the
-// handicap, the target, the mechanics handicap, the mechanics gap, one history lookback (y10). Each carries a
-// tier, the five interview answers, a scored intake, a note and a message; every present number is
+// player, roster empty): six sets, each with exactly one input missing and everything else present: the
+// handicap, the target, the intake's handicap (the gap goes with it), the mechanics gap, one history lookback
+// (y10), and the whole history (`hist: {}`, which is what the server sends today). Each carries a tier, the
+// five interview answers, a scored intake with its value and range, and a note; every present number is
 // different from every other in the set (`me` mirrors `meRow`, as the server builds both from the same
-// profile). Rows of rule 2's table a player's data cannot make missing alone: the roster rows (a player has
-// no roster), the history note (it needs the whole history missing) and the intake form's history fields.
-const PLAYER_BASE = { hcp: 9.1, target: 4.3, miHcp: 21.7, miGap: 1.3, noY10: false }
+// profile). There is no message in these sets: the page prints a player's thread from `meRow.messages`
+// (page 5211), which the server never fills (protoData.ts:264, 1130-1150; the thread it sends is `me.messages`,
+// 853, which the three functions never read). Rows of rule 2's table a player's data cannot make missing: the
+// roster rows (a player has no roster) and the intake form's history fields (page state).
+const PLAYER_BASE = { hcp: 9.1, target: 4.3, miHcp: 21.7, miGap: 1.3, noY10: false, emptyHist: false }
 const playerEachData = over => {
   const o = Object.assign({}, PLAYER_BASE, over)
   const d = playerData(o.hcp === null ? null : String(o.hcp), o.target === null ? null : String(o.target))
   d.me.tier = 'builder'
   d.me.zone = '2'
   d.me.coaches = [{ name: 'ZZTEST-G' }]
-  d.me.messages = [{ id: 'zz-msg-1', mine: false, who: 'ZZTEST-G', body: 'ZZ message', at: null, read: false }]
   Object.assign(d.meRow, {
     tier: 'builder', zone: '2',
     file: { sport: 'ZZ sport', years: '41', limits: 'ZZ limits', time: 'ZZ time', goal: 'ZZ goal' },
     dna: dna(o.miHcp, o.miGap),
-    hist: { m3: 30.4, m6: 31.4, y1: 32.4, y3: 33.4, y5: 34.4, y10: o.noY10 ? null : 35.4 },
+    hist: o.emptyHist ? {} : { m3: 30.4, m6: 31.4, y1: 32.4, y3: 33.4, y5: 34.4, y10: o.noY10 ? null : 35.4 },
     notes: [{ id: 'zz-note-1', body: 'ZZ note', visibility: 'shared', author: null, mine: false, createdAt: null }],
   })
   return d
@@ -537,6 +564,9 @@ const DATA = {
   playerNoMiHcp: () => playerEachData({ miHcp: null }),
   playerNoMiGap: () => playerEachData({ miGap: null }),
   playerNoY10: () => playerEachData({ noY10: true }),
+  // The whole history missing (hist: {}) with everything else present, for a coach's student and for a player.
+  coachEmptyHist: coachEmptyHistData,
+  playerEmptyHist: () => playerEachData({ emptyHist: true }),
   // Two students nobody can tell apart by name (no email, so `dupe` is empty); one has a handicap.
   twins: () => coachData(coachMe(null, null), [row({ id: 'zz-test-1', n: 'ZZTEST-A', hcp: 4.2 }), row({ id: 'zz-test-2', n: 'ZZTEST-A' })]),
   // A coach's note and a message that hold rule 1 words.
@@ -1024,107 +1054,187 @@ function mainTests(opts) {
   })
 
   // ── each number missing alone, the rest present ─────────────────────────────────────────────
-  runCase('each number missing alone: rule 1, rule 2, and the data set holds what it claims', () => {
-    expectNone(r1('eachMissing'), 'rule 1')
-    expectNone(r2('eachMissing'), 'rule 2')
-    const d = datas.eachMissing
-    // every present number is different from every other (the coach's own numbers, then each student's)
+  // Targets print without a decimal place today (String(t), page line 5409), and several expected texts in this
+  // file ('6', '8', '4', '+2', and the like) pin that. A deliberate change to that format means updating those texts.
+  const assertDistinct = items => {
     const seen = {}
-    const add = (v, where) => {
-      const x = Number(v)
-      if (seen[x]) throw new Error('the number ' + x + ' appears twice: ' + seen[x] + ' and ' + where)
-      seen[x] = where
-    }
-    add(d.me.hcp, 'me.hcp'); add(d.me.target, 'me.target')
-    d.roster.forEach(p => {
-      if (p.hcp !== null) add(p.hcp, p.n + ' hcp')
-      if (p.target !== null) add(p.target, p.n + ' target')
-      p.sg.forEach((v, i) => add(v, p.n + ' sg ' + i))
-      Object.keys(p.hist).forEach(k => { if (p.hist[k] !== null) add(p.hist[k], p.n + ' hist ' + k) })
-      if (p.dna.mi.handicap !== null) add(p.dna.mi.handicap, p.n + ' mi.handicap')
-      if (p.dna.mi.gap !== null) add(p.dna.mi.gap, p.n + ' mi.gap')
+    items.forEach(it => {
+      const x = Number(it[0])
+      if (seen[x] !== undefined) throw new Error('the number ' + x + ' appears twice: ' + seen[x] + ' and ' + it[1])
+      seen[x] = it[1]
     })
-    // every student lacks exactly one input (the series counts as one input; one history lookback is one)
-    const lacking = d.roster.map(p => [p.hcp === null, p.target === null, p.sg.length === 0, p.dna.mi.handicap === null, p.dna.mi.gap === null, Object.keys(p.hist).some(k => p.hist[k] === null)].filter(Boolean).length)
-    expectEqual(lacking.join(','), '1,1,1,1,1,1', 'inputs missing per student')
+  }
+  const rowNumbers = (p, tag, hasSeries) => {
+    const items = []
+    if (p.hcp !== null) items.push([p.hcp, tag + ' hcp'])
+    if (p.target !== null) items.push([p.target, tag + ' target'])
+    if (hasSeries) p.sg.forEach((v, i) => items.push([v, tag + ' sg ' + i]))
+    Object.keys(p.hist).forEach(k => { if (p.hist[k] !== null) items.push([p.hist[k], tag + ' hist ' + k]) })
+    const mi = p.dna.mi
+    if (mi.handicap !== null) items.push([mi.handicap, tag + ' mi.handicap'])
+    if (mi.value !== null) items.push([mi.value, tag + ' mi.value'])
+    if (mi.range !== null) { items.push([mi.range[0], tag + ' mi.range 0']); items.push([mi.range[1], tag + ' mi.range 1']) }
+    if (mi.gap !== null) items.push([mi.gap, tag + ' mi.gap'])
+    return items
+  }
+  const coachNumbers = d => {
+    const items = [[d.me.hcp, 'me.hcp'], [d.me.target, 'me.target']]
+    d.roster.forEach(p => rowNumbers(p, p.n, true).forEach(it => items.push(it)))
+    return items
+  }
+  const playerNumbers = d => rowNumbers(d.meRow, 'meRow', false)
+  // how many inputs a person's data lacks: the handicap, the target, the series, the intake's handicap, the mechanics
+  // gap (only when the handicap is there: without a handicap the gap goes with it), the history (whole or one lookback)
+  const inputsMissing = (p, hasSeries) => [
+    p.hcp === null, p.target === null, hasSeries && p.sg.length === 0,
+    p.dna.mi.handicap === null, p.dna.mi.handicap !== null && p.dna.mi.gap === null,
+    Object.keys(p.hist).length === 0 || Object.keys(p.hist).some(k => p.hist[k] === null),
+  ].filter(Boolean).length
+  const steps = []
+  const step = (name, fn) => { fn(); steps.push(name) }
+  runCase('the distinct-numbers check bites: a repeated number in the series, the target, a history value, the mechanics value, range or gap is seen', () => {
+    const clone = o => JSON.parse(JSON.stringify(o))
+    expectEqual(failsWith(() => assertDistinct(coachNumbers(datas.eachMissing))), null, 'the real set is distinct')
+    const edits = {
+      sg: w => { w.roster[1].sg[0] = w.roster[0].target },
+      target: w => { w.roster[0].target = w.roster[2].hcp },
+      hist: w => { w.roster[1].hist.m3 = w.roster[0].hist.m6 },
+      'mi.value': w => { w.roster[1].dna.mi.value = w.roster[0].dna.mi.value },
+      'mi.range': w => { w.roster[2].dna.mi.range[0] = w.roster[0].dna.mi.value },
+      'mi.gap': w => { w.roster[0].dna.mi.gap = w.roster[1].hcp },
+    }
+    Object.keys(edits).forEach(k => {
+      const w = clone(datas.eachMissing)
+      edits[k](w)
+      if (!failsWith(() => assertDistinct(coachNumbers(w)))) throw new Error('a repeated number in ' + k + ' was not seen')
+    })
+    const pc = clone(datas.playerNoY10)
+    pc.meRow.dna.mi.value = pc.meRow.hist.m3
+    if (!failsWith(() => assertDistinct(playerNumbers(pc)))) throw new Error('a repeated number in a player set was not seen')
   })
+  const checkCoachSet = (set, expectStudents) => {
+    steps.length = 0
+    const d = datas[set]
+    step('rule 1', () => expectNone(r1(set), 'rule 1'))
+    step('rule 2', () => expectNone(r2(set), 'rule 2'))
+    step('distinct', () => assertDistinct(coachNumbers(d)))
+    step('one input missing per student', () => expectEqual(d.roster.map(p => inputsMissing(p, true)).join(','), d.roster.map(() => '1').join(','), 'inputs missing per student'))
+    step('carries', () => d.roster.forEach(p => { if (!p.tier || !p.file.limits || !p.dna || !p.notes.length) throw new Error(p.n + ' must carry a tier, interview answers, a scored intake and a note') }))
+    expectEqual(steps.join('|'), 'rule 1|rule 2|distinct|one input missing per student|carries', 'the checks that ran')
+    expectEqual(d.roster.length, expectStudents, 'the students in the set')
+  }
+  runCase('each number missing alone: rule 1, rule 2, and the data set holds what it claims', () => checkCoachSet('eachMissing', 6))
   runCase('each number missing alone: the one missing field shows its empty text and the fields beside it show their own values', () => {
     const res = runs.eachMissing
     const rowOf = n => res.roster.rosterRows.filter(r => r.name === n)[0]
     const fileOf = n => res.profiles.filter(p => p.kind === 'student' && p.student.n === n)[0].out
     const hist = (i, no10) => [0, 1, 2, 3, 4, 5].map(j => (no10 && j === 5 ? 'NA' : (30.4 + i * 6 + j).toFixed(1)))
     // hand-written from what the page prints: hcpLabel 3179 (a handicap, one decimal), String(target) 5409, fmtSG 3176 for the
-    // strokes-gained now and change (5679, 5686), String(mi.handicap) 5343, the signed mi.gap 5344, pfHist 5436
+    // strokes-gained now and change (5679, 5686), String(mi.handicap) 5343, the signed mi.gap 5344, pfHist 5436. Student D's
+    // intake has no handicap, so its mechanics gap is missing with it (the 'none' shape, see dna()).
     const expected = [
       { n: 'ZZTEST-A', row: ['—', '+1.1', '+1.0'], real: '—', target: '3.1', miHcp: '21.7', miGap: '+1.3', hist: hist(0) },
       { n: 'ZZTEST-B', row: ['12.2', '+2.2', '+2.0'], real: '12.2', target: '—', miHcp: '22.8', miGap: '+2.4', hist: hist(1) },
       { n: 'ZZTEST-C', row: ['13.3', '—', '—'], real: '13.3', target: '6.2', miHcp: '23.9', miGap: '+3.6', hist: hist(2) },
-      { n: 'ZZTEST-D', row: ['14.4', '+3.3', '+4.0'], real: '14.4', target: '7.4', miHcp: '—', miGap: '+4.7', hist: hist(3) },
+      { n: 'ZZTEST-D', row: ['14.4', '+3.3', '+4.0'], real: '14.4', target: '7.4', miHcp: '—', miGap: '—', hist: hist(3) },
       { n: 'ZZTEST-E', row: ['15.5', '+5.5', '+5.0'], real: '15.5', target: '8.6', miHcp: '25.4', miGap: '—', hist: hist(4) },
       { n: 'ZZTEST-F', row: ['16.6', '+7.7', '+6.0'], real: '16.6', target: '9.1', miHcp: '26.3', miGap: '+6.9', hist: hist(5, true) },
     ]
-    expectEqual(expected.length, 6, 'the students asserted')
+    // every assertion that runs is recorded, and the count of students and checks is what is compared
+    const done = []
+    let students = 0
+    const chk = (label, fn) => { fn(); done.push(label) }
     expected.forEach(e => {
+      students++
       const r = rowOf(e.n)
       const o = fileOf(e.n)
-      expectEqual([r.hcp, r.sg, r.delta].join(' '), e.row.join(' '), e.n + ' roster row (handicap, strokes gained, change)')
-      expectEqual(o.pfHandicapReal, e.real, e.n + ' pfHandicapReal')
-      expectEqual(o.pfHandicapTarget, e.target, e.n + ' pfHandicapTarget')
-      expectEqual(o.dnaMiHcp, e.miHcp, e.n + ' dnaMiHcp')
-      expectEqual(o.dnaMiGap, e.miGap, e.n + ' dnaMiGap')
-      expectEqual(o.pfHist.map(h => h.value).join(' '), e.hist.join(' '), e.n + ' history values')
+      chk(e.n + ' row handicap', () => expectEqual(r.hcp, e.row[0], e.n + ' roster handicap'))
+      chk(e.n + ' row strokes gained', () => expectEqual(r.sg, e.row[1], e.n + ' roster strokes gained'))
+      chk(e.n + ' row change', () => expectEqual(r.delta, e.row[2], e.n + ' roster change'))
+      chk(e.n + ' real', () => expectEqual(o.pfHandicapReal, e.real, e.n + ' pfHandicapReal'))
+      chk(e.n + ' target', () => expectEqual(o.pfHandicapTarget, e.target, e.n + ' pfHandicapTarget'))
+      chk(e.n + ' miHcp', () => expectEqual(o.dnaMiHcp, e.miHcp, e.n + ' dnaMiHcp'))
+      chk(e.n + ' miGap', () => expectEqual(o.dnaMiGap, e.miGap, e.n + ' dnaMiGap'))
+      chk(e.n + ' hist', () => expectEqual(o.pfHist.map(h => h.value).join(' '), e.hist.join(' '), e.n + ' history values'))
     })
     // the coach's own numbers are not shown on a student
     const none = res.profiles.filter(p => p.kind === 'none')[0].out
-    expectEqual(none.pfHandicapReal + ' ' + none.pfHandicapTarget, '— —', 'no student selected')
+    chk('none real', () => expectEqual(none.pfHandicapReal, '—', 'no student selected, handicap'))
+    chk('none target', () => expectEqual(none.pfHandicapTarget, '—', 'no student selected, target'))
+    expectEqual(students, 6, 'the students asserted')
+    expectEqual(done.length, 6 * 8 + 2, 'the assertions that ran')
+  })
+
+  // ── the whole history missing (hist: {}, what the server sends today), everything else present ──
+  runCase('coach, the whole history missing: rule 1, rule 2, and the set holds what it claims', () => checkCoachSet('coachEmptyHist', 1))
+  runCase('coach, the whole history missing: six history values, the history note and the intake form fields show their empty text; the rest shows its own values', () => {
+    const res = runs.coachEmptyHist
+    const r = res.roster.rosterRows[0]
+    const o = res.profiles.filter(p => p.kind === 'student')[0].out
+    const done = []
+    const chk = (label, fn) => { fn(); done.push(label) }
+    chk('row', () => expectEqual([r.hcp, r.sg, r.delta].join(' '), '12.2 +2.2 +2.0', 'roster row'))
+    chk('real', () => expectEqual(o.pfHandicapReal, '12.2', 'pfHandicapReal'))
+    chk('target', () => expectEqual(o.pfHandicapTarget, '6.2', 'pfHandicapTarget'))
+    chk('miHcp', () => expectEqual(o.dnaMiHcp, '22.8', 'dnaMiHcp'))
+    chk('miGap', () => expectEqual(o.dnaMiGap, '+2.4', 'dnaMiGap'))
+    chk('hist', () => expectEqual(o.pfHist.map(h => h.value).join(' '), 'NA NA NA NA NA NA', 'history values'))
+    chk('note', () => expectEqual(o.pfHistNote, 'No handicap on record.', 'history note'))
+    chk('form', () => expectEqual(res.intake.inHist.map(h => h.value).join('|'), '|||||', 'the intake form history fields'))
+    expectEqual(done.join(','), 'row,real,target,miHcp,miGap,hist,note,form', 'the assertions that ran')
   })
 
   // ── a player's own file, each number missing alone ──────────────────────────────────────────
   // Expected texts, hand-written from what the page prints on a player's own file: hcpLabel (3179) of
-  // 9.1, String(4.3) (5409), String(mi.handicap) (5343), the signed gap (5344), pfHist (5436).
+  // 9.1, String(4.3) (5409), String(mi.handicap) (5343), the signed gap (5344), pfHist (5436), pfHistNote (5451).
   // Page state: the script's fresh page seeds `realHcp` and `targetHcp` from `me.hcp` and `me.target`
   // (3291-3298), and the player's branches (4866, 5404) read that state first and `meRow` second. So a
   // data set reaches both: a present `me` number is read through the state, a missing one falls to
   // `meRow`. The script never sets state typed since load (README: not covered).
   const HIST_TEXTS = ['30.4', '31.4', '32.4', '33.4', '34.4', '35.4']
+  const NA6 = ['NA', 'NA', 'NA', 'NA', 'NA', 'NA']
   const playerEachCases = [
     ['playerNoHcp', 'the handicap', { real: DASH, target: '4.3', miHcp: '21.7', miGap: '+1.3', hist: HIST_TEXTS }],
     ['playerNoTarget', 'the target', { real: '9.1', target: DASH, miHcp: '21.7', miGap: '+1.3', hist: HIST_TEXTS }],
-    ['playerNoMiHcp', 'the mechanics handicap', { real: '9.1', target: '4.3', miHcp: DASH, miGap: '+1.3', hist: HIST_TEXTS }],
+    ['playerNoMiHcp', 'the intake handicap (the mechanics gap goes with it)', { real: '9.1', target: '4.3', miHcp: DASH, miGap: DASH, hist: HIST_TEXTS }],
     ['playerNoMiGap', 'the mechanics gap', { real: '9.1', target: '4.3', miHcp: '21.7', miGap: DASH, hist: HIST_TEXTS }],
     ['playerNoY10', 'the ten-year history lookback', { real: '9.1', target: '4.3', miHcp: '21.7', miGap: '+1.3', hist: HIST_TEXTS.slice(0, 5).concat(['NA']) }],
+    ['playerEmptyHist', 'the whole history', { real: '9.1', target: '4.3', miHcp: '21.7', miGap: '+1.3', hist: NA6, note: 'No handicap on record.', form: true }],
   ]
+  const playerAsserted = []
   playerEachCases.forEach(pc => {
     const set = pc[0]
     runCase('player, ' + pc[1] + ' missing alone: rule 1, rule 2, and the set holds what it claims', () => {
-      expectNone(r1(set), 'rule 1')
-      expectNone(r2(set), 'rule 2')
+      steps.length = 0
       const d = datas[set]
-      const seen = {}
-      const add = (v, where) => {
-        const x = Number(v)
-        if (seen[x]) throw new Error('the number ' + x + ' appears twice: ' + seen[x] + ' and ' + where)
-        seen[x] = where
-      }
-      const m = d.meRow
-      if (m.hcp !== null) add(m.hcp, 'hcp')
-      if (m.target !== null) add(m.target, 'target')
-      Object.keys(m.hist).forEach(k => { if (m.hist[k] !== null) add(m.hist[k], 'hist ' + k) })
-      if (m.dna.mi.handicap !== null) add(m.dna.mi.handicap, 'mi.handicap')
-      if (m.dna.mi.gap !== null) add(m.dna.mi.gap, 'mi.gap')
-      const lacking = [m.hcp === null, m.target === null, m.dna.mi.handicap === null, m.dna.mi.gap === null, Object.keys(m.hist).some(k => m.hist[k] === null)].filter(Boolean).length
-      expectEqual(lacking, 1, 'inputs missing')
-      if (!m.tier || !m.file.limits || !m.dna || !m.notes.length || !d.me.messages.length) throw new Error('the set must carry a tier, interview answers, a scored intake, a note and a message')
+      step('rule 1', () => expectNone(r1(set), 'rule 1'))
+      step('rule 2', () => expectNone(r2(set), 'rule 2'))
+      step('distinct', () => assertDistinct(playerNumbers(d)))
+      step('one input missing', () => expectEqual(inputsMissing(d.meRow, false), 1, 'inputs missing'))
+      step('carries', () => {
+        const m = d.meRow
+        if (!m.tier || !m.file.limits || !m.dna || !m.notes.length) throw new Error('the set must carry a tier, interview answers, a scored intake and a note')
+      })
+      expectEqual(steps.join('|'), 'rule 1|rule 2|distinct|one input missing|carries', 'the checks that ran')
     })
     runCase('player, ' + pc[1] + ' missing alone: the missing field shows its empty text and the fields beside it show their own values', () => {
       const o = runs[set].profiles[0].out
       const e = pc[2]
-      expectEqual(o.pfHandicapReal, e.real, 'pfHandicapReal')
-      expectEqual(o.pfHandicapTarget, e.target, 'pfHandicapTarget')
-      expectEqual(o.dnaMiHcp, e.miHcp, 'dnaMiHcp')
-      expectEqual(o.dnaMiGap, e.miGap, 'dnaMiGap')
-      expectEqual(o.pfHist.map(h => h.value).join(' '), e.hist.join(' '), 'history values')
+      const done = []
+      const chk = (label, fn) => { fn(); done.push(label) }
+      chk('real', () => expectEqual(o.pfHandicapReal, e.real, 'pfHandicapReal'))
+      chk('target', () => expectEqual(o.pfHandicapTarget, e.target, 'pfHandicapTarget'))
+      chk('miHcp', () => expectEqual(o.dnaMiHcp, e.miHcp, 'dnaMiHcp'))
+      chk('miGap', () => expectEqual(o.dnaMiGap, e.miGap, 'dnaMiGap'))
+      chk('hist', () => expectEqual(o.pfHist.map(h => h.value).join(' '), e.hist.join(' '), 'history values'))
+      if (e.note) chk('note', () => expectEqual(o.pfHistNote, e.note, 'history note'))
+      if (e.form) chk('form', () => expectEqual(runs[set].intake.inHist.map(h => h.value).join('|'), '|||||', 'the intake form history fields'))
+      expectEqual(done.length, 5 + (e.note ? 1 : 0) + (e.form ? 1 : 0), 'the assertions that ran')
+      playerAsserted.push(set)
     })
+  })
+  runCase('every player set was asserted (the six of the list, none skipped)', () => {
+    expectEqual(playerAsserted.join(','), 'playerNoHcp,playerNoTarget,playerNoMiHcp,playerNoMiGap,playerNoY10,playerEmptyHist', 'the player sets asserted')
   })
 
   // ── a coach with their own numbers, and a student with none ──────────────────────────────────
