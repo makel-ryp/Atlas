@@ -118,9 +118,13 @@ not enough — it passes while the page throws on first paint. Extract the injec
 *actual* inline script against it (`class Component` in a `vm` context with `DCLogic` stubbed), then
 call `rosterVals()`, `profileVals()` and `intakeVals()`, and apply three rules to every string they return:
 
-- **Rule 1.** No output string contains `undefined`, `NaN` or `nulld`.
-- **Rule 2.** Every output value built from a handicap, a target handicap or a strokes-gained number whose
-  input is missing (null, undefined, absent, or an empty history) is exactly `—`.
+- **Rule 1.** No output string contains `undefined`, `NaN` or `nulld`. Text a person typed is not tested: a
+  string in the injected data that itself holds one of those words (a coach's note, a message) is taken out of an
+  output string before the test.
+- **Rule 2.** Every output value built from a missing input is exactly that field's own empty text: `—` for a
+  handicap, a target handicap or a strokes-gained number (missing means null, undefined, absent, or an empty
+  strokes-gained series); `NA` for a handicap-history value; `No handicap on record.` for the history note when
+  the whole history is missing; the form's blank (an empty text) for the intake form's history fields.
 - **Rule 3.** With every number missing from the data, no output string holds a signed zero (`+0`, `-0`,
   `+0.0`, `-0.0`, with `-` or `−`) as a whole token: not preceded by a digit, not followed by a digit or by
   a point and a digit. So `+0.5`, `2026-09-07` and `+00:00` are not hits.
@@ -133,11 +137,16 @@ The text alone cannot tell the two cases apart: `fmtSG(0.03)` and an unguarded `
 `+0.0`. So the check is driven by the input.
 
 `node scripts/protoValues.test.js` runs the three rules against test data, with no database. With
-`--data <file>` it runs rules 1 and 2 against a saved copy of the injected data, for the signed-in run
-described above.
+`--data <file>` it runs rules 1 and 2 (rule 3 does not run there) against a saved copy of the injected data, for
+the signed-in run described above.
 
-Repeat with `{ roster: [] }` for the coach-with-no-students case.
+Repeat with `{ roster: [] }` for the coach-with-no-students case; the built-in run does this one, and `--data`
+on that file does not run rule 3.
 
-**What this check does not cover.** The handicap-history note under the profile is not checked when part of
-the history is missing: the page today can print a change computed from a missing three-month value. It is
-tracked as T-142.
+**What this check does not cover.**
+
+- The handicap-history note when part of the history is missing (T-142).
+- A change printed from a single strokes-gained read (T-143).
+- Numbers that are not a handicap, a target, a strokes-gained or a handicap-history value, such as counts and days.
+- Anything outside `rosterVals()`, `profileVals()` and `intakeVals()`.
+- A fault that prints one of rule 1's words only where the data holds that same text.
