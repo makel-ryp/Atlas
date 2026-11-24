@@ -145,9 +145,11 @@ The text alone cannot tell the two cases apart: `fmtSG(0.03)` and an unguarded `
 
 `node scripts/protoValues.test.js` runs the three rules against built-in test data, with no database: the sets hold every number present, every number
 missing, and each number missing alone with the rest present, for a coach looking at students and for a player looking
-at their own file. With
+at their own file. The built-in run is a smoke check of the shapes those sets hold, and the sets are not the
+server's data: a page that borrows a number from a field they do not carry passes it. With
 `--data <file>` it runs rules 1 and 2 (rule 3 does not run there) against a saved copy of the injected data, for
-the signed-in run described above; it checks whatever mix of present and missing numbers the real data holds.
+the signed-in run described above; it checks whatever mix of present and missing numbers the real data holds, and
+that run is the real check.
 
 Repeat with `{ roster: [] }` for the coach-with-no-students case; the built-in run does this one, and `--data`
 on that file does not run rule 3.
