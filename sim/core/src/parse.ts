@@ -54,11 +54,24 @@ export const MAX_ARRAY_LENGTH = 100_000;
 export const MAX_VALUES = 250_000;
 
 /**
- * Refuses a record that would cost too much to copy or compare: nested more than MAX_DEPTH levels deep (the
+ * True for a value the walk may look inside: a true array (its prototype is exactly Array.prototype) or a
+ * plain object (its prototype is exactly Object.prototype or null). Everything JSON.parse returns is one of
+ * these. Anything else that is an object (a typed array or other view of a buffer, a boxed String, Number
+ * or Boolean, a Map, a Set, a Date, an instance of a class) is not looked inside.
+ */
+function isPlainValue(v: object): boolean {
+  const proto = Object.getPrototypeOf(v);
+  return Array.isArray(v) ? proto === Array.prototype : proto === Object.prototype || proto === null;
+}
+
+/**
+ * Refuses a record that would cost too much to copy or compare: an object that is neither a true array nor
+ * a plain object (refused first, before its keys, length or entries are read), nested more than MAX_DEPTH levels deep (the
  * value itself is level 1), an object reached a second time (a shared reference or a cycle), an array longer
  * than MAX_ARRAY_LENGTH, an array with holes (its length is not the number of entries it has), or more than
- * MAX_VALUES values in all, counted as the walk goes. Lengths and counts are read before anything is
- * expanded, so a record that will be refused is refused quickly and cheaply. Walks with its own stack, never
+ * MAX_VALUES values in all, counted as the walk goes. Only plain values are looked inside, and lengths and
+ * counts are read before an array or object is expanded, so a record that will be refused is refused quickly
+ * and cheaply. Walks with its own stack, never
  * by recursion, and visits each object once. `seen` and the value count belong to one record: the objects of
  * one record may not repeat, but a different record may hold the same object. Records read from a file never
  * share objects, so nothing from a file is refused by the sharing rule.
@@ -69,6 +82,8 @@ export function assertShallow(value: unknown, where: string, seen: Set<object> =
   while (stack.length > 0) {
     const [v, depth] = stack.pop()!;
     if (v === null || typeof v !== 'object') continue;
+    // first of all, before Object.keys or anything else that could expand the value
+    if (!isPlainValue(v)) throw new UnknownLayoutError(`${where} holds a value that is not a plain array or object`);
     if (seen.has(v)) throw new UnknownLayoutError(`${where} refers to the same object more than once`);
     seen.add(v);
     if (depth > MAX_DEPTH) throw new UnknownLayoutError(`${where} is nested more than ${MAX_DEPTH} levels deep`);

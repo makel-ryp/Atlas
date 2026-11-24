@@ -65,8 +65,13 @@ same way. `ingest` first walks each record it is given, refusing any object reac
 inside that record (a shared reference or a cycle; records read from a file never share objects; the
 same object as two records of one call, or a sub-object shared between two records, is not refused,
 because each record is walked and copied by itself), an array of more than 100,000 entries, an array
-with holes, and a record with more than 250,000 values in all (lengths and counts are read before
-anything is expanded). It then stores its own plain copy (converted to JSON text and back) and checks
+with holes, and a record with more than 250,000 values in all. The walk looks inside a value only if
+it is a true array or a plain object (its prototype is exactly `Array.prototype`, `Object.prototype`
+or null); any other object (a typed array or other view of a buffer, a boxed string, number or
+boolean, a `Map`, a `Set`, a `Date`, an instance of a class) is refused at once, before its keys or
+length are read. Everything `JSON.parse` returns is a true array or a plain object, so nothing from a
+file is refused by this. For arrays and plain objects, lengths and counts are read before the value
+is expanded. It then stores its own plain copy (converted to JSON text and back) and checks
 the copy, so a getter, a prototype field, a symbol key or a later change by the caller cannot alter
 what the book holds. Anything that throws while a record is walked, copied or checked is an
 `UnknownLayoutError`. It works in two passes: a call that throws leaves the book as it was. Each
@@ -90,6 +95,10 @@ kind (fixed words only) and the number of records refused over every read the co
 - A single corrupt or crafted copy can flag many rounds, earlier ones included, for the life of the
   book, because a conflict flags both the round that keeps the shot and the round that claimed it.
   The server card decides how to treat a bay whose file is corrupt.
+- The separator on a printed player line is the plain bar. Some other marks and letters can look like
+  one (a lower-case `l`, the double vertical line, some script marks); the scores are what follows
+  the first plain bar on the line. The list of look-alikes that are spaced out of a printed name is
+  not complete and is not meant to be.
 - What GSPro does to the file on a mulligan, an edit, a concede or a resume is not yet known. The
   server card decides how whole copies replace each other once a recording shows it.
 

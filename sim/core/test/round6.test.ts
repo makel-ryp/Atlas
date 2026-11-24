@@ -110,13 +110,15 @@ test('B3. a field supplied by the prototype, a symbol key and a Map are not part
   const noOwn = Object.create(proto) as Record<string, unknown>;
   Object.assign(noOwn, rec({ ShotID: 'p' }));
   delete noOwn['HoleResult'];
-  assert.throws(() => new RoundBook().ingest([noOwn as unknown as ShotRecord]), (e: unknown) => e instanceof UnknownLayoutError && e.message.includes('HoleResult'));
-  // a symbol key holding a very deep chain, and a very deep Map: ignored, no RangeError, on the first read or the second
+  assert.throws(() => new RoundBook().ingest([noOwn as unknown as ShotRecord]), (e: unknown) => e instanceof UnknownLayoutError);
+  // a symbol key holding a very deep chain: ignored, no RangeError, on the first read or the second.
+  // (A Map is not a plain value any more: it is refused, see round8.test.ts.)
   let chain: unknown[] = [];
   for (let i = 0; i < 20_000; i++) chain = [chain];
   let deepMap: Map<string, unknown> = new Map();
   for (let i = 0; i < 20_000; i++) deepMap = new Map([['k', deepMap]]);
-  const odd = { ...rec({ ShotID: 'odd', HoleShot: 2, HoleResult: 7 }), [Symbol('s')]: chain, M: deepMap } as unknown as ShotRecord;
+  assert.throws(() => new RoundBook().ingest([{ ...rec({ ShotID: 'm' }), M: deepMap } as unknown as ShotRecord]), UnknownLayoutError);
+  const odd = { ...rec({ ShotID: 'odd', HoleShot: 2, HoleResult: 7 }), [Symbol('s')]: chain } as unknown as ShotRecord;
   const b = new RoundBook();
   assert.equal(b.ingest([odd]).added, 1);
   assert.equal(b.ingest([odd]).unchanged, 1);

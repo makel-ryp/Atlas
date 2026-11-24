@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RoundBook, UnknownLayoutError, parseRoundFile, formatScorecard, normalisedName } from '../src/index.js';
@@ -159,7 +159,10 @@ test('V7. three versions of one ShotID in one read: one issue, two records refus
 
 test('V8. the scorecard test pins the known scores: no bare bar in a pattern', () => {
   const dir = dirname(fileURLToPath(import.meta.url));
-  for (const f of ['scorecard.test.ts', 'review.test.ts', 'rules.test.ts', 'round5.test.ts', 'round6.test.ts', 'command.test.ts', 'repeat.test.ts']) {
+  // every test file in the folder, found by listing it (this file included: its own patterns escape the bar)
+  const files = readdirSync(dir).filter((f) => f.endsWith('.test.ts'));
+  assert.ok(files.length >= 9, `found ${files.length} test files`);
+  for (const f of files) {
     const lines = readFileSync(join(dir, f), 'utf8').split(/\r?\n/);
     lines.forEach((line, i) => {
       // a regular expression literal that holds a printed line shape ("P1 NAME | ...") with an unescaped bar
