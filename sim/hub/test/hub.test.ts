@@ -62,6 +62,7 @@ type Raw = { status: number; body: any; headers: Record<string, string | string[
 function raw(url: string, o: { method?: string; path: string; headers?: Record<string, string>; body?: string }): Promise<Raw> {
   const u = new URL(url);
   return new Promise((resolve, reject) => {
+    let answered: Raw | undefined;
     const req = request({ host: u.hostname, port: u.port, path: o.path, method: o.method ?? 'GET', headers: o.headers ?? {}, agent: false }, (res) => {
       const parts: Buffer[] = [];
       res.on('data', (c: Buffer) => parts.push(c));
@@ -73,10 +74,12 @@ function raw(url: string, o: { method?: string; path: string; headers?: Record<s
         } catch {
           // not JSON: left as text
         }
-        resolve({ status: res.statusCode ?? 0, body, headers: res.headers });
+        answered = { status: res.statusCode ?? 0, body, headers: res.headers };
+        resolve(answered);
       });
     });
-    req.on('error', reject);
+    // a hub that refuses a post and closes may reset the connection while the body is still being sent: the answer it gave counts
+    req.on('error', (e) => (answered ? resolve(answered) : reject(e)));
     if (o.body !== undefined) req.write(o.body);
     req.end();
   });
@@ -433,6 +436,18 @@ test('13. the same whole copy posted twice adds nothing; all 38 copies journal 4
   });
 });
 
+test('13b. after a restart a copy the book already holds adds nothing to the journal', async () => {
+  const dir = tempDir();
+  await withHub(dir, {}, async (url) => {
+    await postCopies(url, 0, 38);
+  });
+  const size = journalSize(dir);
+  await withHub(dir, {}, async (url) => {
+    for (const c of copies) assert.equal((await post(url, c.records)).status, 200);
+    assert.equal(journalSize(dir), size, 'the table is rebuilt from the journal at start');
+  });
+});
+
 /** The live answer and the answer of a hub started on the same folder afterwards. */
 async function assertRestartEqualsLive(dir: string, url: string, label: string): Promise<void> {
   const live = await rounds(url);
@@ -640,7 +655,7 @@ test('20. a post that is not application/json answers 415 and changes nothing', 
     await postCopies(url, 0, 5);
     const before = await rounds(url);
     const size = journalSize(dir);
-    const body = JSON.stringify({ records: copies[37]!.records });
+    const body = JSON.stringify({ records: [{ ...structuredClone(copies[37]!.records[0]!) as any, HoleShot: 9 }] });
     const plain = await raw(url, { method: 'POST', path: '/v0/shots', headers: { 'Content-Type': 'text/plain;charset=UTF-8', 'Content-Length': String(Buffer.byteLength(body)) }, body });
     assert.deepEqual([plain.status, plain.body], [415, { error: 'unsupported_media_type' }]);
     const none = await raw(url, { method: 'POST', path: '/v0/shots', headers: { 'Content-Length': String(Buffer.byteLength(body)) }, body });
@@ -662,7 +677,7 @@ test('21. a foreign Host answers 403 on every address and changes nothing; local
     const before = await rounds(url);
     const size = journalSize(dir);
     const port = new URL(url).port;
-    const body = JSON.stringify({ records: copies[37]!.records });
+    const body = JSON.stringify({ records: [{ ...structuredClone(copies[37]!.records[0]!) as any, HoleShot: 9 }] });
     const hosts = ['attacker.example', `attacker.example:${port}`, '127.0.0.1', 'localhost', `127.0.0.1:${Number(port) + 1}`, `localhost.attacker.example:${port}`];
     for (const Host of hosts) {
       const targets: Array<{ method: string; path: string; headers: Record<string, string>; body?: string }> = [
@@ -733,6 +748,8 @@ for (const mode of ['half', 'clean'] as const) {
       f.write = 'none';
       assert.deepEqual(await rounds(url), before, 'the book is as it was before the failed post');
       assert.equal(journalSize(dir), size, 'the file is cut back to its last good length');
+      assert.equal((await post(url, copies[5]!.records)).status, 200);
+      assert.equal(journalSize(dir), size, 'after the rebuild the table still knows what the book holds: a held copy adds nothing');
       await postCopies(url, 20, 38);
       assert.deepEqual(await rounds(url), straight);
     });
@@ -746,7 +763,9 @@ test('23. after a failed half write a small post, then a restart: no stale bytes
   await withHub(dir, { journal: { io } }, async (url) => {
     await postCopies(url, 0, 30);
     f.write = 'half';
-    assert.equal((await post(url, copies[31]!.records)).status, 500);
+    // a big post (every record of the last copy, each with one more stroke): its half line is longer than the small post after it
+    const big = (copies[37]!.records as any[]).map((r) => ({ ...structuredClone(r), HoleShot: r.HoleShot + 1 }));
+    assert.equal((await post(url, big)).status, 500);
     f.write = 'none';
     const rec = structuredClone(copies[0]!.records[0]!) as any;
     rec.HoleShot += 1;

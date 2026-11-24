@@ -254,13 +254,13 @@ export function createHub(options: HubOptions): Hub {
       const port = bound?.port;
       if (host === undefined || port === undefined || (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`)) {
         status = 403;
-        send(res, 403, { error: 'bad_host' });
+        refuseAndDrain(req, res, 403, { error: 'bad_host' });
       } else if (wanted === undefined) {
         status = 404;
-        send(res, 404, { error: 'not_found' });
+        refuseAndDrain(req, res, 404, { error: 'not_found' });
       } else if (method !== wanted) {
         status = 405;
-        send(res, 405, { error: 'method_not_allowed' }, { Allow: wanted });
+        refuseAndDrain(req, res, 405, { error: 'method_not_allowed' }, { Allow: wanted });
       } else if (path === '/healthz') {
         status = 200;
         send(res, 200, { ok: true });
@@ -270,7 +270,7 @@ export function createHub(options: HubOptions): Hub {
       } else if (!isJson(req.headers['content-type'])) {
         // A web page can send a text/plain post to this address without asking first; application/json it cannot.
         status = 415;
-        send(res, 415, { error: 'unsupported_media_type' });
+        refuseAndDrain(req, res, 415, { error: 'unsupported_media_type' });
       } else if (unavailable) {
         status = 503;
         refuseAndDrain(req, res, 503, { error: 'journal_unavailable' });

@@ -11,10 +11,10 @@ support (no `Access-Control-*` header is ever sent).
 
 - Every request, on every address, must carry a `Host` header that is exactly
   `127.0.0.1:<the port>` or `localhost:<the port>` (letter case ignored). Anything else, or none,
-  answers `403 { "error": "bad_host" }` before anything else is looked at, and no body is read.
+  answers `403 { "error": "bad_host" }` before anything else is looked at; its body is thrown away, never read as a request.
 - `POST /v0/shots` must carry `Content-Type: application/json` (a `charset` parameter is fine).
-  Anything else, or none, answers `415 { "error": "unsupported_media_type" }`; the body is not read
-  and nothing changes.
+  Anything else, or none, answers `415 { "error": "unsupported_media_type" }`; the body is thrown
+  away and nothing changes.
 
 Why: a web page open in a browser on this PC can reach `127.0.0.1` too. It can send a `text/plain`
 post without asking first, and a page that tricks the browser's name lookup can read answers under
@@ -91,7 +91,7 @@ Example: `GET /v0/rounds` gives `200 { "rounds": [ { "roundId": 19, "courseKey":
 
 - Body: 32 MB at most (an eight-player round's whole file is about 13 MB). Over it, the hub answers
   413 at once, then goes on reading and throwing away what still arrives for up to two seconds and
-  cuts the connection if the body has not ended by then. A `503` is handled the same way.
+  cuts the connection if the body has not ended by then. Every answer given before the body is read (403, 404, 405, 413, 415 and the two 503s) is handled the same way.
 - At most four posts are read or waiting at once; a fifth gets `503 busy`.
 - The library's own limits apply to every record (text length, integer range, nesting depth).
 - Anything that changes the scores is handled one request at a time, in arrival order.
