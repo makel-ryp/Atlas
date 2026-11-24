@@ -52,9 +52,9 @@ has added to it or cut it): it writes nothing, does not cut the file back (those
 and the hub takes no more posts until restarted. A post that wrote nothing is answered 503; a post whose line was written and
 then found lost is answered 500. The last look is made after the table is updated, just before the answer.
 
-What can still be lost, measured on the development PC (three posts, one of 16.7 MB): from the look to the first write call about
-4 to 15 microseconds; from the last look to the start of the answer about 9 to 17 microseconds, and handing the answer to the
-socket took 0.16 to 1.6 milliseconds. If the lock is removed inside the first gap, the line can still go in over the bytes of a second
+What can still be lost, measured on the development PC in two series (seven posts in all, two of them of 16.7 MB): from the look to
+the first write call 3.5 to 15 microseconds; from the last look to the start of the answer 7.5 to 17 microseconds, and handing the
+answer to the socket took 0.11 to 1.6 milliseconds. If the lock is removed inside the first gap, the line can still go in over the bytes of a second
 hub that answered 200 in that gap, and the size check cannot see it if that hub's line had not yet reached the file; if it is
 removed between the last look and the answer, one answered post is in a file that has lost its name. Both need another program to act
 inside those gaps. The hub notices at the next post.
