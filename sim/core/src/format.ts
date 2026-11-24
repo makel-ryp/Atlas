@@ -24,7 +24,7 @@ export function formatScorecard(source: RoundBook | readonly RoundScore[]): stri
     for (const p of r.players) {
       const parts = p.holes.map(holeText);
       parts.push(`total ${p.total}${p.needsReview ? REVIEW : ''}`);
-      lines.push(`P${p.playerNumber} ${safeText(p.name)}  ${parts.join('  ')}`);
+      lines.push(`P${p.playerNumber} ${safeText(p.name)} | ${parts.join('  ')}`);
     }
   }
   const range = !Array.isArray(source) ? (source as RoundBook).rangeShots : 0;
