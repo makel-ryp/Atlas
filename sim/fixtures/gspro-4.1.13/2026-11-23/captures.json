@@ -1,0 +1,235 @@
+{
+ "gsproVersion": "4.1.13",
+ "date": "2026-11-23",
+ "timeNote": "time is HHMMSS_mmm local time taken from the capture file name",
+ "captures": [
+  {
+   "number": 1,
+   "time": "115312_848",
+   "round": 18,
+   "records": 1
+  },
+  {
+   "number": 2,
+   "time": "115401_650",
+   "round": 18,
+   "records": 2
+  },
+  {
+   "number": 3,
+   "time": "120039_490",
+   "round": 19,
+   "records": 1
+  },
+  {
+   "number": 4,
+   "time": "120054_013",
+   "round": 19,
+   "records": 2
+  },
+  {
+   "number": 5,
+   "time": "120108_495",
+   "round": 19,
+   "records": 3
+  },
+  {
+   "number": 6,
+   "time": "120126_434",
+   "round": 19,
+   "records": 4
+  },
+  {
+   "number": 7,
+   "time": "120138_761",
+   "round": 19,
+   "records": 5
+  },
+  {
+   "number": 8,
+   "time": "120158_752",
+   "round": 19,
+   "records": 6
+  },
+  {
+   "number": 9,
+   "time": "120232_687",
+   "round": 19,
+   "records": 8
+  },
+  {
+   "number": 10,
+   "time": "120300_651",
+   "round": 19,
+   "records": 9
+  },
+  {
+   "number": 11,
+   "time": "120313_285",
+   "round": 19,
+   "records": 11
+  },
+  {
+   "number": 12,
+   "time": "120331_202",
+   "round": 19,
+   "records": 12
+  },
+  {
+   "number": 13,
+   "time": "120352_490",
+   "round": 19,
+   "records": 13
+  },
+  {
+   "number": 14,
+   "time": "120412_546",
+   "round": 19,
+   "records": 14
+  },
+  {
+   "number": 15,
+   "time": "120439_349",
+   "round": 19,
+   "records": 15
+  },
+  {
+   "number": 16,
+   "time": "120458_357",
+   "round": 19,
+   "records": 16
+  },
+  {
+   "number": 17,
+   "time": "120523_432",
+   "round": 19,
+   "records": 17
+  },
+  {
+   "number": 18,
+   "time": "120523_713",
+   "round": 19,
+   "records": 17
+  },
+  {
+   "number": 19,
+   "time": "120547_981",
+   "round": 19,
+   "records": 18
+  },
+  {
+   "number": 20,
+   "time": "120600_878",
+   "round": 19,
+   "records": 19
+  },
+  {
+   "number": 21,
+   "time": "120615_329",
+   "round": 19,
+   "records": 21
+  },
+  {
+   "number": 22,
+   "time": "120658_208",
+   "round": 19,
+   "records": 22
+  },
+  {
+   "number": 23,
+   "time": "120825_116",
+   "round": 19,
+   "records": 23
+  },
+  {
+   "number": 24,
+   "time": "120846_198",
+   "round": 19,
+   "records": 24
+  },
+  {
+   "number": 25,
+   "time": "120855_395",
+   "round": 19,
+   "records": 25
+  },
+  {
+   "number": 26,
+   "time": "120913_050",
+   "round": 19,
+   "records": 26
+  },
+  {
+   "number": 27,
+   "time": "120925_684",
+   "round": 19,
+   "records": 27
+  },
+  {
+   "number": 28,
+   "time": "120949_724",
+   "round": 19,
+   "records": 28
+  },
+  {
+   "number": 29,
+   "time": "121011_864",
+   "round": 19,
+   "records": 29
+  },
+  {
+   "number": 30,
+   "time": "121023_273",
+   "round": 19,
+   "records": 30
+  },
+  {
+   "number": 31,
+   "time": "121046_461",
+   "round": 19,
+   "records": 31
+  },
+  {
+   "number": 32,
+   "time": "121057_819",
+   "round": 19,
+   "records": 32
+  },
+  {
+   "number": 33,
+   "time": "121113_289",
+   "round": 19,
+   "records": 33
+  },
+  {
+   "number": 34,
+   "time": "121126_179",
+   "round": 19,
+   "records": 34
+  },
+  {
+   "number": 35,
+   "time": "121136_806",
+   "round": 19,
+   "records": 36
+  },
+  {
+   "number": 36,
+   "time": "121137_074",
+   "round": 19,
+   "records": 36
+  },
+  {
+   "number": 37,
+   "time": "121151_567",
+   "round": 19,
+   "records": 37
+  },
+  {
+   "number": 38,
+   "time": "121158_451",
+   "round": 19,
+   "records": 39
+  }
+ ]
+}
