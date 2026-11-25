@@ -17,7 +17,21 @@ export interface LockHooks {
   afterLink?: (target: string) => void;
 }
 
+/**
+ * The lock's look has three answers. HELD: the file was read and holds this hub's id and token. GONE: the file is not there (ENOENT), or it
+ * was read and holds anything else. CANNOT TELL: the read failed for any other reason (EBUSY, EPERM, EACCES and every other code): another
+ * program may be holding the file for a moment. Nothing but a successful read of this hub's own content is ever held.
+ */
+export type LockLook = { state: 'held' } | { state: 'gone' } | { state: 'cannot'; code: string };
+
 export interface HeldLock {
+  /** The lock file's name (never its path). */
+  readonly name: string;
+  /**
+   * Looks at the lock once, with no pause and no second try (the bay program sends the post again, and that is the second try).
+   * `read` is a replaceable read of the file, for tests only: reachable only through a hand-built call to createHub.
+   */
+  look(read?: (path: string) => string): LockLook;
   /** Removes this hub's own lock file, only if it still holds this hub's own process id and token. */
   release(): void;
   /** True while this hub's own lock file is still there and still holds this hub's own process id and token. */
@@ -117,7 +131,7 @@ function takeNumberedLock(dir: string, say: (line: string) => void, hooks?: Lock
     if (current !== undefined) {
       const name = `${LOCK_NAME}.${current}`;
       if (current > MAX_LOCK_NUMBER) {
-        throw new LockRefused(`${name} has a number too large to follow; if no hub is running, delete it (the folder is set by SIM_HUB_DATA)`);
+        throw new LockRefused(`${name} has a number too large to follow; a hub may be running under that lock and must be stopped first; then delete ${name} and start again (the folder is set by SIM_HUB_DATA)`);
       }
       let text: string;
       try {
@@ -208,12 +222,17 @@ function takeNumberedLock(dir: string, say: (line: string) => void, hooks?: Lock
           // already gone
         }
       },
-      stillHeld() {
+      name: targetName,
+      look(read = (path: string): string => readFileSync(path, 'utf8')): LockLook {
         try {
-          return readFileSync(join(dir, targetName), 'utf8') === mine;
-        } catch {
-          return false;
+          return read(join(dir, targetName)) === mine ? { state: 'held' } : { state: 'gone' };
+        } catch (e) {
+          const code = codeOf(e);
+          return code === 'ENOENT' ? { state: 'gone' } : { state: 'cannot', code };
         }
+      },
+      stillHeld() {
+        return this.look().state === 'held';
       },
     };
   }

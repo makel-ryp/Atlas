@@ -24,15 +24,26 @@ export interface JournalIO {
   truncate(fd: number, length: number): void;
   /** The size of the file the descriptor holds, read from the descriptor itself. */
   size(fd: number): number;
+  /** The device and file number of the file at a path (as big integers). */
+  statPath(path: string): { dev: bigint; ino: bigint };
   /** Closes the descriptor. */
   close(fd: number): void;
 }
 
+/** The look before a write: ok, gone (lost for good), or could not tell (another program may be holding a file for a moment). */
+export type WriteLook = { state: 'ok' } | { state: 'gone' } | { state: 'cannot'; what: 'lock' | 'journal'; code: string };
+
+/** The journal's own look: same file, gone, or could not tell. */
+export type JournalLook = { state: 'same' } | { state: 'gone' } | { state: 'cannot'; code: string };
+
 /** A line was NOT written because the journal, or the lock beside it, is not as this hub left it. Nothing was cut back. */
 export class JournalNotWritten extends Error {
-  constructor(message: string) {
+  /** What the look said, when it was the look that refused: absent when the file was found a different length. */
+  readonly look: WriteLook | undefined;
+  constructor(message: string, look?: WriteLook) {
     super(message);
     this.name = 'JournalNotWritten';
+    this.look = look;
   }
 }
 
@@ -50,6 +61,7 @@ const REAL_IO: JournalIO = {
   sync: (fd) => fsyncSync(fd),
   truncate: (fd, length) => ftruncateSync(fd, length),
   size: (fd) => fstatSync(fd).size,
+  statPath: (path) => statSync(path, { bigint: true }),
   close: (fd) => closeSync(fd),
 };
 
@@ -214,17 +226,33 @@ export class Journal {
    * (read as big integers). A path that is gone, or now names another file, fails. Nothing is ever written to a file that
    * has lost its name.
    */
-  sameFile(): boolean {
-    if (this.fd === undefined) return false;
+  look(): JournalLook {
+    if (this.fd === undefined) return { state: 'gone' };
+    const codeOf = (e: unknown): string => {
+      const c = (e as NodeJS.ErrnoException | undefined)?.code;
+      return typeof c === 'string' ? c : 'error';
+    };
+    let held: { dev: bigint; ino: bigint };
     try {
-      const held = fstatSync(this.fd, { bigint: true });
-      const named = statSync(this.file, { bigint: true });
-      // The device half of this comparison has no test: two devices cannot be made in a test, and on one volume a different device
-      // with the same file number does not occur, so dropping it changes nothing here. It is kept because a path may cross volumes.
-      return held.dev === named.dev && held.ino === named.ino;
-    } catch {
-      return false;
+      held = fstatSync(this.fd, { bigint: true });
+    } catch (e) {
+      return { state: 'cannot', code: codeOf(e) };
     }
+    let named: { dev: bigint; ino: bigint };
+    try {
+      named = this.io.statPath(this.file);
+    } catch (e) {
+      const code = codeOf(e);
+      return code === 'ENOENT' || code === 'ENOTDIR' ? { state: 'gone' } : { state: 'cannot', code };
+    }
+    // The device half of this comparison has no test: two devices cannot be made in a test, and on one volume a different device
+    // with the same file number does not occur, so dropping it changes nothing here. It is kept because a path may cross volumes.
+    return held.dev === named.dev && held.ino === named.ino ? { state: 'same' } : { state: 'gone' };
+  }
+
+  /** True only when the look says the journal is the same file. */
+  sameFile(): boolean {
+    return this.look().state === 'same';
   }
 
   /** True when a write failed and the file could not be cut back: nothing more may be appended. */
@@ -249,7 +277,7 @@ export class Journal {
    * When a write of the line itself fails part-way the file is cut back to its last good length; if that fails too the journal is
    * unavailable until a restart.
    */
-  commit(buf: Buffer, look: () => boolean): void {
+  commit(buf: Buffer, look: () => WriteLook): void {
     if (this.fd === undefined) throw new JournalError('journal is closed');
     if (this.broken) throw new JournalError('journal is unavailable');
     const fd = this.fd;
@@ -257,7 +285,8 @@ export class Journal {
       this.broken = true;
       throw new JournalNotWritten('the journal file is not the length this hub left it');
     }
-    if (!look()) throw new JournalNotWritten('the journal or its lock is not this hub\'s any more');
+    const seen = look();
+    if (seen.state !== 'ok') throw new JournalNotWritten('the journal or its lock could not be confirmed as this hub\'s', seen);
     try {
       let off = 0;
       while (off < buf.length) off += this.io.write(fd, buf, off, buf.length - off, this.goodLength + off);

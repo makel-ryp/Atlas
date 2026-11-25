@@ -25,7 +25,7 @@ git ignores). `sim:replay` takes `--url` (default `http://127.0.0.1:5077`):
 
 `journal.jsonl` in the data folder: one line per accepted batch that changed something, only ever
 appended to and `fsync`ed. A record the hub already holds exactly is left out, so posting a whole
-copy twice adds nothing. To start empty, stop the hub first, then delete the folder. If the folder, its journal or the hub's lock is removed or replaced while the hub is running, the hub notices before the next shot is written, prints one line, and answers every later post 503 until it is restarted (the two GET addresses go on answering). Tests use temporary folders outside the
+copy twice adds nothing. To start empty, stop the hub first, then delete the folder. If the folder, its journal or the hub's lock is removed or replaced while the hub is running, the hub notices before the next shot is written, prints one line, and answers every later post 503 until it is restarted. After that, `GET /v0/rounds` shows what the journal's path holds, not what the hub had (and answers 503 if that journal cannot be read back at all; `/healthz` still answers 200). Tests use temporary folders outside the
 repository.
 
 Why leaving a record out is safe: the hub keeps a table of the records it knows the scores hold. A
@@ -44,6 +44,8 @@ in one line. A start that fails on the lock or on a busy port changes nothing in
 some other program), make sure no hub is running and delete the `hub.lock.<n>` file the message names from the data folder (any `hub.lock.tmp-*` leftover of a crash is removed by the next start; a plain `hub.lock` or `hub.lock.takeover` from an older build is ignored and may be deleted). The lock needs a file system that supports hard links (NTFS and ordinary Linux or macOS folders do; some network or removable drives do not): on one that does not, the hub refuses to start and says so, and `SIM_HUB_DATA` must point somewhere else.
 
 ## When the folder or the lock is removed under a running hub
+
+A lock the hub cannot read is not a lost lock. If the lock file (or the journal) cannot be read or looked at for any reason other than "it is not there" or "it holds something else" (for example a backup or sync program is holding it open for a moment), the hub does not stop: that post is answered 503 busy (or 500 if its line was already written, in which case the line stays and sending the same post again comes back unchanged), it prints one line saying it could not read the file and that another program may be holding it, and it looks again at the next post. The cost: posts are refused as busy while the other program holds the file; nothing is lost.
 
 The look at the lock is made next to the write, not before the post's work: the hub does all of a post's work first (checks,
 fingerprints, the library, the bytes of the line), then checks that the journal is still the file at its path and the lock is

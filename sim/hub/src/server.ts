@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { RoundBook, UnknownLayoutError, validateRecord, MAX_RECORDS, type IngestCounts, type ShotRecord } from '../../core/src/index.js';
-import { Journal, JournalError, JournalNotWritten, replayFile, JOURNAL_NAME, MAX_LINE_BYTES, type JournalOptions } from './journal.js';
+import { Journal, JournalError, JournalNotWritten, replayFile, type WriteLook, JOURNAL_NAME, MAX_LINE_BYTES, type JournalOptions } from './journal.js';
 import { takeLock, type HeldLock } from './lock.js';
 
 export const HOST = '127.0.0.1';
@@ -28,6 +28,8 @@ export interface HubOptions {
   bodyTimeoutMs?: number;
   /** Test hooks, never set outside the tests. Each runs at a fixed point of a post and lets a test change the world there. */
   hooks?: HubHooks;
+  /** Test only, reachable only through a hand-built call: a replaceable read of the lock file for the hub's look at the lock. */
+  lockRead?: (path: string) => string;
 }
 
 export interface HubHooks {
@@ -102,6 +104,10 @@ export function createHub(options: HubOptions): Hub {
   // True when a journal write failed and the file could not be cut back: no more posts until a restart.
   let unavailable = false;
   let lostNoticeGiven = false;
+  // true from a look that could not tell until a look that succeeds: the "could not read" line is printed once for each stretch
+  let cannotStretch = false;
+  // true when a rebuild failed: the hub then has no book it can stand behind
+  let rebuildFailed = false;
   let lock: HeldLock | undefined;
   // True from the moment the port is bound until the journal has been replayed: every request answers 503 busy.
   let starting = false;
@@ -229,9 +235,40 @@ export function createHub(options: HubOptions): Hub {
    * PROTECTS THE WRITE is the one passed to Journal.commit: it runs after all of the post's work and the line's bytes are ready,
    * immediately before the first write call. The LAST look, after the table is updated, decides whether the answer may be 200.
    */
-  function lost(): boolean {
-    return !(journal as Journal).sameFile() || !(lock as HeldLock).stillHeld();
+  function look(): WriteLook {
+    const j = (journal as Journal).look();
+    if (j.state === 'gone') return { state: 'gone' };
+    const l = (lock as HeldLock).look(options.lockRead);
+    if (l.state === 'gone') return { state: 'gone' };
+    if (j.state === 'cannot') return { state: 'cannot', what: 'journal', code: j.code };
+    if (l.state === 'cannot') return { state: 'cannot', what: 'lock', code: l.code };
+    return { state: 'ok' };
   }
+
+  /** A look that could not tell: one plain line for each stretch of such looks. The hub is NOT lost. */
+  function noteCannot(r: { what: 'lock' | 'journal'; code: string }, written: boolean): void {
+    if (cannotStretch) return;
+    cannotStretch = true;
+    const what = r.what === 'lock' ? `read its own lock ${(lock as HeldLock).name}` : `look at its journal ${JOURNAL_NAME}`;
+    warn(`this hub could not ${what} (${r.code}): another program may be holding the file; ${written ? 'this post was answered 500, its line is in the journal and the post can be sent again' : 'this post was not taken'}; the hub looks again at the next post`);
+  }
+
+  /** A look that succeeded ends the stretch. */
+  function noteOk(): void {
+    cannotStretch = false;
+  }
+
+  /** Rebuilds the book and the table from the file; if that cannot be done the hub has no book it can stand behind. */
+  function tryRebuild(): void {
+    try {
+      rebuild();
+    } catch {
+      unavailable = true;
+      rebuildFailed = true;
+    }
+  }
+
+  const busy = (): { status: number; body: unknown; extra: Record<string, string> } => ({ status: 503, body: { error: 'busy' }, extra: { 'Retry-After': '1' } });
 
   /** From now on this hub takes no posts until it is restarted; one plain line says so, once. */
   function markLost(): void {
@@ -243,13 +280,20 @@ export function createHub(options: HubOptions): Hub {
   }
 
   /** Runs in the queue. The library's ingest and the journal write have no await between them. */
-  function acceptBatch(records: ShotRecord[]): { status: number; body: unknown } {
+  function acceptBatch(records: ShotRecord[]): { status: number; body: unknown; extra?: Record<string, string> } {
     if (unavailable) return { status: 503, body: { error: 'journal_unavailable' } };
     // a cheap refusal before any work is spent; it does NOT protect the write (the post's work takes as long as the post is big)
-    if (lost()) {
+    const first = look();
+    if (first.state === 'gone') {
       markLost();
       return { status: 503, body: { error: 'journal_unavailable' } };
     }
+    if (first.state === 'cannot') {
+      // nothing was done and nothing is written; the hub is not lost, the bay program sends the post again
+      noteCannot(first, false);
+      return busy();
+    }
+    noteOk();
     // A record is left out of the journal only when its ShotID appears once in this post and the book is known to hold
     // exactly it: the library would count it unchanged and change nothing, so a replay cannot differ without it.
     // The line this post would write is known now, from the post and the table alone, and it is measured before the
@@ -280,35 +324,46 @@ export function createHub(options: HubOptions): Hub {
       options.hooks?.beforeWriteLook?.();
       try {
         // the look at the lock runs inside commit, after the size check and immediately before the first write call
-        (journal as Journal).commit(bytes, () => !lost());
+        (journal as Journal).commit(bytes, look);
       } catch (e) {
         // The book holds a batch the file does not. If the line was written and failed, the journal has cut the file back to its last
         // good length; if it was not written at all (JournalNotWritten) nothing was cut: the file may hold another hub's lines.
-        const notWritten = e instanceof JournalNotWritten;
-        if (notWritten) markLost();
-        if ((journal as Journal).unavailable) unavailable = true;
-        try {
-          rebuild();
-        } catch {
-          unavailable = true;
+        if (e instanceof JournalNotWritten) {
+          if (e.look !== undefined && e.look.state === 'cannot') {
+            // could not tell: nothing was written and nothing was cut; the book took the batch, so it is rebuilt from the file
+            noteCannot(e.look, false);
+            tryRebuild();
+            return busy();
+          }
+          markLost();
+          tryRebuild();
+          // 503 means this post wrote nothing; 500 means a line was written and then found lost or failed
+          return { status: 503, body: { error: 'journal_unavailable' } };
         }
-        // 503 means this post wrote nothing; 500 means a line was written and then found lost or failed
-        if (notWritten) return { status: 503, body: { error: 'journal_unavailable' } };
+        if ((journal as Journal).unavailable) unavailable = true;
+        tryRebuild();
         throw e;
       }
+      noteOk();
     }
     updateTable(table, records, counts);
     // the last look, last before the answer: a line in a file that has lost its name, or under a lock that is not ours, is not a 200.
     // rebuild() restores both the book and the table from what the path holds, and the answer is 500.
     options.hooks?.beforeLastLook?.(table.size);
-    if (kept.length > 0 && lost()) {
-      markLost();
-      try {
-        rebuild();
-      } catch {
-        // the book is then whatever it was; the hub takes no more posts
+    if (kept.length > 0) {
+      const last = look();
+      if (last.state === 'gone') {
+        markLost();
+        tryRebuild();
+        throw new Error('the journal was lost while a line was being written');
       }
-      throw new Error('the journal was lost while a line was being written');
+      if (last.state === 'cannot') {
+        // the line is written and on the disk, but the hub cannot confirm it: 500, the book and table are rebuilt from the file
+        noteCannot(last, true);
+        tryRebuild();
+        throw new Error('the journal could not be confirmed after a line was written');
+      }
+      noteOk();
     }
     return { status: 200, body: counts };
   }
@@ -349,7 +404,7 @@ export function createHub(options: HubOptions): Hub {
       const c = out.body as IngestCounts;
       note = ` added=${c.added} revised=${c.revised} unchanged=${c.unchanged} conflicts=${c.conflicts}`;
     }
-    send(res, out.status, out.body);
+    send(res, out.status, out.body, out.extra);
     return { status: out.status, note };
   }
 
@@ -383,6 +438,10 @@ export function createHub(options: HubOptions): Hub {
       } else if (path === '/healthz') {
         status = 200;
         send(res, 200, { ok: true });
+      } else if (path === '/v0/rounds' && rebuildFailed) {
+        // a rebuild failed: the hub has no book it can stand behind, so it shows none (healthz still answers)
+        status = 503;
+        send(res, 503, { error: 'journal_unavailable' });
       } else if (path === '/v0/rounds') {
         status = 200;
         send(res, 200, { rounds: book.rounds(), rangeShots: book.rangeShots, issues: book.issues() });
@@ -427,6 +486,8 @@ export function createHub(options: HubOptions): Hub {
       book = new RoundBook();
       table = new Map<string, string>();
       unavailable = false;
+      rebuildFailed = false;
+      cannotStretch = false;
       activePosts = 0;
       // Order: take the lock; bind the port; then open and replay the journal. Until the replay is done every request
       // answers 503 busy. A start that fails on the lock or on the port touches nothing in the folder but the lock.
