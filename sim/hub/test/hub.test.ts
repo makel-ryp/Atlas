@@ -2658,7 +2658,8 @@ test('101. a failed write followed by a rebuild that cannot read the journal pri
     assert.equal(lines().length, 1);
     assert.match(lines()[0]!, /\(EBUSY\)/);
     assert.match(lines()[0]!, /takes no more shots until it is restarted/);
-    assert.match(lines()[0]!, /nothing it answered 200 for is lost/);
+    assert.match(lines()[0]!, /this hub has removed nothing it answered 200 for/);
+    assert.doesNotMatch(lines()[0]!, /is lost/);
     assert.match(lines()[0]!, /stop this hub and start it again/);
     assert.ok(!lines()[0]!.includes(dir) && !lines()[0]!.toLowerCase().includes(basename(dir).toLowerCase()), 'no path in it');
     assert.equal((await post(url, [REC(2)])).status, 503);
@@ -2854,5 +2855,44 @@ test('107. the "could not read its journal back" line prints only a plain code: 
   const lines = said.filter((l) => JOURNAL_BACK.test(l));
   assert.equal(lines.length, 1);
   assert.match(lines[0]!, /\(error\)/);
+  assert.match(lines[0]!, /this hub has removed nothing it answered 200 for/);
   assert.ok(!said.join('\n').includes('Somebody') && !said.join('\n').includes('ZZTEST-A'), said.join(' | '));
+});
+
+test('108. a middle journal line damaged in place at the same length, then a failed write: the line prints (error) and claims only what the hub knows', { timeout: 120000 }, async () => {
+  const dir = tempDir();
+  const state = { arm: false };
+  const io = {
+    write: (fd: number, buf: Buffer, off: number, len: number, position: number): number => {
+      if (state.arm) throw coded('EIO');
+      return writeSync(fd, buf, off, len, position);
+    },
+  };
+  const said: string[] = [];
+  await withHub(dir, { journal: { io }, warn: (l) => said.push(l) }, async (url) => {
+    for (const n of [0, 1, 2]) assert.equal((await post(url, [REC(n)])).status, 200);
+    // another program changes the middle line in place: its length is the same, so the size check cannot see it
+    const text = readFileSync(journalOf(dir), 'utf8');
+    const second = text.indexOf('\n') + 1;
+    const fd = openSync(journalOf(dir), 'r+');
+    try {
+      writeSync(fd, 'X', second, 'utf8');
+    } finally {
+      closeSync(fd);
+    }
+    assert.equal(statSync(journalOf(dir)).size, Buffer.byteLength(text), 'the same length');
+    state.arm = true;
+    assert.equal((await post(url, [REC(3)])).status, 500);
+    state.arm = false;
+    assert.deepEqual((await post(url, [REC(4)])).body, { error: 'journal_unavailable' });
+    assert.equal((await post(url, [REC(4)])).status, 503);
+  });
+  const lines = said.filter((l) => JOURNAL_BACK.test(l));
+  assert.equal(lines.length, 1, said.join(' | '));
+  assert.match(lines[0]!, /\(error\)/);
+  assert.match(lines[0]!, /this hub has removed nothing it answered 200 for/);
+  assert.doesNotMatch(lines[0]!, /is lost/);
+  assert.doesNotMatch(lines[0]!, /line \d/, 'no line number');
+  assert.ok(!lines[0]!.includes(dir) && !lines[0]!.toLowerCase().includes(basename(dir).toLowerCase()), 'no path');
+  assert.ok(!lines[0]!.includes('ZZTEST') && !lines[0]!.includes('ShotID'), 'no content of the journal');
 });

@@ -111,8 +111,6 @@ export function createHub(options: HubOptions): Hub {
   // True when a journal write failed and the file could not be cut back: no more posts until a restart.
   let unavailable = false;
   let lostNoticeGiven = false;
-  // true once the "could not read its journal back" line has been printed (until the next listen())
-  let rebuildNoticeGiven = false;
   // true from a look that could not tell until a look that succeeds: the "could not read" line is printed once for each stretch
   let cannotStretch = false;
   // when the stretch began, and when its line was last printed (milliseconds on the hub's clock)
@@ -292,9 +290,8 @@ export function createHub(options: HubOptions): Hub {
       unavailable = true;
       rebuildFailed = true;
       // a failed rebuild needs a restart, and the console must say so (unless the lost line, which also says so, was printed)
-      if (!rebuildNoticeGiven && !lostNoticeGiven) {
-        rebuildNoticeGiven = true;
-        warn(`this hub could not read its journal ${JOURNAL_NAME} back (${plainCode((e as NodeJS.ErrnoException | undefined)?.code)}): it takes no more shots until it is restarted; nothing it answered 200 for is lost; stop this hub and start it again`);
+      if (!lostNoticeGiven) {
+        warn(`this hub could not read its journal ${JOURNAL_NAME} back (${plainCode((e as NodeJS.ErrnoException | undefined)?.code)}): it takes no more shots until it is restarted; this hub has removed nothing it answered 200 for; stop this hub and start it again`);
       }
     }
   }
@@ -520,7 +517,6 @@ export function createHub(options: HubOptions): Hub {
       rebuildFailed = false;
       cannotStretch = false;
       lostNoticeGiven = false;
-      rebuildNoticeGiven = false;
       activePosts = 0;
       // Order: take the lock; bind the port; then open and replay the journal. Until the replay is done every request
       // answers 503 busy. A start that fails on the lock or on the port touches nothing in the folder but the lock.
