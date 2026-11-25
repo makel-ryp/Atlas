@@ -1,0 +1,14 @@
+{
+  "include": ["**/*.ts"],
+  "exclude": ["fixtures"],
+  "compilerOptions": {
+    "noEmit": true,
+    "strict": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "skipLibCheck": true
+  }
+}
