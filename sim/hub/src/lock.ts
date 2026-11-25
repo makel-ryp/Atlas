@@ -15,6 +15,8 @@ export interface LockHooks {
   beforeLink?: () => void;
   /** Right after a successful link, before the temporary file is removed. */
   afterLink?: (target: string) => void;
+  /** A replaceable read of the current lock's file, for tests only. */
+  read?: (path: string) => string;
 }
 
 /**
@@ -136,7 +138,7 @@ function takeNumberedLock(dir: string, say: (line: string) => void, hooks?: Lock
       let text: string;
       try {
         hooks?.beforeRead?.();
-        text = readFileSync(join(dir, name), 'utf8');
+        text = (hooks?.read ?? ((p: string): string => readFileSync(p, 'utf8')))(join(dir, name));
       } catch (e) {
         if (codeOf(e) === 'ENOENT' || codeOf(e) === 'EPERM') {
           // its hub just let go of it (on Windows a file being deleted may answer EPERM): look again from the listing
@@ -144,7 +146,7 @@ function takeNumberedLock(dir: string, say: (line: string) => void, hooks?: Lock
           pause(10);
           continue;
         }
-        throw new LockRefused(`${name} cannot be read (${codeOf(e)}); if no hub is running, delete it (the folder is set by SIM_HUB_DATA)`);
+        throw new LockRefused(`${name} cannot be read (${codeOf(e)}); a hub may be running under that lock and another program may be holding the file; try again in a moment; delete the file only when no hub is running (the folder is set by SIM_HUB_DATA)`);
       }
       const m = CONTENT.exec(text);
       if (m === null) throw new LockRefused(`${name} is not a lock this hub wrote; if no hub is running, delete it (the folder is set by SIM_HUB_DATA)`);

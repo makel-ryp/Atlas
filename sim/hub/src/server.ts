@@ -30,6 +30,8 @@ export interface HubOptions {
   hooks?: HubHooks;
   /** Test only, reachable only through a hand-built call: a replaceable read of the lock file for the hub's look at the lock. */
   lockRead?: (path: string) => string;
+  /** Test only, reachable only through a hand-built call: the clock the "could not read" line's repeat is timed by (milliseconds). Default Date.now. */
+  now?: () => number;
 }
 
 export interface HubHooks {
@@ -106,6 +108,10 @@ export function createHub(options: HubOptions): Hub {
   let lostNoticeGiven = false;
   // true from a look that could not tell until a look that succeeds: the "could not read" line is printed once for each stretch
   let cannotStretch = false;
+  // when the stretch began, and when its line was last printed (milliseconds on the hub's clock)
+  let stretchStart = 0;
+  let lastPrinted = 0;
+  const clock = options.now ?? Date.now;
   // true when a rebuild failed: the hub then has no book it can stand behind
   let rebuildFailed = false;
   let lock: HeldLock | undefined;
@@ -247,10 +253,23 @@ export function createHub(options: HubOptions): Hub {
 
   /** A look that could not tell: one plain line for each stretch of such looks. The hub is NOT lost. */
   function noteCannot(r: { what: 'lock' | 'journal'; code: string }, written: boolean): void {
-    if (cannotStretch) return;
-    cannotStretch = true;
+    const now = clock();
+    const code = /^[A-Z0-9_]{1,32}$/.test(r.code) ? r.code : 'error'; // only a plain code ever reaches the console
     const what = r.what === 'lock' ? `read its own lock ${(lock as HeldLock).name}` : `look at its journal ${JOURNAL_NAME}`;
-    warn(`this hub could not ${what} (${r.code}): another program may be holding the file; ${written ? 'this post was answered 500, its line is in the journal and the post can be sent again' : 'this post was not taken'}; the hub looks again at the next post`);
+    const file = r.what === 'lock' ? (lock as HeldLock).name : JOURNAL_NAME;
+    if (cannotStretch) {
+      // the stretch goes on: a post arrives, and a minute has passed since the line was last printed: say so again
+      if (now - lastPrinted < 60_000) return;
+      lastPrinted = now;
+      const minutes = Math.max(1, Math.round((now - stretchStart) / 60_000));
+      warn(`this hub is still unable to ${what} (${code}) after about ${minutes} minute${minutes === 1 ? '' : 's'}: nothing is lost and the hub takes posts again by itself as soon as it can read the file; if it does not, look for the program that is holding ${file}, and check that the hub may still read its data folder`);
+      return;
+    }
+    cannotStretch = true;
+    stretchStart = now;
+    lastPrinted = now;
+    const cause = code === 'EBUSY' ? 'another program may be holding the file' : 'the file could not be read or looked at and the hub cannot tell why: it may be held by another program, be part-way through being removed, or the hub may no longer have the right to read its data folder';
+    warn(`this hub could not ${what} (${code}): ${cause}; ${written ? 'this post was answered 500, its line is in the journal and the post can be sent again' : 'this post was not taken'}; the hub looks again at the next post`);
   }
 
   /** A look that succeeded ends the stretch. */
@@ -488,6 +507,7 @@ export function createHub(options: HubOptions): Hub {
       unavailable = false;
       rebuildFailed = false;
       cannotStretch = false;
+      lostNoticeGiven = false;
       activePosts = 0;
       // Order: take the lock; bind the port; then open and replay the journal. Until the replay is done every request
       // answers 503 busy. A start that fails on the lock or on the port touches nothing in the folder but the lock.
