@@ -114,7 +114,57 @@ asks whether `read` has anything in it, which switches on the empty state his ow
 ## Verifying it
 
 Sign in as the demo coach, POST `/api/session`, GET `/proto/dashboard` with the cookie. Grep alone is
-not enough — it passes while the page throws on first paint. Extract the injected blob and run his
-*actual* inline script against it (`class Component` in a `vm` context with `DCLogic` stubbed), then
-call `rosterVals()`, `profileVals()` and `intakeVals()`, and assert no output string contains
-`undefined`, `NaN`, `nulld` or `+0`. Repeat with `{ roster: [] }` for the coach-with-no-students case.
+not enough — it passes while the page throws on first paint. Save the injected data to a file (it is the object after `window.__ATLAS_DATA__ =` in the `<script>` tag
+the server writes before the page's own first script; the server writes `<` in it as `\u003c`, so parse the value
+as JSON and do not copy it by eye) and run
+`node scripts/protoValues.test.js --data <file>`: it runs his *actual* inline script against it (`class Component`
+in a `vm` context with `DCLogic` stubbed), calls `rosterVals()`, `profileVals()` and `intakeVals()`, and applies
+rules 1 and 2 to every string they return. The three rules are:
+
+- **Rule 1.** No output string contains `undefined`, `NaN` or `nulld`. A plain test, with no exception. Before
+  the page runs, the script copies the injected data and, in the fields that carry text a person typed (display
+  names, note and message bodies, interview answers, drill sign-off notes and video references), replaces each of those
+  three words, whatever its case, by `(typed)`; every other
+  string, and every key, is left as the data has it. The page runs on the copy. So a word the server wrote into any
+  other field and the page prints is reported, and a typed-text field missing from the script's list that holds one
+  of the words fails the check until it is added.
+- **Rule 2.** Every output value built from a missing input is exactly that field's own empty text: `—` for a
+  handicap, a target handicap or a strokes-gained number (missing means null, undefined, absent, or an empty
+  strokes-gained series); `NA` for a handicap-history value; `No handicap on record.` for the history note when
+  the whole history is missing; the form's blank (an empty text) for the intake form's history fields.
+- **Rule 3.** With every number missing from the data, no output string holds a signed zero (`+0`, `-0`,
+  `+0.0`, `-0.0`, with `-` or `−`) as a whole token: not preceded by a digit, not followed by a digit or by
+  a point and a digit. So `+0.5`, `2026-09-07` and `+00:00` are not hits.
+
+A `+0.0`, `-0.0` or `+0.5` that comes from present numbers is correct output and passes: a strokes-gained value
+keeps its decimal place (owner's ruling, 2026-11-24). This check used to fail any output containing `+0`, which
+rejected those.
+
+The text alone cannot tell the two cases apart: `fmtSG(0.03)` and an unguarded `hcpLabel(null)` both print
+`+0.0`. So the check is driven by the input.
+
+`node scripts/protoValues.test.js` runs the three rules against built-in test data, with no database: the sets hold every number present, every number
+missing, and each number missing alone with the rest present, for a coach looking at students and for a player looking
+at their own file. The built-in run is a smoke check of the shapes those sets hold, and the sets are not the
+server's data: a page that borrows a number from a field they do not carry passes it. With
+`--data <file>` it runs rules 1 and 2 (rule 3 does not run there) against a saved copy of the injected data, for
+the signed-in run described above (the file must be the object the page was given: a file with no `roster` list is
+refused, and `{ roster: [] }` is the no-students file); it checks whatever mix of present and missing numbers the real data holds, and
+that run is the real check.
+
+Repeat with `{ roster: [] }` for the coach-with-no-students case; the built-in run does this one, and `--data`
+on that file does not run rule 3.
+
+**What this check does not cover.**
+
+- The handicap-history note when part of the history is missing (T-142).
+- A change printed from a single strokes-gained read (T-143).
+- Numbers that are not a handicap, a target, a strokes-gained or a handicap-history value, such as counts and days.
+- Anything outside `rosterVals()`, `profileVals()` and `intakeVals()`.
+- Output the page builds from what a person has typed into the page since it loaded (the intake form's entries, an
+  unsaved target or handicap, a history typed in): the script never sets that state.
+- The mechanics card's handicap for a plus player, which the page prints with a minus (T-144).
+- A present number being the right one (the right student's, with its plus sign): it is asserted on the built-in
+  data sets (the coach's students, the player's own file), and the saved-data run (`--data`) does not assert it.
+- A fault inside a listed typed-text field's own text, and a word the page builds from pieces of typed text (the
+  initials of a three-part name, for example).
