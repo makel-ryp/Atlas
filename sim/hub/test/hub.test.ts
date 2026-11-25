@@ -1667,7 +1667,7 @@ test('57. a lock naming a running process that is not a hub is refused with a me
       message = (e as Error).message;
     }
     assert.ok(message.startsWith(`hub.lock.7 says process ${other.pid} holds this data folder (the SIM_HUB_DATA setting).`), message);
-    assert.match(message, /may be another program: stop nothing, delete hub\.lock\.7 and start again\./);
+    assert.match(message, /may be another program: stop nothing; once you are sure no hub is running on this folder, delete hub\.lock\.7 and start again\./);
     assert.ok(!message.includes(dir) && !message.toLowerCase().includes(basename(dir).toLowerCase()), message);
   } finally {
     other.kill();
@@ -2619,4 +2619,215 @@ test('100. a post with one ShotID twice and different content, answered 500 at t
     assert.equal(again.body.revised, 0);
     assert.equal(again.body.conflicts, 1);
   });
+});
+
+// ---- round 12: a hub that cannot read its journal back says so; a steady clock; tests for eight wrong versions ----
+
+const JOURNAL_BACK = /could not read its journal journal\.jsonl back \((\w+)\)/;
+
+function coded(code: string): NodeJS.ErrnoException {
+  const e: NodeJS.ErrnoException = new Error(`failed (${code}, test)`);
+  e.code = code;
+  return e;
+}
+
+test('101. a failed write followed by a rebuild that cannot read the journal prints one line with the code; only the lost line if that came first; again after the same hub object is restarted', { timeout: 240000 }, async () => {
+  // part 1: the journal's read fails with EBUSY while the rebuild reads it back
+  const dir = tempDir();
+  const state = { arm: false };
+  const io = {
+    write: (fd: number, buf: Buffer, off: number, len: number, position: number): number => {
+      if (state.arm) throw coded('EIO');
+      return writeSync(fd, buf, off, len, position);
+    },
+    openRead: (path: string): number => {
+      if (state.arm) throw coded('EBUSY');
+      return openSync(path, 'r');
+    },
+  };
+  const said: string[] = [];
+  const hub = createHub({ dataDir: dir, port: 0, log: () => undefined, warn: (l) => said.push(l), journal: { io } });
+  try {
+    let a = await hub.listen();
+    let url = `http://${a.host}:${a.port}`;
+    assert.equal((await post(url, [REC(0)])).status, 200);
+    state.arm = true;
+    assert.equal((await post(url, [REC(1)])).status, 500);
+    state.arm = false;
+    const lines = (): string[] => said.filter((l) => JOURNAL_BACK.test(l));
+    assert.equal(lines().length, 1);
+    assert.match(lines()[0]!, /\(EBUSY\)/);
+    assert.match(lines()[0]!, /takes no more shots until it is restarted/);
+    assert.match(lines()[0]!, /nothing it answered 200 for is lost/);
+    assert.match(lines()[0]!, /stop this hub and start it again/);
+    assert.ok(!lines()[0]!.includes(dir) && !lines()[0]!.toLowerCase().includes(basename(dir).toLowerCase()), 'no path in it');
+    assert.equal((await post(url, [REC(2)])).status, 503);
+    assert.equal((await fetch(`${url}/v0/rounds`)).status, 503);
+    assert.equal((await fetch(`${url}/healthz`)).status, 200);
+    assert.equal(lines().length, 1, 'nothing more is printed');
+    await hub.close();
+    // the same hub object, started again on the good folder, failing again: the line is printed again
+    a = await hub.listen();
+    url = `http://${a.host}:${a.port}`;
+    assert.equal((await post(url, [REC(1)])).status, 200);
+    state.arm = true;
+    assert.equal((await post(url, [REC(2)])).status, 500);
+    state.arm = false;
+    assert.equal(lines().length, 2, 'once more after the next listen()');
+  } finally {
+    await hub.close();
+  }
+  // part 2: the lost line came first: only the lost line is printed
+  const dir2 = tempDir();
+  let armed = false;
+  const said2: string[] = [];
+  await withHub(dir2, { warn: (l) => said2.push(l), hooks: { beforeWriteLook: () => {
+    if (!armed) return;
+    unlinkSync(join(dir2, 'hub.lock.1'));
+    appendFileSync(journalOf(dir2), 'this line is damaged\n');
+  } } }, async (url) => {
+    assert.equal((await post(url, [REC(0)])).status, 200);
+    armed = true;
+    assert.equal((await post(url, [REC(1)])).status, 503);
+    armed = false;
+    assert.equal((await fetch(`${url}/v0/rounds`)).status, 503, 'the rebuild did fail');
+  });
+  assert.equal(said2.filter((l) => REMOVED.test(l)).length, 1);
+  assert.equal(said2.filter((l) => JOURNAL_BACK.test(l)).length, 0, 'only the lost line');
+});
+
+test('102. a starter whose read of the current lock fails with EPERM every time is refused after five seconds with the "a hub may be running" words; the folder is untouched', { timeout: 60000 }, () => {
+  const dir = tempDir();
+  writeFileSync(join(dir, 'hub.lock.1'), `${process.pid} ${'1'.repeat(24)}\n`);
+  const before = readdirSync(dir).sort();
+  const started = Date.now();
+  let message = '';
+  try {
+    takeLock(dir, () => undefined, {
+      read: () => {
+        throw coded('EPERM');
+      },
+    });
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  assert.ok(Date.now() - started >= 4500, 'it waited the five seconds');
+  assert.match(message, /^hub\.lock\.1 cannot be read \(EPERM\); a hub may be running under that lock and another program may be holding the file; try again in a moment; delete the file only when no hub is running/);
+  assert.doesNotMatch(message, /if no hub is running, delete it/);
+  assert.ok(!message.includes(dir) && !message.toLowerCase().includes(basename(dir).toLowerCase()), message);
+  assert.deepEqual(readdirSync(dir).sort(), before);
+});
+
+test('103. a second start on a folder whose lock names a running process says to delete the file only once sure no hub is running', { timeout: 60000 }, async () => {
+  const dir = tempDir();
+  const other = await stranger();
+  try {
+    writeFileSync(join(dir, 'hub.lock.4'), `${other.pid} ${GOOD_TOKEN}\n`);
+    let message = '';
+    try {
+      takeLock(dir, () => undefined);
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    assert.match(message, /may be another program: stop nothing; once you are sure no hub is running on this folder, delete hub\.lock\.4 and start again\.$/);
+    assert.doesNotMatch(message, /stop nothing, delete/);
+  } finally {
+    other.kill();
+  }
+});
+
+test('104. the repeat is timed by a clock that does not jump: with the default clock, a Date.now that jumps an hour prints no repeat', { timeout: 120000 }, async () => {
+  const seam = lockSeam();
+  const said: string[] = [];
+  // Date.now is replaced BEFORE the hub is made, by a function whose offset the test moves: a hub that took Date.now as its clock would follow it
+  let offset = 0;
+  const real = Date.now;
+  Date.now = () => real() + offset;
+  try {
+    await withHub(tempDir(), { lockRead: seam.read, warn: (l) => said.push(l) }, async (url) => {
+      assert.equal((await post(url, [REC(0)])).status, 200);
+      seam.mode = 'fail';
+      assert.equal((await post(url, [REC(1)])).status, 503);
+      assert.equal(said.filter((l) => FIRST.test(l)).length, 1);
+      offset = 3_600_000;
+      assert.equal((await post(url, [REC(1)])).status, 503);
+      assert.equal(said.filter((l) => REPEAT.test(l)).length, 0, 'a PC clock set an hour ahead is not an hour of stretch');
+    });
+  } finally {
+    Date.now = real;
+  }
+});
+
+test('105. the repeat\'s timing and words: none at 59.5 s, one at exactly 60 s ("about 1 minute"), one each minute counted from the start ("about 2 minutes"), minutes rounded', { timeout: 120000 }, async () => {
+  const seam = lockSeam();
+  const said: string[] = [];
+  let t = 2_000_000;
+  await withHub(tempDir(), { lockRead: seam.read, now: () => t, warn: (l) => said.push(l) }, async (url) => {
+    assert.equal((await post(url, [REC(0)])).status, 200);
+    seam.mode = 'fail';
+    const repeats = (): string[] => said.filter((l) => REPEAT.test(l));
+    await post(url, [REC(1)]);
+    t = 2_000_000 + 59_500;
+    await post(url, [REC(1)]);
+    assert.equal(repeats().length, 0, 'nothing at 59.5 seconds');
+    t = 2_000_000 + 60_000;
+    await post(url, [REC(1)]);
+    assert.equal(repeats().length, 1, 'one at exactly 60 seconds');
+    assert.match(repeats()[0]!, /after about 1 minute:/);
+    t = 2_000_000 + 120_000;
+    await post(url, [REC(1)]);
+    assert.equal(repeats().length, 2);
+    assert.match(repeats()[1]!, /after about 2 minutes:/, 'counted from the start of the stretch, not from the last line');
+    t = 2_000_000 + 270_000;
+    await post(url, [REC(1)]);
+    assert.match(repeats()[2]!, /after about 5 minutes:/, '4.5 minutes is rounded, not cut');
+  });
+});
+
+test('106. the code filter and the repeat: 33 characters print error, 32 are printed; the repeat prints the filtered code; the repeat names the journal when it is the journal', { timeout: 240000 }, async () => {
+  // M1: the length of the code
+  for (const [code, expected] of [['A'.repeat(33), '(error)'], ['A'.repeat(32), `(${'A'.repeat(32)})`]] as const) {
+    const seam = lockSeam();
+    seam.code = code;
+    const said: string[] = [];
+    await withHub(tempDir(), { lockRead: seam.read, warn: (l) => said.push(l) }, async (url) => {
+      assert.equal((await post(url, [REC(0)])).status, 200);
+      seam.mode = 'once';
+      await post(url, [REC(1)]);
+    });
+    assert.ok(said.join('\n').includes(expected), `${code.length} characters: ${said.join(' ')}`);
+  }
+  // S2: the repeat prints the filtered code too
+  const seam2 = lockSeam();
+  seam2.code = 'C:\\Users\\Somebody\\ZZTEST-A';
+  const said2: string[] = [];
+  let t2 = 1_000;
+  await withHub(tempDir(), { lockRead: seam2.read, now: () => t2, warn: (l) => said2.push(l) }, async (url) => {
+    assert.equal((await post(url, [REC(0)])).status, 200);
+    seam2.mode = 'fail';
+    await post(url, [REC(1)]);
+    t2 = 1_000 + 61_000;
+    await post(url, [REC(1)]);
+  });
+  assert.equal(said2.filter((l) => REPEAT.test(l)).length, 1);
+  assert.ok(!said2.join('\n').includes('Somebody') && !said2.join('\n').includes('ZZTEST-A'), said2.join(' | '));
+  assert.match(said2.filter((l) => REPEAT.test(l))[0]!, /\(error\)/);
+  // S3: the repeat names the file that cannot be looked at
+  const io = {
+    statPath: (): { dev: bigint; ino: bigint } => {
+      throw coded('EBUSY');
+    },
+  };
+  const said3: string[] = [];
+  let t3 = 5_000;
+  await withHub(tempDir(), { journal: { io }, now: () => t3, warn: (l) => said3.push(l) }, async (url) => {
+    await post(url, [REC(0)]);
+    t3 = 5_000 + 61_000;
+    await post(url, [REC(0)]);
+  });
+  const repeat3 = said3.find((l) => REPEAT.test(l))!;
+  assert.ok(repeat3, said3.join(' | '));
+  assert.match(repeat3, /look at its journal/);
+  assert.match(repeat3, /holding journal\.jsonl/);
+  assert.doesNotMatch(repeat3, /hub\.lock/);
 });

@@ -119,7 +119,7 @@ function takeNumberedLock(dir: string, say: (line: string) => void, hooks?: Lock
       return new LockRefused(`another hub is starting on this data folder (the SIM_HUB_DATA setting), or the folder cannot hold hard links (${lastLink.code}, ${lastLink.name})`);
     }
     if (lastRead !== undefined) {
-      return new LockRefused(`${lastRead.name} cannot be read (${lastRead.code}); if no hub is running, delete it (the folder is set by SIM_HUB_DATA)`);
+      return new LockRefused(`${lastRead.name} cannot be read (${lastRead.code}); a hub may be running under that lock and another program may be holding the file; try again in a moment; delete the file only when no hub is running (the folder is set by SIM_HUB_DATA)`);
     }
     return new LockRefused('another hub is starting on this data folder (the SIM_HUB_DATA setting); try again in a moment');
   };
@@ -157,7 +157,7 @@ function takeNumberedLock(dir: string, say: (line: string) => void, hooks?: Lock
       } else if (isRunning(pid)) {
         // the id of a running process is all the lock can tell: it cannot say whether that process is a hub
         throw new LockRefused(
-          `${name} says process ${pid} holds this data folder (the SIM_HUB_DATA setting). If ${pid} is a hub, stop it or give this hub its own folder. If the PC restarted or the hub crashed, ${pid} may be another program: stop nothing, delete ${name} and start again.`,
+          `${name} says process ${pid} holds this data folder (the SIM_HUB_DATA setting). If ${pid} is a hub, stop it or give this hub its own folder. If the PC restarted or the hub crashed, ${pid} may be another program: stop nothing; once you are sure no hub is running on this folder, delete ${name} and start again.`,
         );
       }
       target = current + 1;

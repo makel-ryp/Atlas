@@ -30,7 +30,7 @@ export interface HubOptions {
   hooks?: HubHooks;
   /** Test only, reachable only through a hand-built call: a replaceable read of the lock file for the hub's look at the lock. */
   lockRead?: (path: string) => string;
-  /** Test only, reachable only through a hand-built call: the clock the "could not read" line's repeat is timed by (milliseconds). Default Date.now. */
+  /** Test only, reachable only through a hand-built call: the clock the "could not read" line's repeat is timed by (milliseconds). Default: a steady clock (performance.now), which does not jump when the PC's time is changed. */
   now?: () => number;
 }
 
@@ -60,6 +60,11 @@ class BodyTooLarge extends Error {}
 class BodyTimeout extends Error {}
 /** The client dropped the connection before its body ended. */
 class ClientAborted extends Error {}
+
+/** The only form in which an error code reaches the console: 1 to 32 capital letters, digits and underscores; anything else is "error". */
+function plainCode(code: unknown): string {
+  return typeof code === 'string' && /^[A-Z0-9_]{1,32}$/.test(code) ? code : 'error';
+}
 
 function fingerprint(record: ShotRecord): string {
   return createHash('sha256').update(JSON.stringify(record)).digest('hex');
@@ -106,12 +111,14 @@ export function createHub(options: HubOptions): Hub {
   // True when a journal write failed and the file could not be cut back: no more posts until a restart.
   let unavailable = false;
   let lostNoticeGiven = false;
+  // true once the "could not read its journal back" line has been printed (until the next listen())
+  let rebuildNoticeGiven = false;
   // true from a look that could not tell until a look that succeeds: the "could not read" line is printed once for each stretch
   let cannotStretch = false;
   // when the stretch began, and when its line was last printed (milliseconds on the hub's clock)
   let stretchStart = 0;
   let lastPrinted = 0;
-  const clock = options.now ?? Date.now;
+  const clock = options.now ?? ((): number => performance.now());
   // true when a rebuild failed: the hub then has no book it can stand behind
   let rebuildFailed = false;
   let lock: HeldLock | undefined;
@@ -254,7 +261,7 @@ export function createHub(options: HubOptions): Hub {
   /** A look that could not tell: one plain line for each stretch of such looks. The hub is NOT lost. */
   function noteCannot(r: { what: 'lock' | 'journal'; code: string }, written: boolean): void {
     const now = clock();
-    const code = /^[A-Z0-9_]{1,32}$/.test(r.code) ? r.code : 'error'; // only a plain code ever reaches the console
+    const code = plainCode(r.code); // only a plain code ever reaches the console
     const what = r.what === 'lock' ? `read its own lock ${(lock as HeldLock).name}` : `look at its journal ${JOURNAL_NAME}`;
     const file = r.what === 'lock' ? (lock as HeldLock).name : JOURNAL_NAME;
     if (cannotStretch) {
@@ -281,9 +288,14 @@ export function createHub(options: HubOptions): Hub {
   function tryRebuild(): void {
     try {
       rebuild();
-    } catch {
+    } catch (e) {
       unavailable = true;
       rebuildFailed = true;
+      // a failed rebuild needs a restart, and the console must say so (unless the lost line, which also says so, was printed)
+      if (!rebuildNoticeGiven && !lostNoticeGiven) {
+        rebuildNoticeGiven = true;
+        warn(`this hub could not read its journal ${JOURNAL_NAME} back (${plainCode((e as NodeJS.ErrnoException | undefined)?.code)}): it takes no more shots until it is restarted; nothing it answered 200 for is lost; stop this hub and start it again`);
+      }
     }
   }
 
@@ -508,6 +520,7 @@ export function createHub(options: HubOptions): Hub {
       rebuildFailed = false;
       cannotStretch = false;
       lostNoticeGiven = false;
+      rebuildNoticeGiven = false;
       activePosts = 0;
       // Order: take the lock; bind the port; then open and replay the journal. Until the replay is done every request
       // answers 503 busy. A start that fails on the lock or on the port touches nothing in the folder but the lock.

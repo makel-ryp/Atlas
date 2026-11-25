@@ -28,6 +28,8 @@ export interface JournalIO {
   statPath(path: string): { dev: bigint; ino: bigint };
   /** Closes the descriptor. */
   close(fd: number): void;
+  /** Opens the journal for reading (the start's replay and every rebuild). */
+  openRead(path: string): number;
 }
 
 /** The look before a write: ok, gone (lost for good), or could not tell (another program may be holding a file for a moment). */
@@ -63,6 +65,7 @@ const REAL_IO: JournalIO = {
   size: (fd) => fstatSync(fd).size,
   statPath: (path) => statSync(path, { bigint: true }),
   close: (fd) => closeSync(fd),
+  openRead: (path) => openSync(path, 'r'),
 };
 
 export interface ReplayResult {
@@ -84,7 +87,7 @@ function* replaySteps(file: string, onBatch: (records: unknown[]) => void, warn:
   if (!existsSync(file)) return { cutAt: undefined, missingNewline: false, size: 0 };
   const pieceBytes = Math.max(1, Math.floor(options.pieceBytes ?? DEFAULT_PIECE_BYTES));
   const maxLine = options.maxLineBytes ?? MAX_LINE_BYTES;
-  const fd = openSync(file, 'r');
+  const fd = (options.io?.openRead ?? REAL_IO.openRead)(file);
   try {
     const piece = Buffer.allocUnsafe(pieceBytes);
     let chunks: Buffer[] = [];
