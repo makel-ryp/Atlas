@@ -2831,3 +2831,28 @@ test('106. the code filter and the repeat: 33 characters print error, 32 are pri
   assert.match(repeat3, /holding journal\.jsonl/);
   assert.doesNotMatch(repeat3, /hub\.lock/);
 });
+
+test('107. the "could not read its journal back" line prints only a plain code: a code that is a path and a name prints error', { timeout: 120000 }, async () => {
+  const state = { arm: false };
+  const io = {
+    write: (fd: number, buf: Buffer, off: number, len: number, position: number): number => {
+      if (state.arm) throw coded('EIO');
+      return writeSync(fd, buf, off, len, position);
+    },
+    openRead: (path: string): number => {
+      if (state.arm) throw coded('C:\\Users\\Somebody\\ZZTEST-A');
+      return openSync(path, 'r');
+    },
+  };
+  const said: string[] = [];
+  await withHub(tempDir(), { journal: { io }, warn: (l) => said.push(l) }, async (url) => {
+    assert.equal((await post(url, [REC(0)])).status, 200);
+    state.arm = true;
+    assert.equal((await post(url, [REC(1)])).status, 500);
+    state.arm = false;
+  });
+  const lines = said.filter((l) => JOURNAL_BACK.test(l));
+  assert.equal(lines.length, 1);
+  assert.match(lines[0]!, /\(error\)/);
+  assert.ok(!said.join('\n').includes('Somebody') && !said.join('\n').includes('ZZTEST-A'), said.join(' | '));
+});
