@@ -12,6 +12,7 @@ import type { Readable, Writable } from 'node:stream';
 type Kid = ChildProcessByStdio<Writable, Readable, null>;
 import { createHub, type Hub, type HubOptions } from '../src/server.js';
 import { takeLock } from '../src/lock.js';
+import { Journal } from '../src/journal.js';
 import { loadRecording, type Copy } from '../../core/src/index.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -1968,5 +1969,32 @@ test('72. a journal whose close fails: the hub\'s close still removes its lock, 
   assert.equal(calls, 1, 'the descriptor was closed once and never again');
   await withHub(dir, {}, async (url) => {
     assert.equal((await fetch(`${url}/healthz`)).status, 200, 'a new hub starts on the folder in this process');
+  });
+});
+
+test('73. a journal whose close failed is never closed again: the descriptor is forgotten before the close is called', { timeout: 60000 }, async () => {
+  const dir = tempDir();
+  let calls = 0;
+  const j = await Journal.open(dir, () => undefined, () => undefined, {
+    io: {
+      close: (fd: number): void => {
+        calls++;
+        closeSync(fd); // really closed, then the close reports a failure
+        throw new Error('close failed (test)');
+      },
+    },
+  });
+  assert.throws(() => j.close(), /close failed/);
+  j.close(); // does nothing: that number may by now belong to another file
+  assert.equal(calls, 1);
+});
+
+test('74. the cheap look at the top: a post that would write nothing is still 503 once the lock is gone', { timeout: 60000 }, async () => {
+  const dir = tempDir();
+  await withHub(dir, {}, async (url) => {
+    assert.equal((await post(url, [REC(0)])).status, 200);
+    unlinkSync(join(dir, 'hub.lock.1'));
+    const again = await post(url, [REC(0)]); // already held exactly: nothing to write, so only the look at the top can refuse it
+    assert.deepEqual([again.status, again.body], [503, { error: 'journal_unavailable' }]);
   });
 });
