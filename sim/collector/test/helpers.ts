@@ -74,10 +74,22 @@ export function reportOverlaps(alsoFailed?: unknown): void {
   throw new Error(`${first} (${n} time${n === 1 ? '' : 's'} in this test)${also}`);
 }
 
-/** For a file's `after` hook: a program left running may start a second post after the last test ended; wait a moment, then report. */
+/**
+ * For a file's `after` hook: a program left running may start a second post after the last test ended, or leave a timer
+ * running (a second interval, a retry timer): wait a moment, then report both. A leaked timer would keep the test
+ * process alive for ever, so after the report the process is ended, with a failing exit code, by a timer of its own that
+ * does not keep it alive.
+ */
 export async function settleAndReport(): Promise<void> {
   await sleep(50);
+  const timers = process.getActiveResourcesInfo().filter((x) => x === 'Timeout').length;
+  if (timers > 0) {
+    console.error(`timers were left running at the end of this test file: ${timers}`);
+    process.exitCode = 1;
+    setTimeout(() => process.exit(1), 500).unref();
+  }
   reportOverlaps();
+  if (timers > 0) throw new Error(`timers were left running at the end of this test file: ${timers}`);
 }
 
 // Every test file that imports these helpers gets this hook: an overlap after its last test is reported too.

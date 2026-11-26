@@ -73,13 +73,16 @@ every sender, and the reason is that the hub keeps, of two overlapping posts tha
 the one whose body finished last: with two posts in flight an older copy of a shot could be put over
 a newer one.
 
-Run one copy of the program for a GSPro file. Two copies, each with its own data folder, post every
+Run one copy of the program for a GSPro file. The program's own sender refuses a second post while
+one is unanswered (the refused post sends nothing and marks nothing, and the program tries again
+after a wait); that gate is inside one copy of the program and does not cover two copies. Two copies,
+each with its own data folder, post every
 shot twice, and in the ordinary case the hub still ends on the right scores (a test of this program
 feeds the recorded round to two copies and the hub ends on the right scores); that does not show that
 two copies are safe in every case. Two copies started without `SIM_COLLECTOR_DATA` share one data
 folder, which is the easiest way to run two by mistake. The hub still ends on the right scores, but
 both copies write every shot into the one outbox, and the record of what was sent is whichever copy wrote it last; so at the next start shots
-already sent can be sent again, up to every shot of the round (the hub answers `unchanged` for them).
+already sent can be sent again, up to every shot of the round (the hub answers `unchanged`, or `revised` for a shot it holds in an older version).
 While both run, each may show `disk=error` for a moment. So run one copy per bay PC, and if a second
 window was started by mistake, close it. A data folder that was moved aside and still holds shots not
 yet sent must not be started again after the round it belongs to has been played on: its waiting shots
@@ -87,8 +90,8 @@ are older copies and would be put over newer ones. Keep such a folder, and do no
 it again; the program cannot tell which round its waiting shots belong to, so there is no safe way yet
 to send them.
 If you move a data folder aside and start the program fresh, the shots of the round that is still in
-GSPro's file are read from that file and sent again (the hub answers `unchanged` for those it already
-holds); only waiting shots that GSPro's file no longer holds, from an earlier round or from before the
+GSPro's file are read from that file and sent again (the hub answers `unchanged` for a shot it
+already holds in the same version and `revised` for one it holds in an older version); only waiting shots that GSPro's file no longer holds, from an earlier round or from before the
 file was emptied, are never sent.
 
 ## Limits

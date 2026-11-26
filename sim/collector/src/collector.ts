@@ -28,7 +28,7 @@ export interface CollectorOptions {
   hubUrl: string;
   /** For tests. Default: the real file module for the two paths above. */
   files?: Files;
-  /** For tests. Default: fetch with a 10 second timeout. */
+  /** For tests. Default: fetch with a 10 second timeout, behind a gate that refuses a second post while one is unanswered. A post handed in is not gated; the program's own sender is. */
   post?: PostFn;
   /** For tests. Default Date.now. */
   now?: () => number;
@@ -134,6 +134,24 @@ export async function defaultPost(url: string, body: string): Promise<PostResult
   return { status: res.status, body: parsed, retryAfterSec: ra !== null && /^\d+$/.test(ra) ? Number(ra) : undefined };
 }
 
+/**
+ * The program's own sender, behind a gate: one post at a time. A call made while one is unanswered is refused at once
+ * (it rejects, holding nothing from GSPro's file, and the wrapped post is not called); an answer, a rejection or a throw
+ * releases the gate.
+ */
+export function oneAtATime(send: PostFn): PostFn {
+  let busy = false;
+  return async (url, body) => {
+    if (busy) throw new Error('a post is already out; this one was not sent');
+    busy = true;
+    try {
+      return await send(url, body);
+    } finally {
+      busy = false;
+    }
+  };
+}
+
 /** True only for the hub's own answer: its four counts, whole numbers of zero or more, adding up to the batch. */
 export function countsAddUp(body: unknown, batchSize: number): boolean {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) return false;
@@ -156,7 +174,7 @@ export function statusLine(s: Status): string {
 export function createCollector(options: CollectorOptions): Collector {
   const base = checkHubUrl(options.hubUrl);
   const files = options.files ?? createFiles(options.dataDir, options.gsproFile);
-  const post = options.post ?? defaultPost;
+  const post = options.post ?? oneAtATime(defaultPost);
   const now = options.now ?? Date.now;
   const timer: Timer = options.timer ?? { setInterval: (f, ms) => setInterval(f, ms), clearInterval: (h) => clearInterval(h) };
   const pollMs = options.pollMs ?? 500;
