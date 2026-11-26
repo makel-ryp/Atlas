@@ -1117,6 +1117,8 @@ interface SideFacts {
   /** The same for `import.meta`. */
   metaMembers: string[];
   metaOther: number;
+  /** How many times the name `constructor` is read: as a property, in brackets, as a key in a destructuring pattern, or as a string that is exactly that word. A class's own `constructor(...) {}` declaration is not a read. */
+  constructorReads: number;
 }
 
 /**
@@ -1164,7 +1166,11 @@ function sideFacts(files: Record<string, string>): Record<string, SideFacts> {
     const metaMembers = new Set<string>();
     let processOther = 0;
     let metaOther = 0;
+    let constructorReads = 0;
     const visit = (n: ts.Node): void => {
+      if (ts.isPropertyAccessExpression(n) && n.name.text === 'constructor') constructorReads++;
+      else if (ts.isBindingElement(n) && ts.isObjectBindingPattern(n.parent) && (n.propertyName === undefined ? ts.isIdentifier(n.name) && n.name.text === 'constructor' : ts.isIdentifier(n.propertyName) && n.propertyName.text === 'constructor')) constructorReads++;
+      else if (ts.isStringLiteralLike(n) && n.text === 'constructor') constructorReads++; // a string or a template with no holes that is exactly the word: in brackets, in Reflect.get, in a descriptor lookup, anywhere
       if (ts.isMetaProperty(n) && n.keywordToken === ts.SyntaxKind.ImportKeyword) {
         const p = n.parent;
         if (ts.isPropertyAccessExpression(p) && p.expression === n) metaMembers.add(p.name.text);
@@ -1193,7 +1199,7 @@ function sideFacts(files: Record<string, string>): Record<string, SideFacts> {
       ts.forEachChild(n, visit);
     };
     visit(sf);
-    out[path.slice(root.length)] = { globals: [...globals].sort(), processMembers: [...processMembers].sort(), processOther, metaMembers: [...metaMembers].sort(), metaOther };
+    out[path.slice(root.length)] = { globals: [...globals].sort(), processMembers: [...processMembers].sort(), processOther, metaMembers: [...metaMembers].sort(), metaOther, constructorReads };
   }
   return out;
 }
@@ -1262,7 +1268,7 @@ const ARGUMENT = [
   '  5. Nothing else in the source can run any of these later or by another name: no reference to `post`, `flushStage`, `pass` or `defaultPost` beyond the ones above; no timer but the one the program is handed and uses once, to call `tick`.',
   '  6. There is one program, and it hands in no post of its own: `createCollector` is called in one place (`startProgram`, in `program.ts`, whose whole body is pinned) and `startProgram` in one place (`main.ts`, which is pinned whole).',
   '  7. Only `collector.ts` knows about the post: every source file imports exactly the modules it imports now, no file imports a whole module as a namespace, and `outbox.ts` and `files.ts` never import `collector.ts` or `program.ts`.',
-  'THE BAY PROGRAM\'S SIDE (every .ts file under sim/collector/src and under sim/core/src) may use only the modules, the global names and the process and import.meta members listed in this test. A new one is not wrong in itself: if it cannot send anything and cannot load or run other code, add it to the list in the same commit and say so in the commit message; if it can, the post it makes must go through `oneAtATime`, and must not be handed in through `options.post`. `globalThis`, `global`, `self` and `window` are in no list, so any use of them is found.',
+  'THE BAY PROGRAM\'S SIDE (every .ts file under sim/collector/src and under sim/core/src) may use only the modules, the global names and the process and import.meta members listed in this test. A new one is not wrong in itself: if it cannot send anything and cannot load or run other code, add it to the list in the same commit and say so in the commit message; if it can, the post it makes must go through `oneAtATime`, and must not be handed in through `options.post`. `globalThis`, `global`, `self` and `window` are in no list, so any use of them is found. Nothing there reads `.constructor` (as a property, in brackets, as a destructuring key or as a string that is exactly that word), because that is a road to running text as code; a class\'s own constructor declaration is not a read.',
   'THE KNOWN LIMIT of any test that reads text: a name built at run time (`options[\'po\' + \'st\']`, `Reflect.get`, `Object.values`) is code written so that a reader does not see the name; no test here holds against it, and the person reading the change is the check for it.',
 ].join('\n');
 
@@ -1515,6 +1521,7 @@ function argumentViolations(files: Record<string, string>, core: Record<string, 
       for (const m of f.processMembers) if (!EXPECTED_SIDE.processMembers.includes(m)) link("the bay program's side (process)", `${where} reads process.${m}, which is not in the list (${EXPECTED_SIDE.processMembers.join(', ')})`);
       if (f.processOther > 0) link("the bay program's side (process)", `${where} uses process other than as process.<member> (${f.processOther} time${f.processOther === 1 ? '' : 's'}): passed whole, read with brackets or destructured`);
       for (const m of f.metaMembers) if (!EXPECTED_SIDE.metaMembers.includes(m)) link("the bay program's side (import.meta)", `${where} reads import.meta.${m}, which is not in the list (${EXPECTED_SIDE.metaMembers.join(', ')})`);
+      if (f.constructorReads > 0) link("the bay program's side (constructor)", `${where} reads the name constructor (${f.constructorReads} time${f.constructorReads === 1 ? '' : 's'}): a road to running text as code`);
       if (f.metaOther > 0) link("the bay program's side (import.meta)", `${where} uses import.meta other than as import.meta.<member>`);
     }
   }
@@ -1672,10 +1679,24 @@ test('A13. the places a post can start are pinned: one call of post, one of flus
     side('structuredClone used in outbox.ts (a global the program does not use there, and not in its folder\'s list)', addTo(all, 'outbox.ts', '\nfunction copyIt(x: object): object {\n  return structuredClone(x);\n}\n')),
     side('a new import of node:crypto in the core library', all, edit('text.ts', 'export ', "import { createHash } from 'node:crypto';\nexport ", coreTree)),
   ];
+  // the name constructor: a road to running text as code (Function reached as a property), nothing on the bay program's side reads it
+  mustFindSide.push(
+    side('T1b: (() => undefined).constructor(\'return fetch\')() in collector.ts for a batch of 137', edit('collector.ts', BATCH, `${BATCH}      if (batch.length === 137) void ((() => undefined).constructor('return fetch')() as any)(\`\${base}/v0/shots\`, { method: 'POST', body: JSON.stringify({ records: batch }) }).catch(() => undefined);\n`)),
+    side("T2: ({}).constructor.constructor('return fetch')() in the core library, for a file over 5 MB", all, inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void (({}).constructor.constructor('return fetch')() as any)('http://127.0.0.1:5077/v0/shots', { method: 'POST', body: '{}' }).catch(() => undefined);`)),
+    side("process.on.constructor('return fetch') with no fetch in a type", addTo(all, 'collector.ts', "\nfunction viaProcessOn(): unknown {\n  return (process.on as any).constructor('return fetch')();\n}\n")),
+    side('the destructuring form: const { constructor } = x', addTo(all, 'collector.ts', '\nfunction viaDestructuring(x: object): unknown {\n  const { constructor } = x;\n  return constructor;\n}\n')),
+    side('the destructuring form with a new name: const { constructor: c } = x', addTo(all, 'collector.ts', '\nfunction viaDestructuringAs(x: object): unknown {\n  const { constructor: c } = x;\n  return c;\n}\n')),
+    side("Reflect.get(parseRoundFile, 'constructor') in the core library", all, addTo(coreTree, 'parse.ts', "\nexport function viaReflect(): unknown {\n  return Reflect.get(parseRoundFile, 'constructor');\n}\n")),
+    side("Object.getOwnPropertyDescriptor(p, 'constructor') in the core library", all, addTo(coreTree, 'text.ts', "\nexport function viaDescriptor(p: object): unknown {\n  return Object.getOwnPropertyDescriptor(p, 'constructor');\n}\n")),
+    side("the bracket form with an escaped spelling: x['constru\\u0063tor']", addTo(all, 'collector.ts', "\nfunction viaBrackets(x: any): unknown {\n  return x['constru\\u0063tor'];\n}\n")),
+    side('the bracket form with a template with no holes: x[`constructor`]', addTo(all, 'collector.ts', '\nfunction viaTemplate(x: any): unknown {\n  return x[`constructor`];\n}\n')),
+    side('an escaped property name: x.constru\\u0063tor', addTo(all, 'collector.ts', '\nfunction viaEscapedName(x: any): unknown {\n  return x.constru\\u0063tor;\n}\n')),
+  );
   const mustNotFindSide: Case[] = [
     side('a new local variable named require, declared and used in one function (a local is not a global)', addTo(all, 'collector.ts', '\nfunction localRequire(): number {\n  const require = 1;\n  return require;\n}\n')),
     side('a new local variable named WebSocket, declared and used in one function', addTo(all, 'collector.ts', '\nfunction localSocket(): number {\n  const WebSocket = 1;\n  return WebSocket;\n}\n')),
     side('a global already in the list used in a new place (JSON.stringify in outbox.ts)', addTo(all, 'outbox.ts', '\nfunction asText(x: object): string {\n  return JSON.stringify(x);\n}\n')),
+    side("a class with a constructor declaration added to a source file (a declaration is not a read)", addTo(all, 'outbox.ts', '\nclass Holder {\n  constructor(readonly value: number) {}\n}\nfunction hold(): Holder {\n  return new Holder(1);\n}\n')),
     side('a type named in a type position only (WebSocket in a type annotation)', addTo(all, 'outbox.ts', '\ntype OnlyAType = Record<string, WebSocket>;\n')),
   ];
   const t1 = Date.now();
