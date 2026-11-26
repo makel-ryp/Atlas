@@ -15,12 +15,36 @@ export interface LockHooks {
   beforeLink?: () => void;
   /** Right after a successful link, before the temporary file is removed. */
   afterLink?: (target: string) => void;
+  /** A replaceable read of the current lock's file, for tests only. */
+  read?: (path: string) => string;
 }
 
+/**
+ * The lock's look has three answers. HELD: the file was read and holds this hub's id and token. GONE: the file is not there (ENOENT), or it
+ * was read and holds anything else. CANNOT TELL: the read failed for any other reason (EBUSY, EPERM, EACCES and every other code): another
+ * program may be holding the file for a moment. Nothing but a successful read of this hub's own content is ever held.
+ */
+export type LockLook = { state: 'held' } | { state: 'gone' } | { state: 'cannot'; code: string };
+
 export interface HeldLock {
+  /** The lock file's name (never its path). */
+  readonly name: string;
+  /**
+   * Looks at the lock once, with no pause and no second try (the bay program sends the post again, and that is the second try).
+   * `read` is a replaceable read of the file, for tests only: reachable only through a hand-built call to createHub.
+   */
+  look(read?: (path: string) => string): LockLook;
   /** Removes this hub's own lock file, only if it still holds this hub's own process id and token. */
   release(): void;
+  /** True while this hub's own lock file is still there and still holds this hub's own process id and token. */
+  stillHeld(): boolean;
 }
+
+/** The tokens of the locks the hubs of THIS process hold. A lock naming this process with any other token is a leftover. */
+const heldTokens = new Set<string>();
+
+/** A lock number above this is not followed: something other than this hub made it. */
+const MAX_LOCK_NUMBER = 1_000_000_000;
 
 /** A refusal with a plain message. It names a file by its name only, never the data folder's path. */
 class LockRefused extends Error {}
@@ -83,7 +107,8 @@ export function takeLock(dir: string, say: (line: string) => void, hooks?: LockH
 
 function takeNumberedLock(dir: string, say: (line: string) => void, hooks?: LockHooks): HeldLock {
   mkdirSync(dir, { recursive: true });
-  const mine = `${process.pid} ${randomBytes(12).toString('hex')}\n`;
+  const token = randomBytes(12).toString('hex');
+  const mine = `${process.pid} ${token}\n`;
   const giveUpAt = Date.now() + 5000;
   // What the last look-again was for, so that the refusal after five seconds can say what kept coming. On Windows a file another
   // starter is deleting or linking fails with EPERM or EACCES for a moment: those are races and are looked at again.
@@ -94,7 +119,7 @@ function takeNumberedLock(dir: string, say: (line: string) => void, hooks?: Lock
       return new LockRefused(`another hub is starting on this data folder (the SIM_HUB_DATA setting), or the folder cannot hold hard links (${lastLink.code}, ${lastLink.name})`);
     }
     if (lastRead !== undefined) {
-      return new LockRefused(`${lastRead.name} cannot be read (${lastRead.code}); if no hub is running, delete it (the folder is set by SIM_HUB_DATA)`);
+      return new LockRefused(`${lastRead.name} cannot be read (${lastRead.code}); a hub may be running under that lock and another program may be holding the file; try again in a moment; delete the file only when no hub is running (the folder is set by SIM_HUB_DATA)`);
     }
     return new LockRefused('another hub is starting on this data folder (the SIM_HUB_DATA setting); try again in a moment');
   };
@@ -103,13 +128,17 @@ function takeNumberedLock(dir: string, say: (line: string) => void, hooks?: Lock
     const numbers = lockNumbers(dir);
     let target = 1;
     let replaced: number | undefined;
+    let leftoverOwn: string | undefined;
     const current = numbers[0];
     if (current !== undefined) {
       const name = `${LOCK_NAME}.${current}`;
+      if (current > MAX_LOCK_NUMBER) {
+        throw new LockRefused(`${name} has a number too large to follow; a hub may be running under that lock and must be stopped first; then delete ${name} and start again (the folder is set by SIM_HUB_DATA)`);
+      }
       let text: string;
       try {
         hooks?.beforeRead?.();
-        text = readFileSync(join(dir, name), 'utf8');
+        text = (hooks?.read ?? ((p: string): string => readFileSync(p, 'utf8')))(join(dir, name));
       } catch (e) {
         if (codeOf(e) === 'ENOENT' || codeOf(e) === 'EPERM') {
           // its hub just let go of it (on Windows a file being deleted may answer EPERM): look again from the listing
@@ -117,13 +146,19 @@ function takeNumberedLock(dir: string, say: (line: string) => void, hooks?: Lock
           pause(10);
           continue;
         }
-        throw new LockRefused(`${name} cannot be read (${codeOf(e)}); if no hub is running, delete it (the folder is set by SIM_HUB_DATA)`);
+        throw new LockRefused(`${name} cannot be read (${codeOf(e)}); a hub may be running under that lock and another program may be holding the file; try again in a moment; delete the file only when no hub is running (the folder is set by SIM_HUB_DATA)`);
       }
       const m = CONTENT.exec(text);
       if (m === null) throw new LockRefused(`${name} is not a lock this hub wrote; if no hub is running, delete it (the folder is set by SIM_HUB_DATA)`);
       const pid = Number(m[1]);
-      if (isRunning(pid)) {
-        throw new LockRefused(`another hub (process ${pid}) is already using this data folder (the SIM_HUB_DATA setting); stop it, or give this one its own folder`);
+      if (pid === process.pid && !heldTokens.has(m[2] as string)) {
+        // this very process, but no hub in it holds that token: nothing here can be the holder, so it is a leftover of an earlier run
+        leftoverOwn = name;
+      } else if (isRunning(pid)) {
+        // the id of a running process is all the lock can tell: it cannot say whether that process is a hub
+        throw new LockRefused(
+          `${name} says process ${pid} holds this data folder (the SIM_HUB_DATA setting). If ${pid} is a hub, stop it or give this hub its own folder. If the PC restarted or the hub crashed, ${pid} may be another program: stop nothing; once you are sure no hub is running on this folder, delete ${name} and start again.`,
+        );
       }
       target = current + 1;
       replaced = pid;
@@ -174,10 +209,13 @@ function takeNumberedLock(dir: string, say: (line: string) => void, hooks?: Lock
       continue;
     }
     cleanUp(dir, target);
-    if (replaced !== undefined) say(`${LOCK_NAME}: the hub that held the last lock (process ${replaced}) is gone; its lock was replaced`);
+    if (leftoverOwn !== undefined) say(`${leftoverOwn} named this very process with a token no hub here holds: a leftover of an earlier run; its lock was replaced`);
+    else if (replaced !== undefined) say(`${LOCK_NAME}: the hub that held the last lock (process ${replaced}) is gone; its lock was replaced`);
+    heldTokens.add(token);
     return {
       release() {
         // only this hub's own number, and only while it still holds this hub's id and token: another hub's lock is left alone
+        heldTokens.delete(token);
         const path = join(dir, targetName);
         try {
           if (readFileSync(path, 'utf8') !== mine) return;
@@ -185,6 +223,18 @@ function takeNumberedLock(dir: string, say: (line: string) => void, hooks?: Lock
         } catch {
           // already gone
         }
+      },
+      name: targetName,
+      look(read = (path: string): string => readFileSync(path, 'utf8')): LockLook {
+        try {
+          return read(join(dir, targetName)) === mine ? { state: 'held' } : { state: 'gone' };
+        } catch (e) {
+          const code = codeOf(e);
+          return code === 'ENOENT' ? { state: 'gone' } : { state: 'cannot', code };
+        }
+      },
+      stillHeld() {
+        return this.look().state === 'held';
       },
     };
   }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, closeSync, fstatSync, mkdirSync, openSync, readSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -143,5 +143,61 @@ test('Z18. the real command reads a small round file through the real handle', (
     const res = runScorecard(path, nodeFiles, RECORDING_DIR);
     assert.equal(res.exitCode, 0);
     assert.equal(res.stdout, 'Round 1  c\nP1 ZZTEST-A | hole 1: 4  total 4');
+  });
+});
+
+const CLOSED = 'this file handle is closed';
+
+test('Z19. a closed handle never acts on another file, whether or not the system reused its descriptor number', () => {
+  for (const second of ['plain openSync', 'second nodeFiles.open'] as const) {
+    inTempDir((dir) => {
+      const one = join(dir, 'one.dat');
+      const two = join(dir, 'two.dat');
+      writeFileSync(one, pattern(30));
+      writeFileSync(two, pattern(77).map((b) => b ^ 0x5a));
+      const twoBytes = pattern(77).map((b) => b ^ 0x5a);
+      const old = nodeFiles.open(one);
+      old.close();
+      // file two is opened after file one was closed: the system may hand it the same descriptor number
+      const fd = second === 'plain openSync' ? openSync(two, 'r') : -1;
+      const other = second === 'plain openSync' ? undefined : nodeFiles.open(two);
+      try {
+        assert.throws(() => old.read(10), { message: CLOSED }, `${second}: read`);
+        assert.throws(() => old.size(), { message: CLOSED }, `${second}: size`);
+        assert.doesNotThrow(() => old.close(), `${second}: a second close does nothing`);
+        assert.doesNotThrow(() => old.close(), `${second}: and again`);
+        // file two is still open and is read as itself
+        if (other === undefined) {
+          assert.equal(fstatSync(fd).size, 77);
+          const buf = Buffer.alloc(77);
+          assert.equal(readSync(fd, buf, 0, 77, 0), 77);
+          assert.ok(buf.equals(twoBytes), `${second}: file two's own bytes`);
+        } else {
+          assert.equal(other.size(), 77);
+          assert.ok(Buffer.from(other.read(1000)).equals(twoBytes), `${second}: file two's own bytes`);
+        }
+      } finally {
+        if (other === undefined) closeSync(fd);
+        else other.close();
+      }
+    });
+  }
+});
+
+test('Z20. close() really releases the descriptor: the next open is given the number the closed one had', () => {
+  inTempDir((dir) => {
+    const one = join(dir, 'one.dat');
+    writeFileSync(one, pattern(5));
+    // the number the system hands out next, with nothing of ours left open
+    const probe = openSync(one, 'r');
+    closeSync(probe);
+    const f = nodeFiles.open(one);
+    f.close();
+    const after = openSync(one, 'r');
+    try {
+      assert.equal(after, probe, 'a handle that was closed holds no descriptor');
+    } finally {
+      closeSync(after);
+    }
   });
 });
