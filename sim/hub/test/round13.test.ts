@@ -158,8 +158,11 @@ test('A6. through createHub(...).listen(): the swap made between two pieces of t
       },
     };
     const hub = createHub({ dataDir: l.dir, port: 0, log: () => undefined, warn: (s) => lines.push(s), journal: { pieceBytes: 64, io } });
-    await assert.rejects(hub.listen(), (e: Error) => REFUSED.test(e.message));
-    await hub.close();
+    try {
+      await assert.rejects(hub.listen(), (e: Error) => REFUSED.test(e.message));
+    } finally {
+      await hub.close(); // a start that wrongly succeeds must not leave a hub open
+    }
     assert.equal(readFileSync(l.path, 'utf8'), l.y);
     assert.equal(readFileSync(l.moved, 'utf8'), l.x);
     assert.deepEqual(lockFiles(l.dir), [], 'no lock file is left');
@@ -433,6 +436,64 @@ test('C4b. T14, T2, T1, U13: a lower-case code, an empty code and a number print
     assert.equal(line.length, 1, `${JSON.stringify(code)}: ${said.join(' ')}`);
     assert.ok(line[0]!.includes(`${expected}:`), `${JSON.stringify(code)} should print ${expected}: ${line[0]}`);
   }
+});
+
+test('A10. the repair and the writes go through the one descriptor the start opened (seen through the io seams): the cut is an ftruncate on it, the newline a write on it, a later append a write on it', { timeout: 60000 }, async () => {
+  for (const kind of ['cut', 'nonewline'] as const) {
+    const l = layout(kind);
+    let heldFd = -1;
+    const truncates: Array<[number, number]> = [];
+    const writes: Array<[number, number, number]> = [];
+    const io: Partial<JournalIO> = {
+      openReadWrite: (path: string): number => {
+        heldFd = openSync(path, constants.O_RDWR | constants.O_CREAT);
+        return heldFd;
+      },
+      truncate: (fd: number, length: number): void => {
+        truncates.push([fd, length]);
+        ftruncateSync(fd, length);
+      },
+      write: (fd: number, buf: Buffer, off: number, len: number, position: number): number => {
+        writes.push([fd, len, position]);
+        return writeSync(fd, buf, off, len, position);
+      },
+    };
+    const j = await Journal.open(l.dir, () => undefined, () => undefined, { io });
+    try {
+      if (kind === 'cut') {
+        assert.deepEqual(truncates, [[heldFd, Buffer.byteLength(lineOf([REC(0)]) + lineOf([REC(4)]))]], 'the cut is made on the held descriptor');
+        assert.deepEqual(writes, []);
+      } else {
+        assert.deepEqual(truncates, []);
+        assert.deepEqual(writes, [[heldFd, 1, Buffer.byteLength(l.x)]], 'the newline is one positional write on the held descriptor');
+      }
+      const before = writes.length;
+      j.commit(j.line([REC(7)]), () => ({ state: 'ok' }));
+      assert.equal(writes.length, before + 1);
+      assert.equal(writes[before]![0], heldFd, 'a later append uses the descriptor the start opened');
+    } finally {
+      j.close();
+    }
+  }
+});
+
+test('C4c. T1 on the rebuild line: a read-back that fails with a number as its code prints error', { timeout: 120000 }, async () => {
+  const state = { arm: false };
+  const said: string[] = [];
+  const io = failingIO(state, {
+    openRead: (path: string): number => {
+      if (state.arm) throw coded(5);
+      return openSync(path, 'r');
+    },
+  });
+  await withHub(tempDir(), { journal: { io }, warn: (l) => said.push(l) }, async (url) => {
+    assert.equal((await post(url, [REC(0)])).status, 200);
+    state.arm = true;
+    assert.equal((await post(url, [REC(1)])).status, 500);
+    state.arm = false;
+  });
+  assert.equal(said.length, 1, said.join(' | '));
+  assert.ok(said[0]!.includes('back (error):'), said[0]);
 });
 
 export type { HubOptions };
