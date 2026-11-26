@@ -124,7 +124,7 @@ export function createHub(options: HubOptions): Hub {
   let starting = false;
   const maxLine = options.journal?.maxLineBytes ?? MAX_LINE_BYTES;
   let activePosts = 0;
-  // Everything that changes the book runs one at a time, in arrival order.
+  // Everything that changes the book runs one at a time, in the order the bodies finish arriving (a post queues once its whole body is in).
   let chain: Promise<unknown> = Promise.resolve();
 
   function send(res: ServerResponse, status: number, body: unknown, extra: Record<string, string> = {}): void {
@@ -283,16 +283,18 @@ export function createHub(options: HubOptions): Hub {
   }
 
   /** Rebuilds the book and the table from the file; if that cannot be done the hub has no book it can stand behind. */
-  function tryRebuild(): void {
+  function tryRebuild(): boolean {
     try {
       rebuild();
+      return true;
     } catch (e) {
       unavailable = true;
       rebuildFailed = true;
       // a failed rebuild needs a restart, and the console must say so (unless the lost line, which also says so, was printed)
       if (!lostNoticeGiven) {
-        warn(`this hub could not read its journal ${JOURNAL_NAME} back (${plainCode((e as NodeJS.ErrnoException | undefined)?.code)}): it takes no more shots until it is restarted; this hub has removed nothing it answered 200 for; stop this hub and start it again`);
+        warn(`this hub could not read its journal ${JOURNAL_NAME} back (${plainCode((e as NodeJS.ErrnoException | undefined)?.code)}): it takes no more shots until it is restarted; this hub has removed nothing it answered 200 for; stop this hub and start it again, and read what the start prints`);
       }
+      return false;
     }
   }
 
@@ -368,8 +370,13 @@ export function createHub(options: HubOptions): Hub {
           // 503 means this post wrote nothing; 500 means a line was written and then found lost or failed
           return { status: 503, body: { error: 'journal_unavailable' } };
         }
-        if ((journal as Journal).unavailable) unavailable = true;
-        tryRebuild();
+        const undoFailed = (journal as Journal).unavailable;
+        if (undoFailed) unavailable = true;
+        const rebuilt = tryRebuild();
+        // a write that failed and could not be cut back: the console says so, once, unless a line that says the same or more was printed
+        if (undoFailed && rebuilt && !lostNoticeGiven) {
+          warn(`this hub could not undo a failed write to its journal ${JOURNAL_NAME} (${plainCode((e as NodeJS.ErrnoException | undefined)?.code)}): it takes no more shots until it is restarted; this hub has removed nothing it answered 200 for; stop this hub and start it again, and read what the start prints`);
+        }
         throw e;
       }
       noteOk();

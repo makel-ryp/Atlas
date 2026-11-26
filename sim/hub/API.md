@@ -31,7 +31,7 @@ that is too large) gets Node's own plain answer, which is not JSON.
 Sends a batch of shot records, exactly as GSPro writes them in `currentRound.dat`. A sender may post
 whole copies of the file or only the new records: records already held come back as `unchanged`, and
 the journal grows only by what changed. Send copies in the order they were taken: for one shot, the
-last version received wins.
+last version received wins. "Received" means the order the bodies finish arriving, so keep one post in flight for one round file (see the limits below).
 
 Request: `Content-Type: application/json`, body `{ "records": [ ... ] }`, at most 32 MB.
 
@@ -48,7 +48,7 @@ Request: `Content-Type: application/json`, body `{ "records": [ ... ] }`, at mos
 | 415 | `{ "error": "unsupported_media_type" }` | The `Content-Type` is not `application/json` |
 | 500 | `{ "error": "internal" }` | Anything unexpected, including a journal write that failed (the file is cut back to its last good length and the scores are as before the post; the hub carries on if it can read the journal back, and if it cannot it prints one line and takes no more posts until it is restarted), or a line that was written and then could not be confirmed because the hub could not read its own lock or look at its journal (the line stays in the journal, the scores are rebuilt from it, the hub is not lost, and the same post sent again adds and revises nothing: its records come back `unchanged`, and any `conflicts` the post itself holds are counted again). The cause is not given |
 | 503 | `{ "error": "busy" }` with `Retry-After: 1` | Four posts are already being read or waiting for their turn, or the hub has only just started and is still reading its journal (every request, on every address, gets this until it is done), or the hub could not read its own lock file or look at its journal just now (another program may be holding the file for a moment): nothing was written, the hub is not lost, and it looks again at the next post. Send it again after a second |
-| 503 | `{ "error": "journal_unavailable" }` | A journal write failed and the file could not be cut back, or a journal write failed and the hub then could not read the journal back (it prints one line saying so; a restart is needed), or the hub found its folder, journal or lock gone (removed, or replaced by another file or another hub's lock). The hub takes no more posts until it is restarted. `GET /v0/rounds` shows what the journal's path holds; if the hub could not read that journal back at all, `GET /v0/rounds` answers this too, and `/healthz` still answers 200 |
+| 503 | `{ "error": "journal_unavailable" }` | A journal write failed and the file could not be cut back (the hub prints one line saying so; a restart is needed), or a journal write failed and the hub then could not read the journal back (it prints one line saying so; a restart is needed), or the hub found its folder, journal or lock gone (removed, or replaced by another file or another hub's lock). The hub takes no more posts until it is restarted. `GET /v0/rounds` shows what the journal's path holds; if the hub could not read that journal back at all, `GET /v0/rounds` answers this too, and `/healthz` still answers 200 |
 
 `added` counts new shots, `revised` shots re-sent with different content, `unchanged` exact
 repeats, `conflicts` records the library refused to apply (a shot that would change owner or
@@ -95,7 +95,7 @@ Example: `GET /v0/rounds` gives `200 { "rounds": [ { "roundId": 19, "courseKey":
   cuts the connection if the body has not ended by then. Every answer given before the body is read (403, 404, 405, 413, 415 and the two 503s) is handled the same way.
 - At most four posts are read or waiting at once; a fifth gets `503 busy`.
 - The library's own limits apply to every record (text length, integer range, nesting depth).
-- Anything that changes the scores is handled one request at a time, in arrival order.
+- Anything that changes the scores is handled one request at a time, in the order the bodies finish arriving: a post takes its place when its whole body has been received, not when it begins, so that one slow or stalled sender (a body may take up to 30 seconds) never holds up another sender's post. A sender must keep one post in flight for one round file: wait for the answer, or for the failure, of one post before sending the next. Two overlapping posts that hold the same shot are applied in the order they finished arriving, and the one that finished last is the one kept, whichever began first. A caller that breaks this rule gets the following: if two posts for one round file overlap and a shot's record differs between them, the copy whose post finished last is kept even when it is the older one; the hub cannot tell which is newer, because a GSPro shot record carries no version, revision or save time; and the score stays as that copy says until the shot is sent again.
 - What it keeps: a journal file (`journal.jsonl`) in the data folder, one line per accepted batch.
   A record is left out of the line only when its `ShotID` appears once in the batch and the hub
   knows the scores already hold exactly that record (the library would count it `unchanged`). If
