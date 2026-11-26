@@ -78,12 +78,14 @@ shot twice, and in the ordinary case the hub still ends on the right scores (a t
 feeds the recorded round to two copies and the hub ends on the right scores); that does not show that
 two copies are safe in every case. Two copies started without `SIM_COLLECTOR_DATA` share one data
 folder, which is the easiest way to run two by mistake. The hub still ends on the right scores, but
-the copies write over each other's record of what was sent, and at the next start every shot of the
-round is sent again. So run one copy per bay PC, and if a second window was started by mistake, close
-it. A data folder that was moved aside and still holds shots not yet sent must not be started again
-after the round it belongs to has been played on: its waiting shots are older copies and would be put
-over newer ones. Keep such a folder: its unsent shots should be sent only while the round they belong
-to is still the one in GSPro's file; after that, leave them unsent.
+both copies write every shot into the one outbox, and the record of what was sent is whichever copy wrote it last; so at the next start shots
+already sent can be sent again, up to every shot of the round (the hub answers `unchanged` for them).
+While both run, each may show `disk=error` for a moment. So run one copy per bay PC, and if a second
+window was started by mistake, close it. A data folder that was moved aside and still holds shots not
+yet sent must not be started again after the round it belongs to has been played on: its waiting shots
+are older copies and would be put over newer ones. Keep such a folder, and do not start the program on
+it again; the program cannot tell which round its waiting shots belong to, so there is no safe way yet
+to send them.
 
 ## Limits
 

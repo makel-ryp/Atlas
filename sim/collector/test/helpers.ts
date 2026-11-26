@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { createHub, type Hub } from '../../hub/src/server.js';
 import { loadRecording, type Copy } from '../../core/src/index.js';
-import { createCollector, defaultPost, type Collector, type CollectorOptions, type PostResult } from '../src/collector.js';
+import { createCollector, defaultPost, type Collector, type CollectorOptions, type PostFn, type PostResult } from '../src/collector.js';
 import type { Files } from '../src/files.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -44,6 +44,35 @@ export async function closeAll(): Promise<void> {
     await new Promise<void>((r) => s.close(() => r()));
   }
   standIns.length = 0;
+  // Every test that posts through a counted post fails here, with the message, when two posts were ever unanswered at once.
+  if (overlapLog.length > 0) {
+    const first = overlapLog[0]!;
+    const n = overlapLog.length;
+    overlapLog.length = 0;
+    throw new Error(`${first} (${n} time${n === 1 ? '' : 's'} in this test)`);
+  }
+}
+
+export const OVERLAP_MESSAGE = 'OVERLAP: a second post was sent while one was still unanswered';
+/** Filled by counted posts; read (and emptied) by closeAll(). A throw inside the post would be swallowed by the program as a failed post, so the failure is raised when the test ends. */
+export const overlapLog: string[] = [];
+
+/**
+ * Wraps a post so that it counts the calls started and not yet ended. The moment a call starts while another is
+ * unanswered, it records OVERLAP_MESSAGE (closeAll() then fails the test with it). The call itself still goes through,
+ * so a test's own assertions see what they always saw. `allowOverlap` is for a test that needs two on purpose.
+ */
+export function counted(inner: PostFn, allowOverlap = false): PostFn {
+  let inflight = 0;
+  return async (url, body) => {
+    if (!allowOverlap && inflight >= 1) overlapLog.push(OVERLAP_MESSAGE);
+    inflight++;
+    try {
+      return await inner(url, body);
+    } finally {
+      inflight--;
+    }
+  };
 }
 
 export async function rounds(url: string): Promise<any> {
@@ -84,7 +113,8 @@ export interface Rig {
   lastWritten: string | undefined;
   write: (text: string) => void;
   writeCopy: (n: number) => void;
-  make: (extra?: Partial<CollectorOptions>) => Collector;
+  /** A post handed in through `extra.post` is counted too. `allowOverlap: true` switches the counter off for that program. */
+  make: (extra?: Partial<CollectorOptions> & { allowOverlap?: boolean }) => Collector;
   hubUrl: string;
 }
 export const rigs: Rig[] = [];
@@ -110,23 +140,25 @@ export function rig(hubUrl: string, strict = true): Rig {
       r.write(JSON.stringify(copies[n - 1]!.records));
     },
     make(extra = {}) {
+      const { allowOverlap, ...options } = extra;
+      const own: PostFn = async (url, body) => {
+        const out = await defaultPost(url, body);
+        const size = (JSON.parse(body).records as unknown[]).length;
+        r.posted.push(size);
+        r.answers.push(out);
+        if (strict && out.status === 200) {
+          const c = out.body as Record<string, number>;
+          assert.equal(c.added + c.revised + c.unchanged + c.conflicts, size, 'the four counts add up to the batch');
+        }
+        return out;
+      };
       return createCollector({
         gsproFile: r.gspro,
         dataDir: r.data,
         hubUrl: r.hubUrl,
         now: r.now,
-        post: async (url, body) => {
-          const out = await defaultPost(url, body);
-          const size = (JSON.parse(body).records as unknown[]).length;
-          r.posted.push(size);
-          r.answers.push(out);
-          if (strict && out.status === 200) {
-            const c = out.body as Record<string, number>;
-            assert.equal(c.added + c.revised + c.unchanged + c.conflicts, size, 'the four counts add up to the batch');
-          }
-          return out;
-        },
-        ...extra,
+        ...options,
+        post: counted(options.post ?? own, allowOverlap === true),
       });
     },
   };
@@ -209,7 +241,7 @@ export function synth(n: number, prefix = 'PH'): any[] {
 
 // ---- round 3: one post in flight ----
 
-import type { PostFn, Timer } from '../src/collector.js';
+import type { Timer } from '../src/collector.js';
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
