@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { after } from 'node:test';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -37,21 +38,50 @@ export async function startHub(dir: string, port = 0): Promise<{ hub: Hub; url: 
 }
 
 export async function closeAll(): Promise<void> {
-  for (const h of hubs) await h.close();
+  let closeError: unknown;
+  for (const h of hubs) {
+    try {
+      await h.close();
+    } catch (e) {
+      closeError ??= e;
+    }
+  }
   hubs.length = 0;
   for (const s of standIns) {
-    s.closeAllConnections();
-    await new Promise<void>((r) => s.close(() => r()));
+    try {
+      s.closeAllConnections();
+      await new Promise<void>((r) => s.close(() => r()));
+    } catch (e) {
+      closeError ??= e;
+    }
   }
   standIns.length = 0;
-  // Every test that posts through a counted post fails here, with the message, when two posts were ever unanswered at once.
-  if (overlapLog.length > 0) {
-    const first = overlapLog[0]!;
-    const n = overlapLog.length;
-    overlapLog.length = 0;
-    throw new Error(`${first} (${n} time${n === 1 ? '' : 's'} in this test)`);
-  }
+  // A recorded overlap is reported for the test it happened in, even when closing a stand-in failed.
+  reportOverlaps(closeError);
+  if (closeError !== undefined) throw closeError;
 }
+
+/**
+ * Fails with the message when two posts were ever unanswered at once since the last report, and empties the record.
+ * closeAll() calls it after every test; a file's `after` hook calls settleAndReport() for what happens after its last test.
+ */
+export function reportOverlaps(alsoFailed?: unknown): void {
+  if (overlapLog.length === 0) return;
+  const first = overlapLog[0]!;
+  const n = overlapLog.length;
+  overlapLog.length = 0;
+  const also = alsoFailed === undefined ? '' : ` (closing a stand-in also failed: ${alsoFailed instanceof Error ? alsoFailed.message : String(alsoFailed)})`;
+  throw new Error(`${first} (${n} time${n === 1 ? '' : 's'} in this test)${also}`);
+}
+
+/** For a file's `after` hook: a program left running may start a second post after the last test ended; wait a moment, then report. */
+export async function settleAndReport(): Promise<void> {
+  await sleep(50);
+  reportOverlaps();
+}
+
+// Every test file that imports these helpers gets this hook: an overlap after its last test is reported too.
+after(settleAndReport);
 
 export const OVERLAP_MESSAGE = 'OVERLAP: a second post was sent while one was still unanswered';
 /** Filled by counted posts; read (and emptied) by closeAll(). A throw inside the post would be swallowed by the program as a failed post, so the failure is raised when the test ends. */

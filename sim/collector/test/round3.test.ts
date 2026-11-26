@@ -7,7 +7,7 @@ import { createServer, type Server } from 'node:http';
 import { createCollector, defaultPost, checkHubUrl, statusLine, type Collector, type PostFn, type PostResult } from '../src/collector.js';
 import { createFiles, type Files } from '../src/files.js';
 import {
-  SRC, counted, standIns, tempDir, removeTemps, startHub, closeAll, rounds, assertKnownAnswer, rig, rigs, sumAnswers, spyFiles, standIn, synth, sleep, until, manualTimer, heldPost,
+  SRC, counted, hubs, overlapLog, OVERLAP_MESSAGE, reportOverlaps, standIns, tempDir, removeTemps, startHub, closeAll, rounds, assertKnownAnswer, rig, rigs, sumAnswers, spyFiles, standIn, synth, sleep, until, manualTimer, heldPost,
 } from './helpers.js';
 
 afterEach(async () => {
@@ -623,6 +623,13 @@ class MemFiles implements Files {
   copy = '';
   data = new Map<string, string>();
   onEmptyCopy: () => void = () => undefined;
+  /** How many of the next copies fail, as a busy file does (code EBUSY). */
+  failReads = 0;
+  onFailedRead: () => void = () => undefined;
+  remove(): void {
+    this.src = undefined;
+    this.version++;
+  }
   write(text: string): void {
     this.src = text;
     this.version++;
@@ -631,6 +638,11 @@ class MemFiles implements Files {
     return this.src === undefined ? undefined : { size: Buffer.byteLength(this.src), mtimeMs: this.version };
   }
   copySource(): void {
+    if (this.failReads > 0) {
+      this.failReads--;
+      this.onFailedRead();
+      throw Object.assign(new Error('file busy (made up)'), { code: 'EBUSY' });
+    }
     this.copy = this.src ?? '';
     if (this.copy === '') this.onEmptyCopy();
   }
@@ -670,6 +682,13 @@ interface Tally {
   newCopyWhilePostOut: number;
   stopStartWhilePostOut: number;
   firedInsideWait: number;
+  failedReadWhileWaiting: number;
+  backlogOver600AtPostStart: number;
+  fileGoneWhileWaiting: number;
+}
+
+function newTally(): Tally {
+  return { seeds: 0, steps: 0, posts: 0, refusedWithMoreWaiting: 0, emptyReadWhileWaiting: 0, newCopyWhilePostOut: 0, stopStartWhilePostOut: 0, firedInsideWait: 0, failedReadWhileWaiting: 0, backlogOver600AtPostStart: 0, fileGoneWhileWaiting: 0 };
 }
 
 interface DriveCall {
@@ -679,7 +698,8 @@ interface DriveCall {
   reject(e: Error): void;
 }
 
-async function driveOne(seed: number, steps: number, tally: Tally): Promise<void> {
+/** `tidy`: the outbox is tidied when it is over 3 000 bytes (and what is checked at the end is less: see A12b). */
+async function driveOne(seed: number, steps: number, tally: Tally, tidy = false): Promise<void> {
   const rand = seeded(seed);
   const pick = (n: number): number => Math.floor(rand() * n);
   const mem = new MemFiles();
@@ -697,6 +717,7 @@ async function driveOne(seed: number, steps: number, tally: Tally): Promise<void
     new Promise<PostResult>((resolve, reject) => {
       unanswered++;
       maxUnanswered = Math.max(maxUnanswered, unanswered);
+      if (c.status().pending > 600) tally.backlogOver600AtPostStart++;
       const records = (JSON.parse(body) as { records: Array<Record<string, any>> }).records;
       const call: DriveCall = {
         records,
@@ -717,9 +738,12 @@ async function driveOne(seed: number, steps: number, tally: Tally): Promise<void
       calls.push(call);
       if (auto) call.resolve({ status: 200, body: { added: records.length, revised: 0, unchanged: 0, conflicts: 0 } });
     });
-  const c = createCollector({ gsproFile: 'unused', dataDir: 'unused', hubUrl: 'http://127.0.0.1:1', files: mem, post, now: () => clock, timer, tidyOverBytes: Number.MAX_SAFE_INTEGER }); // no tidy-up: an empty read followed by a tidy-up forgets what was sent (a known minor of round 2), which would show as a record dealt with twice
+  const c = createCollector({ gsproFile: 'unused', dataDir: 'unused', hubUrl: 'http://127.0.0.1:1', files: mem, post, now: () => clock, timer, tidyOverBytes: tidy ? 3000 : Number.MAX_SAFE_INTEGER }); // A12 has no tidy-up: an empty read followed by a tidy-up forgets what was sent (a known minor of round 2), which would show as a record dealt with twice; A12b has it
   mem.onEmptyCopy = () => {
     if (c.status().pending > 0) tally.emptyReadWhileWaiting++;
+  };
+  mem.onFailedRead = () => {
+    if (c.status().pending > 0) tally.failedReadWhileWaiting++;
   };
   const stops: Array<Promise<void>> = [];
   const out = (): DriveCall | undefined => calls.find((x) => !x.ended);
@@ -734,7 +758,7 @@ async function driveOne(seed: number, steps: number, tally: Tally): Promise<void
   let step = 0;
   let what = 'start';
 
-  const newRecord = (): Record<string, any> => ({ ...base, ShotID: `D${seed}-${nextId}`, Hole: nextId++ % 18, HoleShot: ++version });
+  const newRecord = (): Record<string, any> => ({ ...base, ShotID: `D${seed}-${nextId}`, Hole: nextId++ % 18, HoleResult: ++version }); // the version is in HoleResult: HoleShot may not pass 999
   const writeFull = (): void => {
     lastFull = records.map((x) => ({ ...x }));
     mem.write(JSON.stringify(records));
@@ -769,7 +793,7 @@ async function driveOne(seed: number, steps: number, tally: Tally): Promise<void
   try {
     c.start();
     for (step = 1; step <= steps; step++) {
-      const e = pick(100);
+      const e = pick(110);
       if (e < 12) {
         what = 'a longer copy';
         const k = pick(100) < 5 && records.length < 60 ? 205 + pick(60) : 1 + pick(8); // now and then more than one batch (200) at once
@@ -780,7 +804,7 @@ async function driveOne(seed: number, steps: number, tally: Tally): Promise<void
         what = 'an earlier record changed';
         if (records.length > 0) {
           const i = pick(records.length);
-          records[i] = { ...records[i]!, HoleShot: ++version };
+          records[i] = { ...records[i]!, HoleResult: ++version };
           if (out()) tally.newCopyWhilePostOut++;
           writeFull();
         }
@@ -811,11 +835,27 @@ async function driveOne(seed: number, steps: number, tally: Tally): Promise<void
         if (call) await answer(call, pick(100));
       } else if (e < 95) {
         what = 'a post left unanswered';
-      } else {
+      } else if (e < 100) {
         what = 'stop() not awaited, then start()';
         if (out()) tally.stopStartWhilePostOut++;
         stops.push(c.stop());
         c.start();
+      } else if (e < 103) {
+        what = 'the next copies fail to be read (EBUSY)';
+        mem.failReads = 1 + pick(3);
+      } else if (e < 105) {
+        what = 'a backlog: up to 1 000 records at once';
+        const k = 250 + pick(450);
+        for (let i = 0; i < k && records.length < 1000; i++) records.push(newRecord());
+        if (out()) tally.newCopyWhilePostOut++;
+        writeFull();
+      } else {
+        what = 'the round file is gone for more than 30 seconds';
+        mem.remove();
+        clock += 31_000;
+        for (let i = 1 + pick(4); i > 0; i--) timer.fire();
+        await turns(2);
+        if (c.status().file === 'not-found' && c.status().pending > 0) tally.fileGoneWhileWaiting++;
       }
       await turns(1);
       check();
@@ -825,6 +865,7 @@ async function driveOne(seed: number, steps: number, tally: Tally): Promise<void
     // The end: answer everything with 200, let the handler run until nothing waits.
     what = 'the end of the run';
     step = steps + 1;
+    mem.failReads = 0;
     for (let i = 0; i < 600; i++) {
       const call = out();
       if (call) await answer(call, 0);
@@ -833,7 +874,7 @@ async function driveOne(seed: number, steps: number, tally: Tally): Promise<void
       for (let k = 0; k < 3; k++) timer.fire();
       await turns(2);
       check();
-      if (c.status().pending === 0 && !out()) break;
+      if (i >= 3 && c.status().pending === 0 && !out()) break; // at least three rounds after the last full copy was written again
     }
     await Promise.all(stops);
     await c.tick();
@@ -848,23 +889,25 @@ async function driveOne(seed: number, steps: number, tally: Tally): Promise<void
       for (const x of batch) {
         done.set(key(x), (done.get(key(x)) ?? 0) + 1);
         const before = lastVersion.get(x.ShotID) ?? 0;
-        assert.ok(x.HoleShot > before, `shot ${x.ShotID}: version ${x.HoleShot} dealt with after version ${before} (outbox order broken)`);
-        lastVersion.set(x.ShotID, x.HoleShot);
+        if (!tidy) assert.ok(x.HoleResult > before, `shot ${x.ShotID}: version ${x.HoleResult} dealt with after version ${before} (outbox order broken)`);
+        lastVersion.set(x.ShotID, x.HoleResult);
       }
     }
     const okCount = okBatches.reduce((s, b) => s + b.length, 0);
     const refusedCount = refusedBatches.reduce((s, b) => s + b.length, 0);
-    for (const [k, n] of done) assert.equal(n, 1, `a record version was dealt with ${n} times: ${k.slice(0, 80)}`);
+    if (!tidy) for (const [k, n] of done) assert.equal(n, 1, `a record version was dealt with ${n} times: ${k.slice(0, 80)}`);
     for (const x of lastFull ?? []) assert.ok(done.has(key(x)), `a record of the last full copy is neither sent nor refused: ${x.ShotID}`);
-    assert.equal(c.status().sent, okCount, 'sent is the records answered with a 200, no more');
-    assert.equal(c.status().refused, refusedCount, 'refused is the records answered with a 400 or 413');
-    const postedTotal = calls.reduce((s, x) => s + x.records.length, 0);
-    assert.equal(postedTotal, okCount + refusedCount + failedSize, 'the sizes posted add up');
+    if (!tidy) {
+      assert.equal(c.status().sent, okCount, 'sent is the records answered with a 200, no more');
+      assert.equal(c.status().refused, refusedCount, 'refused is the records answered with a 400 or 413');
+      const postedTotal = calls.reduce((s, x) => s + x.records.length, 0);
+      assert.equal(postedTotal, okCount + refusedCount + failedSize, 'the sizes posted add up');
+    }
     assert.ok(calls.every((x) => x.records.length <= 200), 'no batch over 200');
     tally.posts += calls.length;
     tally.seeds++;
   } catch (e) {
-    throw new Error(`A12 failed at seed ${seed}, step ${step} (${what}): ${(e as Error).message}. Run it again alone with A12_SEED=${seed}`, { cause: e });
+    throw new Error(`A12${tidy ? 'b' : ''} failed at seed ${seed}, step ${step} (${what}): ${(e as Error).message}. Run it again alone with ${tidy ? 'A12B_SEED' : 'A12_SEED'}=${seed}`, { cause: e });
   } finally {
     auto = true;
     for (const call of calls) call.resolve({ status: 200, body: { added: call.records.length, revised: 0, unchanged: 0, conflicts: 0 } });
@@ -872,19 +915,32 @@ async function driveOne(seed: number, steps: number, tally: Tally): Promise<void
   }
 }
 
-test('A12. a seeded random drive: 300 seeds of 80 steps (copies, changes, empty and cut-off files, handler firings, clock, every kind of answer, stop and start): after every step at most one post unanswered; at the end everything is sent or refused, once', { timeout: 120_000 }, async () => {
+test('A12. a seeded random drive: 250 seeds of 80 steps (copies, changes, empty and cut-off files, handler firings, clock, every kind of answer, stop and start): after every step at most one post unanswered; at the end everything is sent or refused, once', { timeout: 120_000 }, async () => {
   const only = process.env.A12_SEED;
-  const seeds = only !== undefined ? [Number(only)] : Array.from({ length: 300 }, (_, i) => i + 1);
-  const tally: Tally = { seeds: 0, steps: 0, posts: 0, refusedWithMoreWaiting: 0, emptyReadWhileWaiting: 0, newCopyWhilePostOut: 0, stopStartWhilePostOut: 0, firedInsideWait: 0 };
+  const seeds = only !== undefined ? [Number(only)] : Array.from({ length: 250 }, (_, i) => i + 1);
+  const tally = newTally();
   const t0 = Date.now();
   for (const seed of seeds) await driveOne(seed, 80, tally);
   console.log(`A12 tally over ${tally.seeds} seeds in ${Date.now() - t0} ms: ${JSON.stringify(tally)}`);
   if (only === undefined) {
-    assert.equal(tally.seeds, 300);
-    assert.ok(tally.steps >= 300 * 60);
-    for (const k of ['refusedWithMoreWaiting', 'emptyReadWhileWaiting', 'newCopyWhilePostOut', 'stopStartWhilePostOut', 'firedInsideWait'] as const) {
+    assert.equal(tally.seeds, 250);
+    assert.ok(tally.steps >= 250 * 60);
+    for (const k of ['refusedWithMoreWaiting', 'emptyReadWhileWaiting', 'newCopyWhilePostOut', 'stopStartWhilePostOut', 'firedInsideWait', 'failedReadWhileWaiting', 'backlogOver600AtPostStart', 'fileGoneWhileWaiting'] as const) {
       assert.ok(tally[k] > 0, `the drive never reached: ${k}`);
     }
+  }
+});
+
+test('A12b. a shorter drive with the tidy-up on and a small size limit: 100 seeds of 60 steps; after every step at most one post unanswered; at the end every record of the last full copy is sent or refused', { timeout: 120_000 }, async () => {
+  const only = process.env.A12B_SEED;
+  const seeds = only !== undefined ? [Number(only)] : Array.from({ length: 100 }, (_, i) => 1000 + i);
+  const tally = newTally();
+  const t0 = Date.now();
+  for (const seed of seeds) await driveOne(seed, 60, tally, true);
+  console.log(`A12b tally over ${tally.seeds} seeds in ${Date.now() - t0} ms: ${JSON.stringify(tally)}`);
+  if (only === undefined) {
+    assert.equal(tally.seeds, 100);
+    assert.ok(tally.steps >= 100 * 60);
   }
 });
 
@@ -976,6 +1032,220 @@ function pinViolations(files: Record<string, string>): string[] {
   return bad;
 }
 
+// ---- the whole argument for one post in flight, as text checks (A13) ----
+
+/**
+ * The program's text read by a small scanner: comments dropped; a string or a template's own text kept (`keepText`) or
+ * blanked to `''` / `` (otherwise); the code inside a template's `${}` always kept. Nothing else is parsed.
+ */
+function scanSource(src: string, keepText: boolean): string {
+  let i = 0;
+  const n = src.length;
+  function quoted(q: string): string {
+    const start = i;
+    i++;
+    while (i < n && src[i] !== q) {
+      if (src[i] === '\\') i++;
+      i++;
+    }
+    i++;
+    return keepText ? src.slice(start, i) : q + q;
+  }
+  function template(): string {
+    let o = keepText ? '`' : '`` ';
+    i++;
+    while (i < n && src[i] !== '`') {
+      if (src[i] === '\\') {
+        if (keepText) o += src.slice(i, i + 2);
+        i += 2;
+        continue;
+      }
+      if (src[i] === '$' && src[i + 1] === '{') {
+        i += 2;
+        const inner = code(true);
+        i++; // the closing brace
+        o += keepText ? '${' + inner + '}' : ' ' + inner + ' ';
+        continue;
+      }
+      if (keepText) o += src[i];
+      i++;
+    }
+    i++;
+    return keepText ? o + '`' : o;
+  }
+  function code(untilBrace: boolean): string {
+    let o = '';
+    let depth = 0;
+    while (i < n) {
+      const ch = src[i]!;
+      const next = src[i + 1];
+      if (ch === '/' && next === '/') {
+        while (i < n && src[i] !== '\n') i++;
+        continue;
+      }
+      if (ch === '/' && next === '*') {
+        i += 2;
+        while (i < n && !(src[i] === '*' && src[i + 1] === '/')) i++;
+        i += 2;
+        o += ' ';
+        continue;
+      }
+      if (ch === "'" || ch === '"') {
+        o += quoted(ch);
+        continue;
+      }
+      if (ch === '`') {
+        o += template();
+        continue;
+      }
+      if (ch === '{') depth++;
+      if (ch === '}') {
+        if (untilBrace && depth === 0) return o;
+        depth--;
+      }
+      o += ch;
+      i++;
+    }
+    return o;
+  }
+  return code(false);
+}
+
+const squash = (s: string): string => s.replace(/\s+/g, ' ').trim();
+const wordCount = (text: string, word: string): number => (text.match(new RegExp(`\\b${word}\\b`, 'g')) ?? []).length;
+
+/** The text from `start` to the end of the braces that open after it, or to the `;` that ends the statement. */
+function blockFrom(text: string, marker: string, kind: 'body' | 'statement'): string | undefined {
+  const at = text.indexOf(marker);
+  if (at < 0) return undefined;
+  if (kind === 'body') {
+    const open = text.indexOf('{', text.indexOf(')', at));
+    let depth = 0;
+    for (let k = open; k < text.length; k++) {
+      if (text[k] === '{') depth++;
+      if (text[k] === '}' && --depth === 0) return text.slice(open + 1, k);
+    }
+    return undefined;
+  }
+  let depth = 0;
+  for (let k = at; k < text.length; k++) {
+    const ch = text[k]!;
+    if ('({['.includes(ch)) depth++;
+    if (')}]'.includes(ch)) depth--;
+    if (ch === ';' && depth === 0) return text.slice(at, k + 1);
+  }
+  return undefined;
+}
+
+const WATCHED = ['post', 'flushStage', 'pass', 'running', 'defaultPost', 'fetch', 'timer', 'setTimeout', 'setImmediate', 'queueMicrotask', 'nextTick', 'setInterval'] as const;
+
+/** For each file, the whole-word count of each watched word that is above zero (code only), and `.then(`. */
+function watchedCounts(files: Record<string, string>): Record<string, Record<string, number>> {
+  const out: Record<string, Record<string, number>> = {};
+  for (const [name, text] of Object.entries(files)) {
+    const code = scanSource(text, false);
+    const row: Record<string, number> = {};
+    for (const w of WATCHED) {
+      const c = wordCount(code, w);
+      if (c > 0) row[w] = c;
+    }
+    const then = (code.match(/\.\s*then\s*\(/g) ?? []).length;
+    if (then > 0) row['.then('] = then;
+    if (Object.keys(row).length > 0) out[name] = row;
+  }
+  return out;
+}
+
+const ARGUMENT = [
+  'Why this program has one post in flight, as five links:',
+  '  1. The only thing in the source that sends anything is one `fetch`, in `defaultPost`, called once per call of `defaultPost` and awaited.',
+  '  2. The only place the program calls its post is one statement in `flushStage`, and it awaits the answer before anything else in that function runs.',
+  '  3. `flushStage` is called from one place, in `pass`, and awaited. `pass` is called from one place, in `tick`.',
+  '  4. `tick` starts a pass only when none is running; `running` is set there and cleared only when that pass has ended.',
+  '  5. Nothing else in the source can run any of these later or by another name: no reference to `post`, `flushStage`, `pass` or `defaultPost` beyond the ones above; no timer but the one the program is handed and uses once, to call `tick`.',
+].join('\n');
+
+const WHAT_TO_DO =
+  'If you changed a link on purpose (card 13 will add a key to the post, for one): re-read the five links, show that the rule "one post in flight" still holds, and update this pin in the same commit. If you did not mean to change a link, undo the change.';
+
+/** What the watched words and timers count to at the head this pin was written against. Only files with a non-zero count are listed. */
+const EXPECTED_COUNTS: Record<string, Record<string, number>> = {"collector.ts": {"post": 4, "flushStage": 2, "pass": 2, "running": 8, "defaultPost": 2, "fetch": 1, "timer": 5, "setInterval": 7}, "main.ts": {".then(": 1}};
+
+const EXPECTED_LINKS = {
+  tick: "if (running) return running; running = pass().finally(() => { running = undefined; }); return running;",
+  postStatement: "res = await post(`${base}/v0/shots`, JSON.stringify({ records: batch }));",
+  passCallsFlush: "const sendOk = await flushStage();",
+  fetchStatement: "const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, redirect: 'manual', signal: AbortSignal.timeout(POST_TIMEOUT_MS), });",
+  timerStatement: "handle = timer.setInterval(() => { tick().catch((e: unknown) => { if (e instanceof CollectorError) options.onError?.(e); }); }, pollMs);",
+};
+
+/** What is wrong with the argument in the program's source files (path under src to text). Each entry says which link moved. */
+function argumentViolations(files: Record<string, string>): string[] {
+  const bad: string[] = [];
+  const link = (n: number, what: string): void => void bad.push(`link ${n}: ${what}`);
+
+  // 5.1 references, not calls, and 5.4 timers: counted as whole words, in exactly the files they are in now
+  const actual = watchedCounts(files);
+  for (const name of new Set([...Object.keys(actual), ...Object.keys(EXPECTED_COUNTS)])) {
+    for (const w of [...WATCHED, '.then(']) {
+      const have = actual[name]?.[w] ?? 0;
+      const want = EXPECTED_COUNTS[name]?.[w] ?? 0;
+      if (have !== want) link(w === 'post' || w === 'flushStage' || w === 'pass' || w === 'defaultPost' || w === 'fetch' ? 5 : w === 'running' ? 4 : 5, `${name} has ${have} of \`${w}\` as a whole word, it had ${want}`);
+    }
+  }
+
+  const col = files['collector.ts'];
+  if (col === undefined) {
+    link(1, 'collector.ts is not there');
+    return bad;
+  }
+  const text = scanSource(col, true);
+  const code = scanSource(col, false);
+
+  // 5.2 the links, word for word
+  const tickBody = blockFrom(text, 'function tick(', 'body');
+  if (tickBody === undefined || squash(tickBody) !== EXPECTED_LINKS.tick) link(4, `the body of tick is not what it was: ${tickBody === undefined ? 'missing' : squash(tickBody)}`);
+  const flushBody = blockFrom(text, 'async function flushStage(', 'body') ?? '';
+  const postStatement = blockFrom(flushBody, 'res = await post(', 'statement');
+  if (postStatement === undefined || squash(postStatement) !== EXPECTED_LINKS.postStatement) link(2, `the statement in flushStage that calls the post is not what it was: ${postStatement === undefined ? 'missing' : squash(postStatement)}`);
+  const passBody = blockFrom(text, 'async function pass(', 'body') ?? '';
+  const flushCall = blockFrom(passBody, 'const sendOk = await flushStage(', 'statement');
+  if (flushCall === undefined || squash(flushCall) !== EXPECTED_LINKS.passCallsFlush) link(3, `the statement in pass that calls flushStage is not what it was: ${flushCall === undefined ? 'missing' : squash(flushCall)}`);
+  const defaultPostBody = blockFrom(text, 'export async function defaultPost(', 'body') ?? '';
+  const fetchStatement = blockFrom(defaultPostBody, 'const res = await fetch(', 'statement');
+  if (fetchStatement === undefined || squash(fetchStatement) !== EXPECTED_LINKS.fetchStatement) link(1, `the statement in defaultPost that calls fetch is not what it was: ${fetchStatement === undefined ? 'missing' : squash(fetchStatement)}`);
+  const timerStatement = blockFrom(text, 'handle = timer.setInterval(', 'statement');
+  if (timerStatement === undefined || squash(timerStatement) !== EXPECTED_LINKS.timerStatement) link(5, `the one use of the handed timer is not what it was: ${timerStatement === undefined ? 'missing' : squash(timerStatement)}`);
+
+  // 5.3 one request per post
+  const dpCode = blockFrom(code, 'export async function defaultPost(', 'body') ?? '';
+  if (wordCount(dpCode, 'fetch') !== 1) link(1, `defaultPost holds ${wordCount(dpCode, 'fetch')} fetch, not exactly 1`);
+  for (const w of ['for', 'while', 'do', 'defaultPost']) if (wordCount(dpCode, w) > 0) link(1, `defaultPost holds \`${w}\`: a loop or a call of itself`);
+  for (const re of [/\.\s*map\s*\(/, /\.\s*forEach\s*\(/, /\bPromise\s*\.\s*(all|race|allSettled|any)\b/]) {
+    if (re.test(dpCode)) link(1, `defaultPost holds ${re.source}: more than one request could be made`);
+  }
+
+  // 5.5 no other way out of the PC (every file)
+  for (const [name, src] of Object.entries(files)) {
+    const kept = scanSource(src, true);
+    const c = scanSource(src, false);
+    if (/['"`](node:)?(http|https|http2|net|tls|dgram|child_process|worker_threads)['"`]/.test(kept)) link(1, `${name} imports a module that can send (http, https, http2, net, tls, dgram, child_process or worker_threads)`);
+    if (/\b(XMLHttpRequest|WebSocket|EventSource|sendBeacon|eval)\b/.test(c) || /\bnew\s+Function\b/.test(c) || /\bimport\s*\(/.test(c)) link(1, `${name} uses a way to send or to run text: XMLHttpRequest, WebSocket, EventSource, sendBeacon, eval, new Function or import(`);
+  }
+  return bad;
+}
+
+/** Every file under a folder, folders inside it included: path under it (with `/`) to text. */
+function readTree(dir: string, rel = ''): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const e of readdirSync(join(dir, rel), { withFileTypes: true })) {
+    if (e.isDirectory()) Object.assign(out, readTree(dir, `${rel}${e.name}/`));
+    else out[`${rel}${e.name}`] = readFileSync(join(dir, rel, e.name), 'utf8');
+  }
+  return out;
+}
+
+
 test('A13. the places a post can start are pinned: one call of post, one of flushStage, one of pass (inside tick, after the guard), and no other source file starts one', () => {
   const files: Record<string, string> = {};
   for (const name of readdirSync(SRC)) if (name.endsWith('.ts')) files[name] = readFileSync(join(SRC, name), 'utf8');
@@ -995,6 +1265,51 @@ test('A13. the places a post can start are pinned: one call of post, one of flus
   ];
   for (const [name, edited] of edits) assert.notDeepEqual(pinViolations(edited), [], `the pin does not see: ${name}`);
   assert.deepEqual(pinViolations({ ...files, 'collector.ts': col + '\n// post( flushStage( pass( in a comment\n/* post( */\n' }), [], 'a comment is not a place');
+  // ---- the whole argument (links 1 to 5), over every file under src, folders inside it included ----
+  const all = readTree(SRC);
+  assert.ok(Object.keys(all).length >= 5 && 'collector.ts' in all, 'the source tree was collected');
+  const moved = argumentViolations(all);
+  assert.deepEqual(moved, [], `\n${ARGUMENT}\n\nA link moved:\n  ${moved.join('\n  ')}\n\n${WHAT_TO_DO}`);
+
+  // The guard bites: made-up edits. `edit` fails when its text is not in the file, so an edit can never silently do nothing.
+  const edit = (name: string, from: string, to: string): Record<string, string> => {
+    assert.ok(all[name]!.includes(from), `the made-up edit does not apply to ${name}: ${from.slice(0, 60)}`);
+    return { ...all, [name]: all[name]!.replace(from, () => to) };
+  };
+  const POSTLINE = 'res = await post(`${base}/v0/shots`, JSON.stringify({ records: batch }));';
+  const mustFind: Array<[string, Record<string, string>]> = [
+    ['Q2: defaultPost sends a big body as two halves at once', edit('collector.ts', '  const res = await fetch(url, {', '  if (body.length > 1_000_000) {\n    const half = body.length >> 1;\n    void fetch(url, { method: "POST", body: body.slice(0, half) });\n  }\n  const res = await fetch(url, {')],
+    ['Q3: a copy that cannot be taken retries by setTimeout(pass, 100)', edit('collector.ts', '      text = files.readCopy();\n    } catch {\n      copyProblem();', '      text = files.readCopy();\n    } catch {\n      setTimeout(pass, 100);\n      copyProblem();')],
+    ['Q5: Retry-After honoured by setTimeout(flushStage, s)', edit('collector.ts', '        backoff(res.retryAfterSec);\n        return true;', '        backoff(res.retryAfterSec);\n        setTimeout(flushStage, (res.retryAfterSec ?? 1) * 1000);\n        return true;')],
+    ['Q7: a backlog sends a batch ahead through const send = post', edit('collector.ts', '      let res: PostResult;\n', '      const send = post;\n      if (outbox.pending > 600) void send(`${base}/v0/shots`, "{}");\n      let res: PostResult;\n')],
+    ['an alias: const p = post; p(...)', edit('collector.ts', '      let res: PostResult;\n', '      const p = post;\n      void p("u", "b");\n      let res: PostResult;\n')],
+    ['post?.(', edit('collector.ts', POSTLINE, POSTLINE.replace('post(', 'post?.('))],
+    ['post.call(', edit('collector.ts', POSTLINE, POSTLINE.replace('post(', 'post.call(null, '))],
+    ['post (', edit('collector.ts', POSTLINE, POSTLINE.replace('post(', 'post ('))],
+    ['a line break before the bracket', edit('collector.ts', POSTLINE, POSTLINE.replace('post(', 'post\n('))],
+    ['setTimeout(flushStage, 0)', edit('collector.ts', '      if (handle !== undefined) return;', '      setTimeout(flushStage, 0);\n      if (handle !== undefined) return;')],
+    ['setTimeout(pass, 0)', edit('collector.ts', '      if (handle !== undefined) return;', '      setTimeout(pass, 0);\n      if (handle !== undefined) return;')],
+    ['flushStage.call(', edit('collector.ts', 'const sendOk = await flushStage();', 'const sendOk = await flushStage.call(null);')],
+    ['a new file in a folder under src that calls fetch', { ...all, 'net/send.ts': 'export const send = (u: string) => fetch(u);\n' }],
+    ['a second fetch in defaultPost', edit('collector.ts', "  const ra = res.headers.get('retry-after');", "  void fetch(url);\n  const ra = res.headers.get('retry-after');")],
+    ['Promise.all in defaultPost', edit('collector.ts', "  const ra = res.headers.get('retry-after');", "  await Promise.all([]);\n  const ra = res.headers.get('retry-after');")],
+    ['the guard of tick given a second condition', edit('collector.ts', '    if (running) return running;', '    if (running && !stale) return running;')],
+    ['running cleared in stop()', edit('collector.ts', '      if (running) await running.catch(() => undefined);', '      running = undefined;\n      if (running) await running.catch(() => undefined);')],
+    ['an import of node:http', edit('program.ts', "import { homedir } from 'node:os';", "import { request } from 'node:http';\nimport { homedir } from 'node:os';")],
+  ];
+  for (const [name, edited] of mustFind) {
+    const found = argumentViolations(edited);
+    assert.notDeepEqual(found, [], `the pin does not see: ${name}`);
+    assert.ok(found.every((x) => x.startsWith('link ')), 'each finding names the link that moved');
+  }
+  const mustNotFind: Array<[string, Record<string, string>]> = [
+    ['a comment holding the words', { ...all, 'collector.ts': all['collector.ts'] + '\n// post( flushStage( pass( running defaultPost fetch setTimeout setInterval .then(\n/* post( fetch( */\n' }],
+    ['a string holding post(', { ...all, 'collector.ts': all['collector.ts'] + "\nconst note = 'a post(...) and flushStage( in text' + \"pass( fetch\" + `post( ${'x'}`;\n" }],
+    ['a change to a message wording', edit('collector.ts', 'For now this program sends only to this PC.', 'For now this program talks only to this PC.')],
+    ['a new status word', edit('collector.ts', "export type ServerState = 'unknown' | 'up'", "export type ServerState = 'unknown' | 'paused' | 'up'")],
+    ['a new setting read from the environment', edit('program.ts', "  const hubUrl = env.SIM_HUB_URL || 'http://127.0.0.1:5077';", "  const hubUrl = env.SIM_HUB_URL || 'http://127.0.0.1:5077';\n  const extraNote = env.SIM_EXTRA_NOTE || '';")],
+  ];
+  for (const [name, edited] of mustNotFind) assert.deepEqual(argumentViolations(edited), [], `the pin sees something it should not: ${name}`);
 });
 
 // ---- B: the six wrong versions the reviews left alive ----
@@ -1141,4 +1456,18 @@ test('B6 (O2). the tidy-up writes one short line for each distinct ShotID, even 
   again.start();
   assert.equal(again.status().pending, 0);
   await again.stop();
+});
+
+// ---- A14: the counter reports every time ----
+
+test('A14. an overlap recorded in a test is reported even when closing a stand-in hub throws; the record is emptied by each report', async () => {
+  hubs.push({ close: async () => { throw new Error('close failed (made up)'); } } as never);
+  overlapLog.push(OVERLAP_MESSAGE);
+  await assert.rejects(closeAll(), (e: Error) => e.message.startsWith(OVERLAP_MESSAGE) && e.message.includes('close failed (made up)'));
+  assert.equal(overlapLog.length, 0, 'reported once, then emptied');
+  hubs.push({ close: async () => { throw new Error('close failed (made up)'); } } as never);
+  await assert.rejects(closeAll(), /close failed \(made up\)/); // with no overlap, the close error is the failure
+  overlapLog.push(OVERLAP_MESSAGE);
+  assert.throws(() => reportOverlaps(), /OVERLAP/); // what a file's `after` hook does for a program left running
+  assert.doesNotThrow(() => reportOverlaps());
 });

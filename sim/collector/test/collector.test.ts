@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { createHub, type Hub } from '../../hub/src/server.js';
 import { loadRecording, type Copy } from '../../core/src/index.js';
 import { createCollector, statusLine, defaultPost, type Collector, type CollectorOptions, type PostResult } from '../src/collector.js';
+import { counted, reportOverlaps } from './helpers.js';
 import { createFiles, type Files } from '../src/files.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -92,21 +93,23 @@ function rig(hubUrl: string): Rig {
       r.write(JSON.stringify(copies[n - 1]!.records));
     },
     make(extra = {}) {
+      const own = async (url: string, body: string): Promise<PostResult> => {
+        const out = await defaultPost(url, body);
+        if (out.status === 200) {
+          const c = out.body as Record<string, number>;
+          assert.equal(c.added + c.revised + c.unchanged + c.conflicts, (JSON.parse(body).records as unknown[]).length, 'the four counts add up to the batch');
+        }
+        r.answers.push(out);
+        return out;
+      };
+      // every post, this file's own or one a test hands in, is counted: a second one started while one is unanswered fails the test
       return createCollector({
         gsproFile: r.gspro,
         dataDir: r.data,
         hubUrl: r.hubUrl,
         now: r.now,
-        post: async (url, body) => {
-          const out = await defaultPost(url, body);
-          if (out.status === 200) {
-            const c = out.body as Record<string, number>;
-            assert.equal(c.added + c.revised + c.unchanged + c.conflicts, (JSON.parse(body).records as unknown[]).length, 'the four counts add up to the batch');
-          }
-          r.answers.push(out);
-          return out;
-        },
         ...extra,
+        post: counted(extra.post ?? own),
       });
     },
   };
@@ -157,13 +160,17 @@ before(() => {
 });
 
 afterEach(async () => {
-  // GSPro's file is byte for byte what the test wrote, after every test.
-  for (const r of rigs) {
-    if (r.lastWritten !== undefined) assert.equal(readFileSync(r.gspro, 'utf8'), r.lastWritten, 'GSPro file changed');
+  try {
+    // GSPro's file is byte for byte what the test wrote, after every test.
+    for (const r of rigs) {
+      if (r.lastWritten !== undefined) assert.equal(readFileSync(r.gspro, 'utf8'), r.lastWritten, 'GSPro file changed');
+    }
+    rigs.length = 0;
+    for (const h of hubs) await h.close();
+    hubs.length = 0;
+  } finally {
+    reportOverlaps(); // an overlap recorded in this test is reported even when something above threw
   }
-  rigs.length = 0;
-  for (const h of hubs) await h.close();
-  hubs.length = 0;
 });
 
 after(() => {

@@ -86,6 +86,10 @@ yet sent must not be started again after the round it belongs to has been played
 are older copies and would be put over newer ones. Keep such a folder, and do not start the program on
 it again; the program cannot tell which round its waiting shots belong to, so there is no safe way yet
 to send them.
+If you move a data folder aside and start the program fresh, the shots of the round that is still in
+GSPro's file are read from that file and sent again (the hub answers `unchanged` for those it already
+holds); only waiting shots that GSPro's file no longer holds, from an earlier round or from before the
+file was emptied, are never sent.
 
 ## Limits
 
