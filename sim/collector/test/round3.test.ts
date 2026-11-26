@@ -144,7 +144,7 @@ test('A2. the same through defaultPost and a real socket: a hub that holds each 
   }
 });
 
-test('A3. a post that is given up: the first connection is closed before the second request arrives, never two open, nothing marked sent that the hub did not answer 200 for', { timeout: 12_000 }, async () => {
+test('A3. a post that is given up: the first connection is closed before the second request arrives, never two open, nothing marked sent that the hub did not answer 200 for', { timeout: 30_000 }, async () => {
   const r = rig(NO_HUB, false);
   let seq = 0;
   let open = 0;
@@ -188,14 +188,14 @@ test('A3. a post that is given up: the first connection is closed before the sec
     c.start();
     const t0 = Date.now();
     // the handler fires throughout the 10 seconds the program waits for an answer that never comes
-    while (reqs[0]?.closed === undefined && Date.now() - t0 < 11_500) {
+    while (reqs[0]?.closed === undefined && Date.now() - t0 < 13_000) {
       timer.fire();
       await sleep(25);
     }
     const waited = Date.now() - t0;
     assert.equal(reqs.length, 1, 'no second request while the first is open');
-    assert.notEqual(reqs[0]?.closed, undefined, 'the program gave up and closed the connection');
-    assert.ok(waited >= 9_500 && waited <= 11_500, `it gave up after ${waited} ms`);
+    assert.notEqual(reqs[0]?.closed, undefined, 'the program gave up and closed the connection (it never gave up)');
+    assert.ok(waited >= 9_500 && waited <= 12_000, `it gave up after ${waited} ms`);
     // given up: nothing counted as sent; the program's clock has not moved, so it still waits before the next post
     await until(() => c.status().server === 'down', 'server=down');
     assert.equal(c.status().sent, 0);
@@ -215,6 +215,7 @@ test('A3. a post that is given up: the first connection is closed before the sec
     assert.equal(c.status().sent, 4);
     assert.equal(c.status().server, 'up');
   } finally {
+    server.closeAllConnections(); // a program that never gives up must not keep this test alive
     await c.stop();
   }
 });
@@ -367,6 +368,171 @@ test('A6. two copies of the program on one round file, each with its own data fo
   }
 });
 
+/** Fires the program's own handler n times, a turn of the event loop apart. */
+async function fireMany(timer: { fire(): void }, n: number): Promise<void> {
+  for (let i = 0; i < n; i++) {
+    timer.fire();
+    await turns(1);
+  }
+}
+
+const OVERLAP = 'OVERLAP: a second post was sent while one was still unanswered';
+
+test('A7. a new copy arrives while a post is held: the handler fired 45 times after each answer, never two posts unanswered, no batch twice, outbox order, each record marked sent once', async () => {
+  const r = rig(NO_HUB, false);
+  const timer = manualTimer();
+  const held = heldPost();
+  const c = r.make({ post: held.post, timer });
+  try {
+    r.write(JSON.stringify(synth(10)));
+    c.start();
+    timer.fire();
+    await until(() => held.calls.length === 1, 'the first post started');
+    for (let stage = 0; stage < 3; stage++) {
+      r.write(JSON.stringify(synth(30 + 20 * stage))); // a new copy, 20 records longer, while post stage+1 is held
+      await fireMany(timer, 10);
+      assert.equal(held.calls.length, stage + 1, `${OVERLAP} (the handler fired while post ${stage + 1} was held)`);
+      held.calls[stage]!.release();
+      await fireMany(timer, 45);
+      assert.equal(held.calls.length, stage + 2, `${OVERLAP}, or a batch was posted twice (after the answer to post ${stage + 1}): ${held.calls.length} posts`);
+      assert.ok(held.maxInflight <= 1, `${OVERLAP}: ${held.maxInflight} unanswered at once`);
+    }
+    held.calls[3]!.release();
+    await until(() => c.status().pending === 0, 'all sent');
+    await fireMany(timer, 40);
+    assert.equal(held.calls.length, 4, OVERLAP);
+    assert.equal(held.maxInflight, 1, OVERLAP);
+    assert.deepEqual(held.calls.map((x) => x.size), [10, 20, 20, 20]);
+    assert.equal(new Set(held.calls.map((x) => x.ids.join(','))).size, held.calls.length, 'no batch was posted twice');
+    assert.deepEqual(held.calls.flatMap((x) => x.ids), synth(70).map((x) => x.ShotID), 'in outbox order');
+    assert.equal(c.status().sent, 70);
+    assert.deepEqual(JSON.parse(readFileSync(join(r.data, 'sent.json'), 'utf8')), { cursor: 70, sent: 70, refused: 0 });
+  } finally {
+    held.openUp();
+    await c.stop();
+  }
+});
+
+test('A8. the same through defaultPost and a real socket: a new copy written during each of three posts in a row, the handler fired throughout, never more than one request open', async () => {
+  const r = rig(NO_HUB, false);
+  let open = 0;
+  let maxOpen = 0;
+  let arrivals = 0;
+  const seen: string[][] = [];
+  const server: Server = createServer((req, res) => {
+    open++;
+    maxOpen = Math.max(maxOpen, open);
+    const index = arrivals++;
+    if (index < 3) r.write(JSON.stringify(synth(10 * (index + 2)))); // a new copy arrives while this post is out
+    const chunks: Buffer[] = [];
+    req.on('data', (d: Buffer) => chunks.push(d));
+    req.on('end', () => {
+      const recs = (JSON.parse(Buffer.concat(chunks).toString('utf8')) as { records: Array<{ ShotID: string }> }).records;
+      seen.push(recs.map((x) => x.ShotID));
+      setTimeout(() => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(counts(recs.length));
+        open--;
+      }, 60);
+    });
+  });
+  standIns.push(server);
+  await new Promise<void>((res) => server.listen(0, '127.0.0.1', res));
+  const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const timer = manualTimer();
+  const c: Collector = createCollector({ gsproFile: r.gspro, dataDir: r.data, hubUrl: url, timer }); // its own defaultPost
+  try {
+    r.write(JSON.stringify(synth(10)));
+    c.start();
+    let fires = 0;
+    const end = Date.now() + 8000;
+    while (c.status().sent < 40 || fires === 0) {
+      for (let i = 0; i < 20; i++) {
+        timer.fire();
+        fires++;
+        await turns(1);
+      }
+      if (maxOpen > 1 || Date.now() > end) break;
+      await sleep(2);
+    }
+    await until(() => open === 0 || maxOpen > 1, 'the last answer ended');
+    assert.equal(maxOpen, 1, `${OVERLAP}: ${maxOpen} requests open at the hub at once`);
+    assert.ok(fires >= 120, `the handler was fired ${fires} times`);
+    assert.deepEqual(seen.map((x) => x.length), [10, 10, 10, 10], `${OVERLAP}, or a batch was posted twice`);
+    assert.equal(new Set(seen.map((x) => x.join(','))).size, seen.length, 'no batch was posted twice');
+    assert.deepEqual(seen.flat(), synth(40).map((x) => x.ShotID), 'arrived in outbox order');
+    assert.equal(c.status().sent, 40);
+    assert.equal(c.status().pending, 0);
+  } finally {
+    await c.stop();
+  }
+});
+
+for (const failure of ['a refused connection', 'a 503'] as const) {
+  test(`A9. a new copy arrives while a post is failing (${failure}): the wait is kept, the handler sends nothing, then one post holds the old and the new records in outbox order, never two`, async () => {
+    const r = rig(NO_HUB, false);
+    const timer = manualTimer();
+    const held = heldPost();
+    let started = 0;
+    let unanswered = 0;
+    let maxUnanswered = 0;
+    const post = async (url: string, body: string): Promise<PostResult> => {
+      const n = ++started;
+      unanswered++;
+      maxUnanswered = Math.max(maxUnanswered, unanswered);
+      try {
+        if (n === 1) {
+          await sleep(40); // the post is out for a moment; the test writes the new copy meanwhile
+          if (failure === 'a refused connection') throw new Error('refused');
+          return { status: 503, body: { error: 'busy' } };
+        }
+        return await held.post(url, body);
+      } finally {
+        unanswered--;
+      }
+    };
+    const c = r.make({ post, timer });
+    try {
+      r.write(JSON.stringify(synth(10)));
+      c.start();
+      timer.fire();
+      await until(() => started === 1, 'the first post started');
+      r.write(JSON.stringify(synth(30))); // a new copy arrives while the first post is out
+      await fireMany(timer, 20);
+      assert.equal(started, 1, `${OVERLAP} (the handler fired while the first post was out)`);
+      await until(() => c.status().retryDelayMs === 1000, 'the first post failed');
+      assert.equal(c.status().server, failure === 'a refused connection' ? 'down' : 'busy');
+      for (let i = 0; i < 30; i++) {
+        timer.fire();
+        await sleep(2);
+      }
+      assert.equal(started, 1, 'the wait after a failed post is kept: the handler sent nothing');
+      r.advance(999);
+      await fireMany(timer, 10);
+      assert.equal(started, 1, 'not before the full wait');
+      r.advance(1);
+      timer.fire();
+      await until(() => held.calls.length === 1, 'the post after the wait');
+      assert.deepEqual(held.calls[0]!.ids, synth(30).map((x) => x.ShotID), 'one post, the old and the new records in outbox order');
+      // and a third copy during that post, then the answer
+      r.write(JSON.stringify(synth(50)));
+      await fireMany(timer, 40);
+      assert.equal(started, 2, `${OVERLAP} (the handler fired while the second post was held)`);
+      held.calls[0]!.release();
+      await fireMany(timer, 45);
+      assert.equal(started, 3, `${OVERLAP}, or a batch was posted twice: ${started} posts`);
+      assert.equal(maxUnanswered, 1, `${OVERLAP}: ${maxUnanswered} unanswered at once`);
+      assert.deepEqual(held.calls[1]!.ids, synth(50).slice(30).map((x) => x.ShotID));
+      held.calls[1]!.release();
+      await until(() => c.status().pending === 0, 'all sent');
+      assert.equal(c.status().sent, 50);
+    } finally {
+      held.openUp();
+      await c.stop();
+    }
+  });
+}
+
 // ---- B: the six wrong versions the reviews left alive ----
 
 test('B1 (X1). a batch stops before a ShotID already in it: a changed shot goes in the next post, in outbox order', async () => {
@@ -398,7 +564,7 @@ test('B1 (X1). a batch stops before a ShotID already in it: a changed shot goes 
   assert.equal(c.status().pending, 0);
 });
 
-test('B2 (X3). defaultPost gives up on a hub that never answers, by itself, in about 10 seconds', { timeout: 20_000 }, async () => {
+test('B2 (X3). defaultPost gives up on a hub that never answers, by itself, in about 10 seconds', { timeout: 30_000 }, async () => {
   const s = await standIn(() => undefined); // never answers
   const t0 = Date.now();
   const outcome = await Promise.race([

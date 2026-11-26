@@ -74,11 +74,16 @@ the one whose body finished last: with two posts in flight an older copy of a sh
 a newer one.
 
 Run one copy of the program for a GSPro file. Two copies, each with its own data folder, post every
-shot twice, and in the ordinary case the hub still ends on the right scores (the test named A6 in
-`test/round3.test.ts` feeds the 38 recorded copies to two programs); that test does not show that two
-copies are safe in every case. A data folder that was moved aside and still holds shots not yet sent
-must not be started again after the round it belongs to has been played on: its waiting shots are
-older copies and would be put over newer ones.
+shot twice, and in the ordinary case the hub still ends on the right scores (a test of this program
+feeds the recorded round to two copies and the hub ends on the right scores); that does not show that
+two copies are safe in every case. Two copies started without `SIM_COLLECTOR_DATA` share one data
+folder, which is the easiest way to run two by mistake. The hub still ends on the right scores, but
+the copies write over each other's record of what was sent, and at the next start every shot of the
+round is sent again. So run one copy per bay PC, and if a second window was started by mistake, close
+it. A data folder that was moved aside and still holds shots not yet sent must not be started again
+after the round it belongs to has been played on: its waiting shots are older copies and would be put
+over newer ones. Keep such a folder: its unsent shots should be sent only while the round they belong
+to is still the one in GSPro's file; after that, leave them unsent.
 
 ## Limits
 
