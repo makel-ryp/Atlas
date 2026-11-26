@@ -1,4 +1,11 @@
-import { test, afterEach, after } from 'node:test';
+// What the gate's tests hold, and what they do not (round 10).
+// They hold: a flag that is not set, or is released early or late; a gate that waits in line instead of refusing; a gate that
+// depends on the body or the address; a count of calls or of refusals (as far as the model's seeds in G6 reach); a timer of its
+// own; and the wall clock at any horizon (G9 moves a mocked clock on by 30 days; G8 and G5 run on real time inside the first 10 s).
+// They do not hold: a gate that reads a clock the test cannot turn (for example performance.now() past G8's last call), or
+// one that waits for a magic value. Those are held by the pin's word-for-word text of the gate (A13 in round3.test.ts), which is
+// what holds a twelve-line function in the end.
+import { test, afterEach, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -226,8 +233,8 @@ function waitUntil(t0: number, ms: number): Promise<void> {
 }
 
 test('G8. a held stand-in post with no give-up, held 10.5 seconds: calls at about 1, 3, 5.5, 7, 8.5, 9.6, 9.99 and 10.2 seconds, each with another body and another address, are each refused with the gate\'s message and never reach the stand-in; after the answer the next call goes through', { timeout: 30_000 }, async () => {
-  // No post of the program is out longer than about 10.02 seconds (defaultPost's give-up), so a gate that opens later than
-  // this test's last call (10.2 s) cannot let a second request out in a bay; a gate that opens earlier is caught here.
+  // G8 covers rules that open on real time inside the first 10 seconds or so, by any clock (including one the test cannot turn).
+  // What happens later, or when the thread is held, is G9's: it turns a mocked clock on by days.
   let reached = 0;
   let answerFirst: ((r: PostResult) => void) | undefined;
   const stub: PostFn = (url, body) => {
@@ -291,6 +298,85 @@ test('G5. the give-up itself: a hub that never answers its first request; calls 
   assert.equal((await gate(url, '{"records":[],"n":2}')).status, 200, 'a call made after the give-up goes through');
   assert.equal(requests.length, 2);
   assert.ok(requests[1]!.arrivedAt - t0 >= 9_900, 'the second request came after the give-up');
+});
+
+// ---- B.2b the clock, by a clock the test turns (round 10): a held thread stretches every real deadline, so no real-time test bounds a time-based gate ----
+
+/** Lets the pending microtasks run; setImmediate is not mocked in G9, so it is a real turn of the loop. */
+async function turn(): Promise<void> {
+  await new Promise<void>((r) => setImmediate(r));
+}
+
+/** What a call ends with, without a timer of its own (the clock is mocked): the message of its rejection, 'not refused' when answered, or 'did not settle' after one real turn of the loop. */
+async function refusalNoTimer(p: Promise<unknown>): Promise<string> {
+  const settled = p.then(
+    () => 'not refused',
+    (e: unknown) => (e as Error).message,
+  );
+  const late = turn().then(() => 'did not settle: the call is waiting');
+  return Promise.race([settled, late]);
+}
+
+const STEPS_MS = [1000, 5000, 9970, 10_300, 11_000, 60_000, 600_000, 3_600_000, 86_400_000, 30 * 86_400_000];
+
+test('G9. a clock the test turns: after quick calls, one call is held while the clock moves on by 30 days (1 s, 5 s, 9.97 s, 10.3 s, 11 s, 1 min, 10 min, 1 h, 24 h, 30 days); at every step a call with another body and address is refused with the gate\'s message and never reaches the stand-in; when the held call is answered, and again when it is rejected, the next call goes through', { timeout: 30_000 }, async () => {
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: Date.now() }); // the mocked Date starts at the real wall clock, so a rule about a calendar date is reached by the steps too
+  try {
+    for (const ending of ['answered', 'rejected'] as const) {
+      let reached = 0;
+      let heldCall: { resolve: (r: PostResult) => void; reject: (e: Error) => void } | undefined;
+      let holdNext = false;
+      const stub: PostFn = () => {
+        reached++;
+        return new Promise<PostResult>((resolve, reject) => {
+          if (holdNext) {
+            heldCall = { resolve, reject };
+            return;
+          }
+          setTimeout(() => resolve(OK), 3); // a quick call: answered after 3 ms of the mocked clock
+        });
+      };
+      const gate = oneAtATime(stub);
+      // several quick calls first, each answered 3 mocked ms after it was made, so a rule that measures earlier calls has something to measure
+      for (let i = 0; i < 5; i++) {
+        const quick = gate(`http://127.0.0.1:${100 + i}/v0/shots`, `quick-${i}`);
+        mock.timers.tick(3);
+        assert.deepEqual(await quick, OK, `quick call ${i} was answered`);
+        mock.timers.tick(7);
+      }
+      assert.equal(reached, 5);
+      // then one call that is held
+      holdNext = true;
+      const first = gate('http://127.0.0.1:1/v0/shots', 'body-held').then(
+        (r) => r,
+        (e: unknown) => e,
+      );
+      assert.equal(reached, 6, 'the held call reached the stand-in');
+      let at = 0;
+      for (const [i, ms] of STEPS_MS.entries()) {
+        mock.timers.tick(ms - at);
+        at = ms;
+        await turn();
+        assert.equal(await refusalNoTimer(gate(`http://127.0.0.1:${2 + i}/v0/shots`, `body-${i}`)), GATE_MESSAGE, `${ending}: the call after ${ms / 1000} s of the mocked clock is refused`);
+        assert.equal(reached, 6, `${ending}: the call after ${ms / 1000} s never reached the stand-in`);
+      }
+      holdNext = false;
+      if (ending === 'answered') {
+        heldCall!.resolve(OK);
+        assert.deepEqual(await first, OK, 'the held call ended with its answer');
+      } else {
+        heldCall!.reject(new Error('ZZTEST-A held call failed'));
+        const e = await first;
+        assert.equal((e as Error).message, 'ZZTEST-A held call failed', 'the held call ended with its rejection');
+      }
+      const next = gate('http://127.0.0.1:99/v0/shots', 'body-after');
+      assert.equal(reached, 7, `${ending}: the next call goes through`);
+      mock.timers.tick(3);
+      assert.deepEqual(await next, OK, `${ending}: the next call was answered`);
+    }
+  } finally {
+    mock.timers.reset(); // the real clock comes back whatever the test did
+  }
 });
 
 // ---- B.3 by a model, with made-up time: every other rule ----

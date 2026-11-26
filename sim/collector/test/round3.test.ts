@@ -1131,7 +1131,8 @@ function isDeclarationName(n: ts.Identifier): boolean {
   if (ts.isImportClause(p) || ts.isNamespaceImport(p) || ts.isImportEqualsDeclaration(p) || ts.isNamespaceExport(p)) return (p as { name?: ts.Node }).name === n;
   if (
     ts.isInterfaceDeclaration(p) || ts.isTypeAliasDeclaration(p) || ts.isModuleDeclaration(p) || ts.isVariableDeclaration(p) || ts.isFunctionDeclaration(p) ||
-    ts.isClassDeclaration(p) || ts.isEnumDeclaration(p) || ts.isParameter(p) || ts.isTypeParameterDeclaration(p) || ts.isBindingElement(p)
+    ts.isClassDeclaration(p) || ts.isEnumDeclaration(p) || ts.isParameter(p) || ts.isTypeParameterDeclaration(p) || ts.isBindingElement(p) ||
+    ts.isPropertyDeclaration(p) // the name of a class field (a `declare` field is inside the compiler's ambient flag, so it must not be read as a use)
   ) {
     return (p as { name?: ts.Node }).name === n;
   }
@@ -1152,6 +1153,7 @@ function ambientUses(src: string): string[] {
   const out: string[] = [];
   for (const n of allNodes(sf)) {
     if (!ts.canHaveModifiers(n)) continue;
+    if (ts.isPropertyDeclaration(n)) continue; // a class field written `declare x: number` makes no name at all (only the type of a field the class gets some other way): it is not a declaration of a global
     if (!(ts.getModifiers(n) ?? []).some((m) => m.kind === ts.SyntaxKind.DeclareKeyword)) continue;
     const named = ts.isVariableStatement(n) ? n.declarationList.declarations.map((d) => d.name.getText(sf)).join(', ') : ((n as { name?: ts.Node }).name?.getText(sf) ?? '');
     out.push(`${ts.isVariableStatement(n) ? 'a variable' : ts.SyntaxKind[n.kind]}${named === '' ? '' : ` ${named}`}`);
@@ -1182,24 +1184,35 @@ interface SideFacts {
  */
 function sideFacts(files: Record<string, string>): Record<string, SideFacts> {
   const root = '/side/';
-  const sources = new Map<string, ts.SourceFile>();
-  for (const [name, text] of Object.entries(files)) sources.set(root + name, ts.createSourceFile(root + name, text, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS));
+  const texts = new Map<string, string>();
+  for (const [name, text] of Object.entries(files)) texts.set(root + name, text);
+  // every file is made by the program's own host, with the options the program hands it, so that `moduleDetection: Force` is what decides whether a file is a module
+  const made = new Map<string, ts.SourceFile>();
   const host: ts.CompilerHost = {
-    getSourceFile: (f) => sources.get(f),
+    getSourceFile: (f, languageVersionOrOptions) => {
+      const text = texts.get(f);
+      if (text === undefined) return undefined;
+      const sf = ts.createSourceFile(f, text, languageVersionOrOptions, true, ts.ScriptKind.TS);
+      made.set(f, sf);
+      return sf;
+    },
     getDefaultLibFileName: () => '/lib.d.ts',
     writeFile: () => undefined,
     getCurrentDirectory: () => '/',
     getCanonicalFileName: (f) => f,
     useCaseSensitiveFileNames: () => true,
     getNewLine: () => '\n',
-    fileExists: (f) => sources.has(f),
-    readFile: (f) => sources.get(f)?.text,
+    fileExists: (f) => texts.has(f),
+    readFile: (f) => texts.get(f),
   };
+  // `moduleDetection: Force` makes every file a module, so a top-level `var` or `function` in a file with no import and no export stays that file's own and never becomes a global for the others
   const program = ts.createProgram({
-    rootNames: [...sources.keys()],
-    options: { noLib: true, noResolve: true, types: [], target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, noEmit: true },
+    rootNames: [...texts.keys()],
+    options: { noLib: true, noResolve: true, types: [], target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, moduleDetection: ts.ModuleDetectionKind.Force, noEmit: true },
     host,
   });
+  const sources = new Map<string, ts.SourceFile>();
+  for (const f of texts.keys()) sources.set(f, program.getSourceFile(f) ?? made.get(f)!);
   const checker = program.getTypeChecker();
 
   const inTypePosition = (n: ts.Node): boolean => {
@@ -1262,6 +1275,42 @@ const START_WHY = 'The script that starts the bay program (sim:collector in pack
 
 function startScriptViolations(script: string | undefined): string[] {
   return script === EXPECTED_START_SCRIPT ? [] : [`sim:collector in package.json is now ${JSON.stringify(script)}, it was ${JSON.stringify(EXPECTED_START_SCRIPT)}`];
+}
+
+/** The files the bay program's side is made of: the exact names, in each of the two folders. A new file, a file of another kind (.js, .mts, .cts, .json, anything) and a removed one are each a finding that names the file. */
+const EXPECTED_FILES = {
+  collector: ['collector.ts', 'files.ts', 'main.ts', 'outbox.ts', 'program.ts'],
+  core: ['book.ts', 'command.ts', 'format.ts', 'index.ts', 'parse.ts', 'recording.ts', 'text.ts'],
+};
+
+function fileListViolations(label: string, have: string[], want: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const n of have) if (!want.includes(n)) out.push(`${label}${n} is not one of the files this pin holds (${want.join(', ')}): a new file, or a file of another kind (.js, .mts, .cts, .json), is code or data the program may run`);
+  for (const n of want) if (!have.includes(n)) out.push(`${label}${n} is not there any more: it is one of the files this pin holds`);
+  return out;
+}
+
+const SOURCE_KIND = /\.(ts|mts|cts|tsx|js|mjs|cjs|jsx)$/;
+
+/** True when a source file has an import, an export or a re-export at its top level: a file with none is a script, and its top-level names are globals of every other file for a tool that reads files one by one. */
+function hasModuleSyntax(src: string): boolean {
+  const sf = parseSource(src);
+  return sf.statements.some(
+    (st) =>
+      ts.isImportDeclaration(st) ||
+      ts.isExportDeclaration(st) ||
+      ts.isExportAssignment(st) ||
+      ts.isImportEqualsDeclaration(st) ||
+      (ts.canHaveModifiers(st) && (ts.getModifiers(st) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword)),
+  );
+}
+
+/** What npm runs around the start script: a pre or post script of the same name, and `node-options` in an .npmrc (which applies to every script). `npmrc` is the text of the repo root's .npmrc, or undefined when there is none. */
+function npmRunsViolations(scripts: Record<string, string> | undefined, npmrc: string | undefined): string[] {
+  const out: string[] = [];
+  for (const name of ['presim:collector', 'postsim:collector']) if (scripts !== undefined && name in scripts) out.push(`package.json has a ${name} script: npm runs it around sim:collector, outside everything else this pin reads`);
+  if (npmrc !== undefined && /^\s*node[-_]options\s*=/im.test(npmrc)) out.push('.npmrc holds a node-options line: it applies to every npm script, and can preload code before the start script');
+  return out;
 }
 
 const PIN_PURPOSE =
@@ -1569,6 +1618,15 @@ function argumentViolations(files: Record<string, string>, core: Record<string, 
   noAmbient('sim/collector/src/', files);
   noAmbient('sim/core/src/', core);
 
+  // the files are the files, and each source file is a module (a script's top-level names are globals for the others)
+  for (const x of fileListViolations('sim/collector/src/', Object.keys(files).sort(), EXPECTED_FILES.collector)) link('link 7', x);
+  if (Object.keys(core).length > 0) for (const x of fileListViolations('sim/core/src/', Object.keys(core).sort(), EXPECTED_FILES.core)) link('link 7', x);
+  const needModule = (label: string, set: Record<string, string>): void => {
+    for (const [name, src] of Object.entries(set)) if (SOURCE_KIND.test(name) && !hasModuleSyntax(src)) link("the bay program's side (modules)", `${label}${name} has no import and no export: it is a script, not a module, and its top-level names would be global names for every other file`);
+  };
+  needModule('sim/collector/src/', files);
+  needModule('sim/core/src/', core);
+
   // the core library's modules, held the way the program's are (an import, a re-export, require( and import( anywhere in a file)
   if (Object.keys(core).length > 0) {
     for (const name of new Set([...Object.keys(core), ...Object.keys(EXPECTED_CORE_IMPORTS)])) {
@@ -1640,6 +1698,14 @@ test('A13. the places a post can start are pinned: one call of post, one of flus
   assert.deepEqual(startScriptViolations(startScript), [], START_WHY);
   assert.notDeepEqual(startScriptViolations(`${startScript} --import ./x.mjs`), [], 'the pin does not see a preload added to the start script');
   assert.deepEqual(startScriptViolations(undefined).length, 1, 'a missing start script is found');
+  // what npm runs around the start script: one assertion each, on the files as they are
+  const repoRoot = join(SRC, '..', '..', '..');
+  const packageScripts = (JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')) as { scripts?: Record<string, string> }).scripts ?? {};
+  assert.ok(!('presim:collector' in packageScripts) && !('postsim:collector' in packageScripts), 'package.json has a presim:collector or postsim:collector script: npm runs it around the start script (sim:collector), outside everything else this pin reads');
+  const npmrcPath = join(repoRoot, '.npmrc');
+  const npmrcText = existsSync(npmrcPath) ? readFileSync(npmrcPath, 'utf8') : undefined;
+  assert.ok(npmrcText === undefined || !/^\s*node[-_]options\s*=/im.test(npmrcText), 'the repo root has an .npmrc with a node-options line: it applies to every npm script and can preload code before the start script (sim:collector), outside everything else this pin reads');
+  assert.deepEqual(npmRunsViolations(packageScripts, npmrcText), [], 'what npm runs around the start script');
   const t0 = Date.now();
   const moved = argumentViolations(all, coreTree, true);
   console.log(`A13 reads the whole of the bay program's side in ${Date.now() - t0} ms`);
@@ -1731,57 +1797,59 @@ test('A13. the places a post can start are pinned: one call of post, one of flus
   const BATCH = '      const batch = outbox.batch(BATCH_RECORDS);\n';
   const PARSE_ANCHOR = "  if (typeof text !== 'string') throw new UnknownLayoutError('round file text must be a string');";
   const TRIGGER = ' if (text.length > 5_000_000)';
-  type Case = [string, Record<string, string>, Record<string, string>];
+  type Case = [string, Record<string, string>, Record<string, string>, string?];
   const side = (name: string, files: Record<string, string>, coreFiles: Record<string, string> = coreTree): Case => [name, files, coreFiles];
+  /** A case may name the finding it expects, a phrase of the finding line written for it: "found" then means that finding is among those reported (an edit found only by another rule would not pass). */
+  const own = (phrase: string, c: Case): Case => [c[0], c[1], c[2], phrase];
   const mustFindSide: Case[] = [
-    side('V1: core imports undici and posts a big round file', all, inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void request('http://127.0.0.1:5077/v0/shots', { method: 'POST' });`, inCore('parse.ts', TOP, `${TOP}\nimport { request } from 'undici';`))),
-    side("V2: collector.ts, after four hours of the program's clock, process.getBuiltinModule('node:http')", edit('collector.ts', BATCH, `${BATCH}      if (now() - 14_400_000 > 0 && outbox.pending > 0) void (process as any).getBuiltinModule('node:http').request('http://127.0.0.1:5077/v0/shots', { method: 'POST' }).end();\n`)),
-    side("V3: core parseRoundFile, process.getBuiltinModule('node:http')", all, inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void (process as any).getBuiltinModule('node:http').request('http://127.0.0.1:5077/v0/shots', { method: 'POST' }).end();`)),
-    side("V4: core imports createRequire and loads node:http", all, inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void createRequire(import.meta.url)('node:http');`, inCore('parse.ts', TOP, `${TOP}\nimport { createRequire } from 'node:module';`))),
-    side("require('node:http') in collector.ts", addTo(all, 'collector.ts', "\nfunction viaRequire(): void {\n  void require('node:http');\n}\n")),
-    side('a new import of node:module in outbox.ts', edit('outbox.ts', "import { createHash } from 'node:crypto';\n", "import { createHash } from 'node:crypto';\nimport { createRequire } from 'node:module';\n")),
-    side('the global WebSocket used in collector.ts', addTo(all, 'collector.ts', "\nfunction viaSocket(): void {\n  void new WebSocket('ws://127.0.0.1:5077');\n}\n")),
-    side('navigator.sendBeacon in the core library', all, addTo(coreTree, 'text.ts', "\nexport function beacon(): boolean {\n  return navigator.sendBeacon('http://127.0.0.1:5077', 'x');\n}\n")),
-    side('new Worker(...) with Worker not imported, in collector.ts', addTo(all, 'collector.ts', "\nfunction viaWorker(): void {\n  void new Worker('x.js');\n}\n")),
-    side('eval in the core library', all, addTo(coreTree, 'text.ts', "\nexport function evaluate(): unknown {\n  return eval('1');\n}\n")),
-    side('Reflect.get(...) in collector.ts', addTo(all, 'collector.ts', "\nfunction viaReflect(o: object): unknown {\n  return Reflect.get(o, 'x');\n}\n")),
-    side('globalThis.fetch(...) in the core library', all, addTo(coreTree, 'text.ts', "\nexport function viaGlobal(): void {\n  void globalThis.fetch('http://127.0.0.1:5077');\n}\n")),
-    side('globalThis[`fetch`] in the core library', all, addTo(coreTree, 'text.ts', '\nexport function viaTemplate(): void {\n  void (globalThis as any)[`fetch`](\'http://127.0.0.1:5077\');\n}\n')),
-    side("process.binding('tcp_wrap') in collector.ts", addTo(all, 'collector.ts', "\nfunction viaBinding(): void {\n  void (process as any).binding('tcp_wrap');\n}\n")),
-    side('const p = process; (process passed whole) in collector.ts', addTo(all, 'collector.ts', '\nfunction viaWhole(): void {\n  const p = process;\n  void p;\n}\n')),
-    side("process['getBuiltinModule']('node:http') in collector.ts", addTo(all, 'collector.ts', "\nfunction viaBrackets(): void {\n  void (process as any)['getBuiltinModule']('node:http');\n}\n")),
-    side('a second function with a parameter named fetch, and the global fetch used in another function (found as a second fetch by the existing count; item 2 finds nothing new, because the global fetch is already in the list)', addTo(all, 'collector.ts', "\nfunction shadow(fetch: number): number {\n  return fetch;\n}\nfunction useReal(): void {\n  void fetch('http://127.0.0.1:5077');\n}\n")),
-    side('options[`post`] called in collector.ts (a template with no holes in brackets)', addTo(all, 'collector.ts', '\nfunction viaOptions(options: any): void {\n  void options[`post`](\'u\', \'b\');\n}\n')),
-    side('structuredClone used in outbox.ts (a global the program does not use there, and not in its folder\'s list)', addTo(all, 'outbox.ts', '\nfunction copyIt(x: object): object {\n  return structuredClone(x);\n}\n')),
-    side('a new import of node:crypto in the core library', all, edit('text.ts', 'export ', "import { createHash } from 'node:crypto';\nexport ", coreTree)),
+    own('has other imports than it had', side('V1: core imports undici and posts a big round file', all, inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void request('http://127.0.0.1:5077/v0/shots', { method: 'POST' });`, inCore('parse.ts', TOP, `${TOP}\nimport { request } from 'undici';`)))),
+    own('uses process other than as process.<member>', side("V2: collector.ts, after four hours of the program's clock, process.getBuiltinModule('node:http')", edit('collector.ts', BATCH, `${BATCH}      if (now() - 14_400_000 > 0 && outbox.pending > 0) void (process as any).getBuiltinModule('node:http').request('http://127.0.0.1:5077/v0/shots', { method: 'POST' }).end();\n`))),
+    own('uses process other than as process.<member>', side("V3: core parseRoundFile, process.getBuiltinModule('node:http')", all, inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void (process as any).getBuiltinModule('node:http').request('http://127.0.0.1:5077/v0/shots', { method: 'POST' }).end();`))),
+    own('has other imports than it had', side("V4: core imports createRequire and loads node:http", all, inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void createRequire(import.meta.url)('node:http');`, inCore('parse.ts', TOP, `${TOP}\nimport { createRequire } from 'node:module';`)))),
+    own('uses the global name `require`', side("require('node:http') in collector.ts", addTo(all, 'collector.ts', "\nfunction viaRequire(): void {\n  void require('node:http');\n}\n"))),
+    own('has other imports than it had', side('a new import of node:module in outbox.ts', edit('outbox.ts', "import { createHash } from 'node:crypto';\n", "import { createHash } from 'node:crypto';\nimport { createRequire } from 'node:module';\n"))),
+    own('uses the global name `WebSocket`', side('the global WebSocket used in collector.ts', addTo(all, 'collector.ts', "\nfunction viaSocket(): void {\n  void new WebSocket('ws://127.0.0.1:5077');\n}\n"))),
+    own('uses the global name `navigator`', side('navigator.sendBeacon in the core library', all, addTo(coreTree, 'text.ts', "\nexport function beacon(): boolean {\n  return navigator.sendBeacon('http://127.0.0.1:5077', 'x');\n}\n"))),
+    own('uses the global name `Worker`', side('new Worker(...) with Worker not imported, in collector.ts', addTo(all, 'collector.ts', "\nfunction viaWorker(): void {\n  void new Worker('x.js');\n}\n"))),
+    own('uses the global name `eval`', side('eval in the core library', all, addTo(coreTree, 'text.ts', "\nexport function evaluate(): unknown {\n  return eval('1');\n}\n"))),
+    own('uses the global name `Reflect`', side('Reflect.get(...) in collector.ts', addTo(all, 'collector.ts', "\nfunction viaReflect(o: object): unknown {\n  return Reflect.get(o, 'x');\n}\n"))),
+    own('uses the global name `globalThis`', side('globalThis.fetch(...) in the core library', all, addTo(coreTree, 'text.ts', "\nexport function viaGlobal(): void {\n  void globalThis.fetch('http://127.0.0.1:5077');\n}\n"))),
+    own('uses the global name `globalThis`', side('globalThis[`fetch`] in the core library', all, addTo(coreTree, 'text.ts', '\nexport function viaTemplate(): void {\n  void (globalThis as any)[`fetch`](\'http://127.0.0.1:5077\');\n}\n'))),
+    own('uses process other than as process.<member>', side("process.binding('tcp_wrap') in collector.ts", addTo(all, 'collector.ts', "\nfunction viaBinding(): void {\n  void (process as any).binding('tcp_wrap');\n}\n"))),
+    own('uses process other than as process.<member>', side('const p = process; (process passed whole) in collector.ts', addTo(all, 'collector.ts', '\nfunction viaWhole(): void {\n  const p = process;\n  void p;\n}\n'))),
+    own('uses process other than as process.<member>', side("process['getBuiltinModule']('node:http') in collector.ts", addTo(all, 'collector.ts', "\nfunction viaBrackets(): void {\n  void (process as any)['getBuiltinModule']('node:http');\n}\n"))),
+    own('of `fetch` as a whole word', side('a second function with a parameter named fetch, and the global fetch used in another function (found as a second fetch by the existing count; item 2 finds nothing new, because the global fetch is already in the list)', addTo(all, 'collector.ts', "\nfunction shadow(fetch: number): number {\n  return fetch;\n}\nfunction useReal(): void {\n  void fetch('http://127.0.0.1:5077');\n}\n"))),
+    own('`post` as a whole word', side('options[`post`] called in collector.ts (a template with no holes in brackets)', addTo(all, 'collector.ts', '\nfunction viaOptions(options: any): void {\n  void options[`post`](\'u\', \'b\');\n}\n'))),
+    own('uses the global name `structuredClone`', side('structuredClone used in outbox.ts (a global the program does not use there, and not in its folder\'s list)', addTo(all, 'outbox.ts', '\nfunction copyIt(x: object): object {\n  return structuredClone(x);\n}\n'))),
+    own('has other imports than it had', side('a new import of node:crypto in the core library', all, edit('text.ts', 'export ', "import { createHash } from 'node:crypto';\nexport ", coreTree))),
   ];
   // the name constructor: a road to running text as code (Function reached as a property), nothing on the bay program's side reads it
   mustFindSide.push(
-    side('T1b: (() => undefined).constructor(\'return fetch\')() in collector.ts for a batch of 137', edit('collector.ts', BATCH, `${BATCH}      if (batch.length === 137) void ((() => undefined).constructor('return fetch')() as any)(\`\${base}/v0/shots\`, { method: 'POST', body: JSON.stringify({ records: batch }) }).catch(() => undefined);\n`)),
-    side("T2: ({}).constructor.constructor('return fetch')() in the core library, for a file over 5 MB", all, inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void (({}).constructor.constructor('return fetch')() as any)('http://127.0.0.1:5077/v0/shots', { method: 'POST', body: '{}' }).catch(() => undefined);`)),
-    side("process.on.constructor('return fetch') with no fetch in a type", addTo(all, 'collector.ts', "\nfunction viaProcessOn(): unknown {\n  return (process.on as any).constructor('return fetch')();\n}\n")),
-    side('the destructuring form: const { constructor } = x', addTo(all, 'collector.ts', '\nfunction viaDestructuring(x: object): unknown {\n  const { constructor } = x;\n  return constructor;\n}\n')),
-    side('the destructuring form with a new name: const { constructor: c } = x', addTo(all, 'collector.ts', '\nfunction viaDestructuringAs(x: object): unknown {\n  const { constructor: c } = x;\n  return c;\n}\n')),
-    side("Reflect.get(parseRoundFile, 'constructor') in the core library", all, addTo(coreTree, 'parse.ts', "\nexport function viaReflect(): unknown {\n  return Reflect.get(parseRoundFile, 'constructor');\n}\n")),
-    side("Object.getOwnPropertyDescriptor(p, 'constructor') in the core library", all, addTo(coreTree, 'text.ts', "\nexport function viaDescriptor(p: object): unknown {\n  return Object.getOwnPropertyDescriptor(p, 'constructor');\n}\n")),
-    side("the bracket form with an escaped spelling: x['constru\\u0063tor']", addTo(all, 'collector.ts', "\nfunction viaBrackets(x: any): unknown {\n  return x['constru\\u0063tor'];\n}\n")),
-    side('the bracket form with a template with no holes: x[`constructor`]', addTo(all, 'collector.ts', '\nfunction viaTemplate(x: any): unknown {\n  return x[`constructor`];\n}\n')),
-    side('an escaped property name: x.constru\\u0063tor', addTo(all, 'collector.ts', '\nfunction viaEscapedName(x: any): unknown {\n  return x.constru\\u0063tor;\n}\n')),
+    own('reads the name constructor', side('T1b: (() => undefined).constructor(\'return fetch\')() in collector.ts for a batch of 137', edit('collector.ts', BATCH, `${BATCH}      if (batch.length === 137) void ((() => undefined).constructor('return fetch')() as any)(\`\${base}/v0/shots\`, { method: 'POST', body: JSON.stringify({ records: batch }) }).catch(() => undefined);\n`))),
+    own('reads the name constructor', side("T2: ({}).constructor.constructor('return fetch')() in the core library, for a file over 5 MB", all, inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void (({}).constructor.constructor('return fetch')() as any)('http://127.0.0.1:5077/v0/shots', { method: 'POST', body: '{}' }).catch(() => undefined);`))),
+    own('reads the name constructor', side("process.on.constructor('return fetch') with no fetch in a type", addTo(all, 'collector.ts', "\nfunction viaProcessOn(): unknown {\n  return (process.on as any).constructor('return fetch')();\n}\n"))),
+    own('reads the name constructor', side('the destructuring form: const { constructor } = x', addTo(all, 'collector.ts', '\nfunction viaDestructuring(x: object): unknown {\n  const { constructor } = x;\n  return constructor;\n}\n'))),
+    own('reads the name constructor', side('the destructuring form with a new name: const { constructor: c } = x', addTo(all, 'collector.ts', '\nfunction viaDestructuringAs(x: object): unknown {\n  const { constructor: c } = x;\n  return c;\n}\n'))),
+    own('reads the name constructor', side("Reflect.get(parseRoundFile, 'constructor') in the core library", all, addTo(coreTree, 'parse.ts', "\nexport function viaReflect(): unknown {\n  return Reflect.get(parseRoundFile, 'constructor');\n}\n"))),
+    own('reads the name constructor', side("Object.getOwnPropertyDescriptor(p, 'constructor') in the core library", all, addTo(coreTree, 'text.ts', "\nexport function viaDescriptor(p: object): unknown {\n  return Object.getOwnPropertyDescriptor(p, 'constructor');\n}\n"))),
+    own('reads the name constructor', side("the bracket form with an escaped spelling: x['constru\\u0063tor']", addTo(all, 'collector.ts', "\nfunction viaBrackets(x: any): unknown {\n  return x['constru\\u0063tor'];\n}\n"))),
+    own('reads the name constructor', side('the bracket form with a template with no holes: x[`constructor`]', addTo(all, 'collector.ts', '\nfunction viaTemplate(x: any): unknown {\n  return x[`constructor`];\n}\n'))),
+    own('reads the name constructor', side('an escaped property name: x.constru\\u0063tor', addTo(all, 'collector.ts', '\nfunction viaEscapedName(x: any): unknown {\n  return x.constru\\u0063tor;\n}\n'))),
   );
   // declare: a declaration with no body makes a real global look local to the binder pass, so nothing on the bay program's side is declared with it
   const MARK_SENT = '  markSent(n: number): void {\n';
   mustFindSide.push(
-    side('A1b: outbox.ts declares WebSocket and opens one in markSent with over 600 waiting', addTo(edit('outbox.ts', MARK_SENT, `${MARK_SENT}    if (this.waiting.length > 600) void new WebSocket('ws://127.0.0.1:5077/v0/shots');\n`), 'outbox.ts', '\ndeclare const WebSocket: any;\n')),
-    side('A2b: core parseRoundFile declares WebSocket and opens one for a file over 5 MB', all, addTo(inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void new WebSocket('ws://127.0.0.1:5077/v0/shots');`), 'parse.ts', '\ndeclare const WebSocket: any;\n')),
-    side("A10: core declares Function and runs text as code: Function('return fetch')()", all, addTo(inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void (Function('return fetch')() as any)('http://127.0.0.1:5077/v0/shots', { method: 'POST', body: '{}' }).catch(() => undefined);`), 'parse.ts', '\ndeclare const Function: any;\n')),
-    side('declare global { var WebSocket: any } in collector.ts, with a use', addTo(all, 'collector.ts', "\ndeclare global {\n  var WebSocket: any;\n}\nfunction viaGlobalDeclaration(): void {\n  void new WebSocket('ws://127.0.0.1:5077');\n}\n")),
-    side('declare global { var WebSocket: any } in the core library, with a use', all, addTo(coreTree, 'text.ts', "\ndeclare global {\n  var WebSocket: any;\n}\nexport function viaCoreGlobalDeclaration(): void {\n  void new WebSocket('ws://127.0.0.1:5077');\n}\n")),
-    side("declare function require(name: string): any, and a call of it, in collector.ts", addTo(all, 'collector.ts', "\ndeclare function require(name: string): any;\nfunction viaDeclaredRequire(): void {\n  void require('node:http');\n}\n")),
-    side('export declare const WebSocket: any in files.ts, imported and used in outbox.ts', { ...addTo(all, 'files.ts', '\nexport declare const WebSocket: any;\n'), 'outbox.ts': all['outbox.ts']! + "\nimport { WebSocket } from './files.js';\nfunction viaImportedDeclaration(): void {\n  void new WebSocket('ws://127.0.0.1:5077');\n}\n" }),
-    side('an interface WebSocket {} beside new WebSocket(...) (a name whose every declaration makes no value at run time)', addTo(all, 'outbox.ts', "\ninterface WebSocket {\n  readonly url: string;\n}\nfunction viaInterface(): void {\n  void new WebSocket('ws://127.0.0.1:5077');\n}\n")),
-    side('a new file globals.d.ts in sim/collector/src', { ...all, 'globals.d.ts': 'declare var NotUsed: any;\n' }),
-    side('a new file globals.d.ts in sim/core/src', all, { ...coreTree, 'globals.d.ts': 'declare var NotUsed: any;\n' }),
-    side('a /// <reference types="node" /> line in collector.ts', { ...all, 'collector.ts': `/// <reference types="node" />\n${all['collector.ts']!}` }),
+    own('with declare:', side('A1b: outbox.ts declares WebSocket and opens one in markSent with over 600 waiting', addTo(edit('outbox.ts', MARK_SENT, `${MARK_SENT}    if (this.waiting.length > 600) void new WebSocket('ws://127.0.0.1:5077/v0/shots');\n`), 'outbox.ts', '\ndeclare const WebSocket: any;\n'))),
+    own('with declare:', side('A2b: core parseRoundFile declares WebSocket and opens one for a file over 5 MB', all, addTo(inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void new WebSocket('ws://127.0.0.1:5077/v0/shots');`), 'parse.ts', '\ndeclare const WebSocket: any;\n'))),
+    own('with declare:', side("A10: core declares Function and runs text as code: Function('return fetch')()", all, addTo(inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void (Function('return fetch')() as any)('http://127.0.0.1:5077/v0/shots', { method: 'POST', body: '{}' }).catch(() => undefined);`), 'parse.ts', '\ndeclare const Function: any;\n'))),
+    own('with declare:', side('declare global { var WebSocket: any } in collector.ts, with a use', addTo(all, 'collector.ts', "\ndeclare global {\n  var WebSocket: any;\n}\nfunction viaGlobalDeclaration(): void {\n  void new WebSocket('ws://127.0.0.1:5077');\n}\n"))),
+    own('with declare:', side('declare global { var WebSocket: any } in the core library, with a use', all, addTo(coreTree, 'text.ts', "\ndeclare global {\n  var WebSocket: any;\n}\nexport function viaCoreGlobalDeclaration(): void {\n  void new WebSocket('ws://127.0.0.1:5077');\n}\n"))),
+    own('with declare:', side("declare function require(name: string): any, and a call of it, in collector.ts", addTo(all, 'collector.ts', "\ndeclare function require(name: string): any;\nfunction viaDeclaredRequire(): void {\n  void require('node:http');\n}\n"))),
+    own('with declare:', side('export declare const WebSocket: any in files.ts, imported and used in outbox.ts', { ...addTo(all, 'files.ts', '\nexport declare const WebSocket: any;\n'), 'outbox.ts': all['outbox.ts']! + "\nimport { WebSocket } from './files.js';\nfunction viaImportedDeclaration(): void {\n  void new WebSocket('ws://127.0.0.1:5077');\n}\n" })),
+    own('uses the global name `WebSocket`', side('an interface WebSocket {} beside new WebSocket(...) (a name whose every declaration makes no value at run time)', addTo(all, 'outbox.ts', "\ninterface WebSocket {\n  readonly url: string;\n}\nfunction viaInterface(): void {\n  void new WebSocket('ws://127.0.0.1:5077');\n}\n"))),
+    own('is a .d.ts file', side('a new file globals.d.ts in sim/collector/src', { ...all, 'globals.d.ts': 'declare var NotUsed: any;\n' })),
+    own('is a .d.ts file', side('a new file globals.d.ts in sim/core/src', all, { ...coreTree, 'globals.d.ts': 'declare var NotUsed: any;\n' })),
+    own('has a /// <reference line', side('a /// <reference types="node" /> line in collector.ts', { ...all, 'collector.ts': `/// <reference types="node" />\n${all['collector.ts']!}` })),
   );
   assert.notDeepEqual(startScriptViolations(`${startScript} --import ./x.mjs`), [], 'the start script with --import ./x.mjs added is found');
   const mustNotFindSide: Case[] = [
@@ -1793,10 +1861,33 @@ test('A13. the places a post can start are pinned: one call of post, one of flus
     side('the word declare inside a comment and inside a string', addTo(all, 'outbox.ts', "\nconst declareNote = 'declare const WebSocket: any;';\n// declare global { var WebSocket: any }\n")),
     side('a type named in a type position only (WebSocket in a type annotation)', addTo(all, 'outbox.ts', '\ntype OnlyAType = Record<string, WebSocket>;\n')),
   ];
+  // round 10: every source file is a module, the files are the files, and a script file cannot make a global look local (the review's B2, C1 and C2)
+  const HELPER = 'function helper() {}\n';
+  const ENV_VAR = (name: string, type: string): string => `var ${name}: ${type};\n`;
+  const coreEnv = (text: string): Record<string, string> => ({ ...coreTree, 'env.ts': text });
+  const HTTP_CALL = "('node:http').request('http://127.0.0.1:5077/v0/shots', { method: 'POST' }).end();";
+  mustFindSide.push(
+    own('uses the global name `Function`', side("B2: core env.ts holds var Function: FunctionConstructor; (a script), parse.ts runs Function('return fetch')()", all, inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void (Function('return fetch')() as any)('http://127.0.0.1:5077/v0/shots', { method: 'POST', body: '{}' }).catch(() => undefined);`, coreEnv(ENV_VAR('Function', 'FunctionConstructor'))))),
+    own('reads process.getBuiltinModule', side('C1: collector env.ts holds var process: NodeJS.Process; (a script), outbox.ts runs process.getBuiltinModule(node:http).request', { ...edit('outbox.ts', MARK_SENT, `${MARK_SENT}    if (this.waiting.length > 600) void process.getBuiltinModule${HTTP_CALL}\n`), 'env.ts': ENV_VAR('process', 'NodeJS.Process') })),
+    own('reads process.getBuiltinModule', side('C2: core env.ts holds var process: NodeJS.Process; (a script), parse.ts runs process.getBuiltinModule(node:http).request', all, inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void process.getBuiltinModule${HTTP_CALL}`, coreEnv(ENV_VAR('process', 'NodeJS.Process'))))),
+    own('has no import and no export', side('a new env.ts in sim/collector/src holding only function helper() {}', { ...all, 'env.ts': HELPER })),
+    own('has no import and no export', side('a new env.ts in sim/core/src holding only function helper() {}', all, coreEnv(HELPER))),
+    own('is not one of the files this pin holds', side('a file send.mts in sim/collector/src', { ...all, 'send.mts': 'export const go = (u: string): string => u;\n' })),
+  );
+  mustNotFindSide.push(
+    side('a class field written with declare (it makes no name at all)', addTo(all, 'outbox.ts', '\nclass FieldHolder {\n  declare x: number;\n  declare readonly y: string;\n}\nfunction makeHolder(): FieldHolder {\n  return new FieldHolder();\n}\n')),
+  );
+  // what npm runs around the start script, made up (the text of an .npmrc is handed to the pin; no such file is written anywhere)
+  assert.notDeepEqual(npmRunsViolations({ ...packageScripts, 'presim:collector': 'node ./x.mjs' }, undefined), [], 'the pin does not see a presim:collector script');
+  assert.notDeepEqual(npmRunsViolations({ ...packageScripts, 'postsim:collector': 'node ./x.mjs' }, undefined), [], 'the pin does not see a postsim:collector script');
+  assert.ok(npmRunsViolations(packageScripts, 'node-options=--import ./x.mjs\n').some((x) => x.includes('node-options')), 'the pin does not see an .npmrc with node-options=--import ./x.mjs');
+  assert.notDeepEqual(npmRunsViolations(packageScripts, '; a comment\nregistry=https://registry.npmjs.org/\nnode_options = --require ./y.cjs\n'), [], 'the pin does not see node_options (underscore, spaces) among other lines');
+  assert.deepEqual(npmRunsViolations(packageScripts, 'registry=https://registry.npmjs.org/\n# node-options=--import ./x.mjs in a comment\n'), [], 'an .npmrc holding only a registry line (and a comment) is not a finding');
   const t1 = Date.now();
-  for (const [name, f, c] of mustFindSide) {
+  for (const [name, f, c, expected] of mustFindSide) {
     const found = argumentViolations(f, c, true);
     assert.notDeepEqual(found, [], `the pin does not see: ${name}`);
+    if (expected !== undefined) assert.ok(found.some((x) => x.includes(expected)), `the pin sees ${name}, but not by the rule written for it (it expects a finding holding: ${expected}); it reports: ${found.map((x) => x.slice(0, 120)).join(' | ')}`);
   }
   for (const [name, f, c] of mustNotFindSide) assert.deepEqual(argumentViolations(f, c, true), [], `the pin sees something it should not: ${name}`);
   console.log(`A13 side edits: ${mustFindSide.length} found, ${mustNotFindSide.length} not found, ${Date.now() - t1} ms`);
