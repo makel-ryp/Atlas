@@ -8,12 +8,12 @@ export const DEFAULT_PIECE_BYTES = 1024 * 1024;
 /** A line longer than this is treated as a bad line (the hub's own limit on a body is 32 MB). */
 export const MAX_LINE_BYTES = 64 * 1024 * 1024;
 
-/** Thrown when the journal cannot be trusted. The message never carries file content. */
-/** A code that is plain (capital letters, digits, underscore), else the word error: only that is ever printed. */
-function plainCodeOf(code: unknown): string {
+/** The only form in which an error code reaches the console: 1 to 32 capital letters, digits and underscores; anything else is "error". */
+export function plainCode(code: unknown): string {
   return typeof code === 'string' && /^[A-Z0-9_]{1,32}$/.test(code) ? code : 'error';
 }
 
+/** Thrown when the journal cannot be trusted. The message never carries file content. */
 export class JournalError extends Error {
   constructor(message: string) {
     super(message);
@@ -218,7 +218,7 @@ export class Journal {
     readonly file: string,
     fd: number,
     /** The length of the file up to its last complete line: where an append starts and where a failed one is cut back to. */
-    public goodLength: number,
+    private goodLength: number,
     io: Partial<JournalIO> | undefined,
   ) {
     this.fd = fd;
@@ -269,12 +269,12 @@ export class Journal {
     };
     const seen = j.look((p) => io.statPathAtStart(p));
     if (seen.state === 'gone') refuse(`the journal ${JOURNAL_NAME} was removed, replaced or changed while the hub was starting; nothing was changed; start the hub again`);
-    if (seen.state === 'cannot') refuse(`the journal ${JOURNAL_NAME} could not be looked at while the hub was starting (${plainCodeOf(seen.code)}); nothing was changed; try again in a moment`);
+    if (seen.state === 'cannot') refuse(`the journal ${JOURNAL_NAME} could not be looked at while the hub was starting (${plainCode(seen.code)}); nothing was changed; try again in a moment`);
     let heldSize: number;
     try {
       heldSize = io.size(fd);
     } catch (e) {
-      return refuse(`the journal ${JOURNAL_NAME} could not be looked at while the hub was starting (${plainCodeOf((e as NodeJS.ErrnoException | undefined)?.code)}); nothing was changed; try again in a moment`);
+      return refuse(`the journal ${JOURNAL_NAME} could not be looked at while the hub was starting (${plainCode((e as NodeJS.ErrnoException | undefined)?.code)}); nothing was changed; try again in a moment`);
     }
     if (heldSize !== r.size) refuse(`the journal ${JOURNAL_NAME} was removed, replaced or changed while the hub was starting; nothing was changed; start the hub again`);
     try {

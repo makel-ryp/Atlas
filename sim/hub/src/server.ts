@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { RoundBook, UnknownLayoutError, validateRecord, MAX_RECORDS, type IngestCounts, type ShotRecord } from '../../core/src/index.js';
-import { Journal, JournalError, JournalNotWritten, replayFile, type WriteLook, JOURNAL_NAME, MAX_LINE_BYTES, type JournalOptions } from './journal.js';
+import { Journal, JournalError, plainCode, JournalNotWritten, replayFile, type WriteLook, JOURNAL_NAME, MAX_LINE_BYTES, type JournalOptions } from './journal.js';
 import { takeLock, type HeldLock } from './lock.js';
 
 export const HOST = '127.0.0.1';
@@ -60,11 +60,6 @@ class BodyTooLarge extends Error {}
 class BodyTimeout extends Error {}
 /** The client dropped the connection before its body ended. */
 class ClientAborted extends Error {}
-
-/** The only form in which an error code reaches the console: 1 to 32 capital letters, digits and underscores; anything else is "error". */
-function plainCode(code: unknown): string {
-  return typeof code === 'string' && /^[A-Z0-9_]{1,32}$/.test(code) ? code : 'error';
-}
 
 function fingerprint(record: ShotRecord): string {
   return createHash('sha256').update(JSON.stringify(record)).digest('hex');
