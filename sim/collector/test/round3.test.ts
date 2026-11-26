@@ -1108,6 +1108,57 @@ function importFacts(src: string): ImportFacts {
 
 // ---- what the bay program's side uses: modules, global names, process members (A13) ----
 
+/**
+ * True when a declaration makes a value at run time. An ambient declaration (`declare ...`, anything inside one, a .d.ts),
+ * an interface, a type alias, a type-only import and a namespace that holds only types make none: a name whose every
+ * declaration is of that kind is, at run time, still the global of that name.
+ */
+function makesValue(decl: ts.Declaration): boolean {
+  if ((decl.flags & (ts.NodeFlags as unknown as { Ambient: number }).Ambient) !== 0) return false; // the compiler's flag for a node inside a declare, or in a .d.ts
+  if (ts.isInterfaceDeclaration(decl) || ts.isTypeAliasDeclaration(decl)) return false;
+  if (ts.isImportClause(decl) && decl.isTypeOnly) return false;
+  if (ts.isImportSpecifier(decl) && (decl.isTypeOnly || decl.parent.parent.isTypeOnly)) return false;
+  if (ts.isNamespaceImport(decl) && decl.parent.isTypeOnly) return false;
+  if (ts.isImportEqualsDeclaration(decl) && decl.isTypeOnly) return false;
+  if (ts.isModuleDeclaration(decl) && !moduleHoldsValue(decl)) return false;
+  return true;
+}
+
+/** The name a declaration gives (an import specifier, an interface, a type alias, a variable, a function...): the declaration itself, not a use of the name. */
+function isDeclarationName(n: ts.Identifier): boolean {
+  const p = n.parent;
+  if (ts.isImportSpecifier(p) || ts.isExportSpecifier(p)) return true;
+  if (ts.isImportClause(p) || ts.isNamespaceImport(p) || ts.isImportEqualsDeclaration(p) || ts.isNamespaceExport(p)) return (p as { name?: ts.Node }).name === n;
+  if (
+    ts.isInterfaceDeclaration(p) || ts.isTypeAliasDeclaration(p) || ts.isModuleDeclaration(p) || ts.isVariableDeclaration(p) || ts.isFunctionDeclaration(p) ||
+    ts.isClassDeclaration(p) || ts.isEnumDeclaration(p) || ts.isParameter(p) || ts.isTypeParameterDeclaration(p) || ts.isBindingElement(p)
+  ) {
+    return (p as { name?: ts.Node }).name === n;
+  }
+  return false;
+}
+
+function moduleHoldsValue(m: ts.ModuleDeclaration): boolean {
+  const body = m.body;
+  if (body === undefined) return false;
+  if (ts.isModuleDeclaration(body)) return moduleHoldsValue(body);
+  if (!ts.isModuleBlock(body)) return false;
+  return body.statements.some((st) => !(ts.isInterfaceDeclaration(st) || ts.isTypeAliasDeclaration(st) || (ts.isModuleDeclaration(st) && !moduleHoldsValue(st)) || (ts.isImportDeclaration(st) && st.importClause?.isTypeOnly === true)));
+}
+
+/** Everything in a file that is declared with the `declare` modifier (a variable, function, class, namespace, module, `declare global`), as a short description each. */
+function ambientUses(src: string): string[] {
+  const sf = parseSource(src);
+  const out: string[] = [];
+  for (const n of allNodes(sf)) {
+    if (!ts.canHaveModifiers(n)) continue;
+    if (!(ts.getModifiers(n) ?? []).some((m) => m.kind === ts.SyntaxKind.DeclareKeyword)) continue;
+    const named = ts.isVariableStatement(n) ? n.declarationList.declarations.map((d) => d.name.getText(sf)).join(', ') : ((n as { name?: ts.Node }).name?.getText(sf) ?? '');
+    out.push(`${ts.isVariableStatement(n) ? 'a variable' : ts.SyntaxKind[n.kind]}${named === '' ? '' : ` ${named}`}`);
+  }
+  return out;
+}
+
 interface SideFacts {
   /** Names used as values that are declared nowhere in the program's own source (not a local, a parameter, an import or a declaration), sorted. */
   globals: string[];
@@ -1183,10 +1234,11 @@ function sideFacts(files: Record<string, string>): Record<string, SideFacts> {
           (ts.isPropertyAssignment(p) && p.name === n) ||
           (ts.isBindingElement(p) && p.propertyName === n) ||
           (ts.isMetaProperty(p) && p.name === n) ||
+          isDeclarationName(n) ||
           ((ts.isLabeledStatement(p) || ts.isBreakOrContinueStatement(p)) && p.label === n);
         if (!isName && !inTypePosition(n)) {
           const symbol = ts.isShorthandPropertyAssignment(p) && p.name === n ? checker.getShorthandAssignmentValueSymbol(p) : checker.getSymbolAtLocation(n);
-          const declared = symbol !== undefined && (symbol.declarations?.length ?? 0) > 0;
+          const declared = symbol !== undefined && (symbol.declarations ?? []).some(makesValue); // a declaration that makes no value at run time (declare, an interface, a type alias, a type-only import) does not make a name local
           if (!declared) {
             globals.add(n.text);
             if (n.text === 'process') {
@@ -1202,6 +1254,14 @@ function sideFacts(files: Record<string, string>): Record<string, SideFacts> {
     out[path.slice(root.length)] = { globals: [...globals].sort(), processMembers: [...processMembers].sort(), processOther, metaMembers: [...metaMembers].sort(), metaOther, constructorReads };
   }
   return out;
+}
+
+/** The script that starts the bay program, as it is in package.json. A preload (`--import`) or another entry file there runs before the program and is outside everything else the pin reads. */
+const EXPECTED_START_SCRIPT = 'tsx sim/collector/src/main.ts';
+const START_WHY = 'The script that starts the bay program (sim:collector in package.json) is held word for word: a preload (--import, --require) or another entry file there runs before the program and is outside everything else this pin reads. If the change is honest, update the text in this test in the same commit and say so in the commit message.';
+
+function startScriptViolations(script: string | undefined): string[] {
+  return script === EXPECTED_START_SCRIPT ? [] : [`sim:collector in package.json is now ${JSON.stringify(script)}, it was ${JSON.stringify(EXPECTED_START_SCRIPT)}`];
 }
 
 const PIN_PURPOSE =
@@ -1268,7 +1328,7 @@ const ARGUMENT = [
   '  5. Nothing else in the source can run any of these later or by another name: no reference to `post`, `flushStage`, `pass` or `defaultPost` beyond the ones above; no timer but the one the program is handed and uses once, to call `tick`.',
   '  6. There is one program, and it hands in no post of its own: `createCollector` is called in one place (`startProgram`, in `program.ts`, whose whole body is pinned) and `startProgram` in one place (`main.ts`, which is pinned whole).',
   '  7. Only `collector.ts` knows about the post: every source file imports exactly the modules it imports now, no file imports a whole module as a namespace, and `outbox.ts` and `files.ts` never import `collector.ts` or `program.ts`.',
-  'THE BAY PROGRAM\'S SIDE (every .ts file under sim/collector/src and under sim/core/src) may use only the modules, the global names and the process and import.meta members listed in this test. A new one is not wrong in itself: if it cannot send anything and cannot load or run other code, add it to the list in the same commit and say so in the commit message; if it can, the post it makes must go through `oneAtATime`, and must not be handed in through `options.post`. `globalThis`, `global`, `self` and `window` are in no list, so any use of them is found. Nothing there reads `.constructor` (as a property, in brackets, as a destructuring key or as a string that is exactly that word), because that is a road to running text as code; a class\'s own constructor declaration is not a read.',
+  'THE BAY PROGRAM\'S SIDE (every .ts file under sim/collector/src and under sim/core/src) may use only the modules, the global names and the process and import.meta members listed in this test. A new one is not wrong in itself: if it cannot send anything and cannot load or run other code, add it to the list in the same commit and say so in the commit message; if it can, the post it makes must go through `oneAtATime`, and must not be handed in through `options.post`. `globalThis`, `global`, `self` and `window` are in no list, so any use of them is found. Nothing there reads `.constructor` (as a property, in brackets, as a destructuring key or as a string that is exactly that word), because that is a road to running text as code; a class\'s own constructor declaration is not a read. Nothing there is declared with `declare` (no declare modifier, no .d.ts file, no /// <reference line), because that makes a global look like a local.',
   'THE KNOWN LIMIT of any test that reads text: a name built at run time (`options[\'po\' + \'st\']`, `Reflect.get`, `Object.values`) is code written so that a reader does not see the name; no test here holds against it, and the person reading the change is the check for it.',
 ].join('\n');
 
@@ -1490,12 +1550,24 @@ function argumentViolations(files: Record<string, string>, core: Record<string, 
       const c = scanSource(src, false);
       const facts = importFacts(src);
       if (facts.specifiers.some((x) => /^(node:)?(http|https|http2|net|tls|dgram|child_process|worker_threads)$/.test(x))) link('link 1', `${label}${name} imports a module that can send (http, https, http2, net, tls, dgram, child_process or worker_threads)`);
-      if (/\beval\b/.test(c) || /\bnew\s+Function\b/.test(c) || /\bimport\s*\(/.test(c)) link('link 1', `${label}${name} uses a way to send or to run text: XMLHttpRequest, WebSocket, EventSource, sendBeacon, eval, new Function or import(`);
+      if (/\beval\b/.test(c) || /\bnew\s+Function\b/.test(c) || /\bimport\s*\(/.test(c)) link('link 1', `${label}${name} uses a way to run text: eval, new Function or import( (the other sending globals, WebSocket and the rest, are held by the global-name list)`);
       if (label !== '' && wordCount(c, 'fetch') > 0) link('link 1', `${label}${name} holds fetch: the core library sends nothing`);
     }
   };
   sending('', files);
   sending('sim/core/src/', core);
+
+  // nothing is declared with `declare`, no .d.ts file, no /// <reference line (a declaration with no body makes a global look local to the binder pass)
+  const noAmbient = (label: string, set: Record<string, string>): void => {
+    for (const [name, src] of Object.entries(set)) {
+      const where = `${label}${name}`;
+      if (name.endsWith('.d.ts')) link("the bay program's side (declare)", `${where} is a .d.ts file: it declares names that exist only for the type check`);
+      for (const u of ambientUses(src)) link("the bay program's side (declare)", `${where} declares ${u} with declare: at run time the name is still the global`);
+      if (/^\s*\/\/\/\s*<reference/m.test(src)) link("the bay program's side (declare)", `${where} has a /// <reference line`);
+    }
+  };
+  noAmbient('sim/collector/src/', files);
+  noAmbient('sim/core/src/', core);
 
   // the core library's modules, held the way the program's are (an import, a re-export, require( and import( anywhere in a file)
   if (Object.keys(core).length > 0) {
@@ -1564,6 +1636,10 @@ test('A13. the places a post can start are pinned: one call of post, one of flus
   assert.ok(Object.keys(all).length >= 5 && 'collector.ts' in all, 'the source tree was collected');
   const coreTree = readTree(join(SRC, '..', '..', 'core', 'src'));
   assert.ok(Object.keys(coreTree).length >= 3 && 'parse.ts' in coreTree, 'the core library was collected');
+  const startScript = (JSON.parse(readFileSync(join(SRC, '..', '..', '..', 'package.json'), 'utf8')) as { scripts?: Record<string, string> }).scripts?.['sim:collector'];
+  assert.deepEqual(startScriptViolations(startScript), [], START_WHY);
+  assert.notDeepEqual(startScriptViolations(`${startScript} --import ./x.mjs`), [], 'the pin does not see a preload added to the start script');
+  assert.deepEqual(startScriptViolations(undefined).length, 1, 'a missing start script is found');
   const t0 = Date.now();
   const moved = argumentViolations(all, coreTree, true);
   console.log(`A13 reads the whole of the bay program's side in ${Date.now() - t0} ms`);
@@ -1692,11 +1768,29 @@ test('A13. the places a post can start are pinned: one call of post, one of flus
     side('the bracket form with a template with no holes: x[`constructor`]', addTo(all, 'collector.ts', '\nfunction viaTemplate(x: any): unknown {\n  return x[`constructor`];\n}\n')),
     side('an escaped property name: x.constru\\u0063tor', addTo(all, 'collector.ts', '\nfunction viaEscapedName(x: any): unknown {\n  return x.constru\\u0063tor;\n}\n')),
   );
+  // declare: a declaration with no body makes a real global look local to the binder pass, so nothing on the bay program's side is declared with it
+  const MARK_SENT = '  markSent(n: number): void {\n';
+  mustFindSide.push(
+    side('A1b: outbox.ts declares WebSocket and opens one in markSent with over 600 waiting', addTo(edit('outbox.ts', MARK_SENT, `${MARK_SENT}    if (this.waiting.length > 600) void new WebSocket('ws://127.0.0.1:5077/v0/shots');\n`), 'outbox.ts', '\ndeclare const WebSocket: any;\n')),
+    side('A2b: core parseRoundFile declares WebSocket and opens one for a file over 5 MB', all, addTo(inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void new WebSocket('ws://127.0.0.1:5077/v0/shots');`), 'parse.ts', '\ndeclare const WebSocket: any;\n')),
+    side("A10: core declares Function and runs text as code: Function('return fetch')()", all, addTo(inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void (Function('return fetch')() as any)('http://127.0.0.1:5077/v0/shots', { method: 'POST', body: '{}' }).catch(() => undefined);`), 'parse.ts', '\ndeclare const Function: any;\n')),
+    side('declare global { var WebSocket: any } in collector.ts, with a use', addTo(all, 'collector.ts', "\ndeclare global {\n  var WebSocket: any;\n}\nfunction viaGlobalDeclaration(): void {\n  void new WebSocket('ws://127.0.0.1:5077');\n}\n")),
+    side('declare global { var WebSocket: any } in the core library, with a use', all, addTo(coreTree, 'text.ts', "\ndeclare global {\n  var WebSocket: any;\n}\nexport function viaCoreGlobalDeclaration(): void {\n  void new WebSocket('ws://127.0.0.1:5077');\n}\n")),
+    side("declare function require(name: string): any, and a call of it, in collector.ts", addTo(all, 'collector.ts', "\ndeclare function require(name: string): any;\nfunction viaDeclaredRequire(): void {\n  void require('node:http');\n}\n")),
+    side('export declare const WebSocket: any in files.ts, imported and used in outbox.ts', { ...addTo(all, 'files.ts', '\nexport declare const WebSocket: any;\n'), 'outbox.ts': all['outbox.ts']! + "\nimport { WebSocket } from './files.js';\nfunction viaImportedDeclaration(): void {\n  void new WebSocket('ws://127.0.0.1:5077');\n}\n" }),
+    side('an interface WebSocket {} beside new WebSocket(...) (a name whose every declaration makes no value at run time)', addTo(all, 'outbox.ts', "\ninterface WebSocket {\n  readonly url: string;\n}\nfunction viaInterface(): void {\n  void new WebSocket('ws://127.0.0.1:5077');\n}\n")),
+    side('a new file globals.d.ts in sim/collector/src', { ...all, 'globals.d.ts': 'declare var NotUsed: any;\n' }),
+    side('a new file globals.d.ts in sim/core/src', all, { ...coreTree, 'globals.d.ts': 'declare var NotUsed: any;\n' }),
+    side('a /// <reference types="node" /> line in collector.ts', { ...all, 'collector.ts': `/// <reference types="node" />\n${all['collector.ts']!}` }),
+  );
+  assert.notDeepEqual(startScriptViolations(`${startScript} --import ./x.mjs`), [], 'the start script with --import ./x.mjs added is found');
   const mustNotFindSide: Case[] = [
     side('a new local variable named require, declared and used in one function (a local is not a global)', addTo(all, 'collector.ts', '\nfunction localRequire(): number {\n  const require = 1;\n  return require;\n}\n')),
     side('a new local variable named WebSocket, declared and used in one function', addTo(all, 'collector.ts', '\nfunction localSocket(): number {\n  const WebSocket = 1;\n  return WebSocket;\n}\n')),
     side('a global already in the list used in a new place (JSON.stringify in outbox.ts)', addTo(all, 'outbox.ts', '\nfunction asText(x: object): string {\n  return JSON.stringify(x);\n}\n')),
     side("a class with a constructor declaration added to a source file (a declaration is not a read)", addTo(all, 'outbox.ts', '\nclass Holder {\n  constructor(readonly value: number) {}\n}\nfunction hold(): Holder {\n  return new Holder(1);\n}\n')),
+    side('a type alias and an interface used as types only', addTo(all, 'outbox.ts', '\ntype OnlyAlias = number;\ninterface OnlyShape {\n  a: OnlyAlias;\n}\nfunction useShape(x: OnlyShape): number {\n  return x.a;\n}\n')),
+    side('the word declare inside a comment and inside a string', addTo(all, 'outbox.ts', "\nconst declareNote = 'declare const WebSocket: any;';\n// declare global { var WebSocket: any }\n")),
     side('a type named in a type position only (WebSocket in a type annotation)', addTo(all, 'outbox.ts', '\ntype OnlyAType = Record<string, WebSocket>;\n')),
   ];
   const t1 = Date.now();

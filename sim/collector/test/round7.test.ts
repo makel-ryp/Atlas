@@ -225,31 +225,37 @@ function waitUntil(t0: number, ms: number): Promise<void> {
   });
 }
 
-test('G4. a hub that holds its first answer for 9 seconds (inside the 10 second give-up): calls at about 1, 3, 5.5, 7 and 8.5 seconds, each with another body, are each refused; the hub never has two requests open; after the answer the next call goes through', { timeout: 30_000 }, async () => {
-  const hub = await holdingHub();
-  const gate = oneAtATime(defaultPost);
-  const url = `${hub.url}/v0/shots`;
+test('G8. a held stand-in post with no give-up, held 10.5 seconds: calls at about 1, 3, 5.5, 7, 8.5, 9.6, 9.99 and 10.2 seconds, each with another body and another address, are each refused with the gate\'s message and never reach the stand-in; after the answer the next call goes through', { timeout: 30_000 }, async () => {
+  // No post of the program is out longer than about 10.02 seconds (defaultPost's give-up), so a gate that opens later than
+  // this test's last call (10.2 s) cannot let a second request out in a bay; a gate that opens earlier is caught here.
+  let reached = 0;
+  let answerFirst: ((r: PostResult) => void) | undefined;
+  const stub: PostFn = (url, body) => {
+    reached++;
+    void url;
+    void body;
+    if (reached > 1) return Promise.resolve(OK);
+    return new Promise<PostResult>((resolve) => {
+      answerFirst = resolve;
+    });
+  };
+  const gate = oneAtATime(stub);
   const t0 = Date.now();
-  const first = gate(url, '{"records":[],"n":0}').then(
+  const first = gate('http://127.0.0.1:1/v0/shots', 'body-first').then(
     (r) => r,
     (e: unknown) => e,
   );
-  await until(() => hub.requests.length === 1, 'the hub saw the first request');
-  const at = [1000, 3000, 5500, 7000, 8500];
-  for (const [i, ms] of at.entries()) {
+  assert.equal(reached, 1);
+  for (const [i, ms] of [1000, 3000, 5500, 7000, 8500, 9600, 9990, 10_200].entries()) {
     await waitUntil(t0, ms);
-    assert.equal(await refusal(gate(`${hub.url}/v0/shots?call=${i}`, `{"records":[],"n":${i + 1}}`)), GATE_MESSAGE, `the call at about ${ms / 1000} s is refused`);
-    assert.equal(hub.requests.length, 1, `the hub still has seen one request after the call at about ${ms / 1000} s`);
-    assert.equal(hub.open(), 1);
+    assert.equal(await refusal(gate(`http://127.0.0.1:${2 + i}/v0/shots`, `body-${i}`)), GATE_MESSAGE, `the call at about ${ms / 1000} s is refused`);
+    assert.equal(reached, 1, `the call at about ${ms / 1000} s never reached the stand-in`);
   }
-  await waitUntil(t0, 9000);
-  answerWith(hub.requests[0]!);
-  assert.equal(((await first) as { status: number }).status, 200, 'the first call ended with the hub\'s answer, 9 seconds in');
-  const next = gate(url, '{"records":[],"n":99}');
-  await until(() => hub.requests.length === 2, 'after the answer the next call goes through');
-  answerWith(hub.requests[1]!);
-  assert.equal((await next).status, 200);
-  assert.equal(hub.open(), 0);
+  await waitUntil(t0, 10_500);
+  answerFirst!(OK);
+  assert.deepEqual(await first, OK, 'the first call ended with its answer, 10.5 seconds in');
+  assert.deepEqual(await gate('http://127.0.0.1:99/v0/shots', 'body-after'), OK, 'after the answer the next call goes through');
+  assert.equal(reached, 2);
 });
 
 test('G5. the give-up itself: a hub that never answers its first request; calls at about 9.5 and 9.93 seconds are refused; the first call ends at the 10 second give-up; a call made after that goes through to the hub', { timeout: 30_000 }, async () => {
