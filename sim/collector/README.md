@@ -65,6 +65,21 @@ that batch to `refused.jsonl` and it is not retried.
 - A start that fails says what is wrong and to stop the program and move the data folder aside
   (it may hold shots not yet sent). It never says to delete it.
 
+## One post at a time, and one copy of the program
+
+The program sends one post at a time. It waits for the hub's answer, or gives up on it after 10
+seconds, before it sends the next one. This is the rule the hub's [API.md](../hub/API.md) sets for
+every sender, and the reason is that the hub keeps, of two overlapping posts that hold the same shot,
+the one whose body finished last: with two posts in flight an older copy of a shot could be put over
+a newer one.
+
+Run one copy of the program for a GSPro file. Two copies, each with its own data folder, post every
+shot twice, and in the ordinary case the hub still ends on the right scores (the test named A6 in
+`test/round3.test.ts` feeds the 38 recorded copies to two programs); that test does not show that two
+copies are safe in every case. A data folder that was moved aside and still holds shots not yet sent
+must not be started again after the round it belongs to has been played on: its waiting shots are
+older copies and would be put over newer ones.
+
 ## Limits
 
 - Shots are captured only while the program runs. If it is down while GSPro starts a new round,

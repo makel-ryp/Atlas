@@ -206,3 +206,104 @@ export function synth(n: number, prefix = 'PH'): any[] {
   }
   return out;
 }
+
+// ---- round 3: one post in flight ----
+
+import type { PostFn, Timer } from '../src/collector.js';
+
+export function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Waits (in small real steps) until `cond` holds; fails with `what` after `ms`. */
+export async function until(cond: () => boolean, what: string, ms = 5000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!cond()) {
+    if (Date.now() > end) throw new Error(`timed out waiting for: ${what}`);
+    await sleep(2);
+  }
+}
+
+export interface ManualTimer extends Timer {
+  /** Runs the handler the program gave to setInterval, as the timer would. Does nothing when none is set. */
+  fire(): void;
+  readonly active: boolean;
+}
+
+/** A timer that never fires by itself: the test fires the program's own handler. */
+export function manualTimer(): ManualTimer {
+  let fn: (() => void) | undefined;
+  let current: object | undefined;
+  return {
+    setInterval(f) {
+      fn = f;
+      current = {};
+      return current as unknown as ReturnType<typeof setInterval>;
+    },
+    clearInterval(h) {
+      if ((h as unknown) === current) {
+        fn = undefined;
+        current = undefined;
+      }
+    },
+    fire() {
+      fn?.();
+    },
+    get active() {
+      return fn !== undefined;
+    },
+  };
+}
+
+export interface HeldCall {
+  ids: string[];
+  size: number;
+  ended: boolean;
+  /** Answers this call (default: a 200 whose four counts add up to the batch). */
+  release(result?: PostResult): void;
+}
+
+export interface HeldPost {
+  post: PostFn;
+  calls: HeldCall[];
+  /** Calls started and not yet answered. */
+  inflight: number;
+  maxInflight: number;
+  /** From now on every call is answered at once, and the ones held are answered now. For cleaning up. */
+  openUp(): void;
+}
+
+/** A stand-in post that answers only when the test lets it, and counts how many calls are unanswered at once. */
+export function heldPost(): HeldPost {
+  const answer = (n: number): PostResult => ({ status: 200, body: { added: n, revised: 0, unchanged: 0, conflicts: 0 } });
+  let auto = false;
+  const h: HeldPost = {
+    calls: [],
+    inflight: 0,
+    maxInflight: 0,
+    post: (_url, body) =>
+      new Promise<PostResult>((resolve) => {
+        const recs = (JSON.parse(body) as { records: Array<{ ShotID: string }> }).records;
+        const call: HeldCall = {
+          ids: recs.map((x) => x.ShotID),
+          size: recs.length,
+          ended: false,
+          release(result) {
+            if (call.ended) return;
+            call.ended = true;
+            h.inflight--;
+            resolve(result ?? answer(recs.length));
+          },
+        };
+        h.calls.push(call);
+        h.inflight++;
+        h.maxInflight = Math.max(h.maxInflight, h.inflight);
+        if (auto) call.release();
+      }),
+    openUp() {
+      auto = true;
+      for (const c of h.calls) c.release();
+    },
+  };
+  return h;
+}
