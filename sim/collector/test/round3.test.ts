@@ -952,7 +952,8 @@ test('A12b. a shorter drive with the tidy-up on and a small size limit: 100 seed
  * regular expressions are found by the compiler, not by this test. Comments are dropped (a `//` comment to the end of
  * its line, a block comment made one space). A string or a template's own text is kept whole (`keepText`) or dropped
  * (`''` or an empty template), so a word that is only text does not count; the code inside a template's `${}` is
- * always kept. A string used as a name in brackets (`options['post']`) counts as the word it holds. Everything else,
+ * always kept. A name is given as the compiler reads it, whatever its spelling in the file (an escape counts as the letter it
+ * stands for). A string used as a name in brackets (`options['post']`) counts as the word it holds. Everything else,
  * regular expressions included, is kept as it stands.
  */
 function parseSource(src: string): ts.SourceFile {
@@ -1016,6 +1017,10 @@ function scanSource(src: string, keepText: boolean): string {
         break;
       case ts.SyntaxKind.TemplateTail:
         out += keepText ? text : ' ';
+        break;
+      case ts.SyntaxKind.Identifier:
+      case ts.SyntaxKind.PrivateIdentifier:
+        out += (leaf as ts.Identifier).text; // the name as the compiler reads it: an escaped spelling (defaultPost) is the same name
         break;
       default:
         out += text;
@@ -1390,6 +1395,10 @@ test('A13. the places a post can start are pinned: one call of post, one of flus
       return edit('program.ts', '      ...overrides,\n    });\n', '      ...overrides,\n    });\n    const collector = make();\n    if (!existsSync(gsproFile)) make().start();\n', t1);
     })()],
     ['a second statement on the line of an existing import', edit('program.ts', "import { homedir } from 'node:os';", "import { homedir } from 'node:os'; import { request } from 'undici';")],
+    ['S1: an escaped spelling of defaultPost, called for a batch of exactly 137', edit('collector.ts', '      const batch = outbox.batch(BATCH_RECORDS);\n', '      const batch = outbox.batch(BATCH_RECORDS);\n      if (batch.length === 137) void d\\u0065faultPost(`${base}/v0/shots`, JSON.stringify({ records: batch })).catch(() => undefined);\n')],
+    ['S2: an escaped spelling of fetch, a second request inside defaultPost', edit('collector.ts', "  const res = await fetch(url, {\n    method: 'POST',", "  if (body.length > 6_000_000) void f\\u0065tch(url, { method: 'POST', body: '{}', redirect: 'manual' }).catch(() => undefined);\n  const res = await fetch(url, {\n    method: 'POST',")],
+    ['an escaped spelling of oneAtATime in a second use', edit('collector.ts', '      const batch = outbox.batch(BATCH_RECORDS);\n', '      const batch = outbox.batch(BATCH_RECORDS);\n      void \\u006fneAtATime;\n')],
+    ['an escaped spelling of post as a bracket name', edit('collector.ts', '      let res: PostResult;\n', "      void (options as any)['po\\u0073t']('u', 'b');\n      let res: PostResult;\n")],
     ['an import of node:http', edit('program.ts', "import { homedir } from 'node:os';", "import { request } from 'node:http';\nimport { homedir } from 'node:os';")],
   ];
   for (const [name, edited] of mustFind) {
