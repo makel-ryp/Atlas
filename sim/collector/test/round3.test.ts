@@ -1137,7 +1137,7 @@ function blockFrom(text: string, marker: string, kind: 'body' | 'statement'): st
   return undefined;
 }
 
-const WATCHED = ['post', 'flushStage', 'pass', 'running', 'defaultPost', 'fetch', 'timer', 'setTimeout', 'setImmediate', 'queueMicrotask', 'nextTick', 'setInterval'] as const;
+const WATCHED = ['post', 'flushStage', 'pass', 'running', 'defaultPost', 'fetch', 'timer', 'setTimeout', 'setImmediate', 'queueMicrotask', 'nextTick', 'setInterval', 'createCollector', 'startProgram'] as const;
 
 /** For each file, the whole-word count of each watched word that is above zero (code only), and `.then(`. */
 function watchedCounts(files: Record<string, string>): Record<string, Record<string, number>> {
@@ -1157,19 +1157,31 @@ function watchedCounts(files: Record<string, string>): Record<string, Record<str
 }
 
 const ARGUMENT = [
-  'Why this program has one post in flight, as five links:',
+  'Why this program has one post in flight, as seven links:',
   '  1. The only thing in the source that sends anything is one `fetch`, in `defaultPost`, called once per call of `defaultPost` and awaited.',
   '  2. The only place the program calls its post is one statement in `flushStage`, and it awaits the answer before anything else in that function runs.',
   '  3. `flushStage` is called from one place, in `pass`, and awaited. `pass` is called from one place, in `tick`.',
   '  4. `tick` starts a pass only when none is running; `running` is set there and cleared only when that pass has ended.',
   '  5. Nothing else in the source can run any of these later or by another name: no reference to `post`, `flushStage`, `pass` or `defaultPost` beyond the ones above; no timer but the one the program is handed and uses once, to call `tick`.',
+  '  6. There is one program: `createCollector` is called in one place (`startProgram`, in `program.ts`) and `startProgram` in one place (`main.ts`), so no second program, with a post of its own, is made.',
+  '  7. Only `collector.ts` knows about the post: every source file imports exactly the modules it imports now, no file imports a whole module as a namespace, and `outbox.ts` and `files.ts` never import `collector.ts` or `program.ts`.',
+  'A limit of any test that reads text: a name built at run time (`options[\'po\' + \'st\']`, `Reflect.get`, `Object.values`) is code written so that a reader does not see the name; no test here holds against it, and the person reading the change is the check for it.',
 ].join('\n');
 
 const WHAT_TO_DO =
-  'If you changed a link on purpose (card 13 will add a key to the post, for one): re-read the five links, show that the rule "one post in flight" still holds, and update this pin in the same commit. If you did not mean to change a link, undo the change.';
+  'If you changed a link on purpose (card 13 will add a key to the post, for one): re-read the seven links, show that the rule "one post in flight" still holds, and update this pin in the same commit. An honest new import (one more name from `node:path`, say) only needs this pin\'s list of imports updated in the same commit. If you did not mean to change a link, undo the change.';
 
 /** What the watched words and timers count to at the head this pin was written against. Only files with a non-zero count are listed. */
-const EXPECTED_COUNTS: Record<string, Record<string, number>> = {"collector.ts": {"post": 4, "flushStage": 2, "pass": 2, "running": 8, "defaultPost": 2, "fetch": 1, "timer": 5, "setInterval": 7}, "main.ts": {".then(": 1}};
+const EXPECTED_COUNTS: Record<string, Record<string, number>> = {"collector.ts": {"post": 4, "flushStage": 2, "pass": 2, "running": 8, "defaultPost": 2, "fetch": 1, "timer": 5, "setInterval": 7, "createCollector": 1}, "program.ts": {"createCollector": 2, "startProgram": 1}, "main.ts": {".then(": 1, "startProgram": 2}};
+
+/** The exact import and re-export statements of each source file (white space made one space) at the head this pin was written against. */
+const EXPECTED_IMPORTS: Record<string, string[]> = {
+  "collector.ts": ["import { parseRoundFile, UnknownLayoutError, type ShotRecord } from '../../core/src/index.js';", "import { createFiles, type Files } from './files.js';", "import { CollectorError, Outbox, DEFAULT_PIECE_BYTES } from './outbox.js';", "export { CollectorError } from './outbox.js';"],
+  "files.ts": ["import { appendFileSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, writeFileSync, writeSync } from 'node:fs';", "import { join } from 'node:path';"],
+  "main.ts": ["import { startProgram } from './program.js';"],
+  "outbox.ts": ["import { createHash } from 'node:crypto';", "import type { ShotRecord } from '../../core/src/index.js';", "import type { Files } from './files.js';"],
+  "program.ts": ["import { homedir } from 'node:os';", "import { dirname, join } from 'node:path';", "import { fileURLToPath } from 'node:url';", "import { CollectorError, createCollector, statusLine, type Collector, type CollectorOptions } from './collector.js';"],
+};
 
 const EXPECTED_LINKS = {
   tick: "if (running) return running; running = pass().finally(() => { running = undefined; }); return running;",
@@ -1190,7 +1202,7 @@ function argumentViolations(files: Record<string, string>): string[] {
     for (const w of [...WATCHED, '.then(']) {
       const have = actual[name]?.[w] ?? 0;
       const want = EXPECTED_COUNTS[name]?.[w] ?? 0;
-      if (have !== want) link(w === 'post' || w === 'flushStage' || w === 'pass' || w === 'defaultPost' || w === 'fetch' ? 5 : w === 'running' ? 4 : 5, `${name} has ${have} of \`${w}\` as a whole word, it had ${want}`);
+      if (have !== want) link(w === 'createCollector' || w === 'startProgram' ? 6 : w === 'running' ? 4 : 5, `${name} has ${have} of \`${w}\` as a whole word, it had ${want}`);
     }
   }
 
@@ -1223,6 +1235,16 @@ function argumentViolations(files: Record<string, string>): string[] {
   for (const w of ['for', 'while', 'do', 'defaultPost']) if (wordCount(dpCode, w) > 0) link(1, `defaultPost holds \`${w}\`: a loop or a call of itself`);
   for (const re of [/\.\s*map\s*\(/, /\.\s*forEach\s*\(/, /\bPromise\s*\.\s*(all|race|allSettled|any)\b/]) {
     if (re.test(dpCode)) link(1, `defaultPost holds ${re.source}: more than one request could be made`);
+  }
+
+  // 7. who may know about the post: the exact imports of every file, no namespace import, outbox.ts and files.ts never import the collector or the program
+  for (const name of new Set([...Object.keys(files), ...Object.keys(EXPECTED_IMPORTS)])) {
+    const src = files[name];
+    const have = src === undefined ? [] : (scanSource(src, true).match(/^[ \t]*(?:import\b|export\s*(?:\{|\*|type\s*\{))[^;]*;/gm) ?? []).map(squash);
+    const want = EXPECTED_IMPORTS[name] ?? [];
+    if (JSON.stringify(have) !== JSON.stringify(want)) link(7, `${name} has other imports than it had: ${have.join(' | ') || 'none'}`);
+    if (src !== undefined && (/\bimport\s*\*\s*as\b/.test(scanSource(src, true)) || /\bexport\s*\*/.test(scanSource(src, true)))) link(7, `${name} takes a whole module as a namespace (import * as, export *)`);
+    if ((name === 'outbox.ts' || name === 'files.ts') && have.some((x) => /['"]\.\/(collector|program)(\.js)?['"]/.test(x))) link(7, `${name} imports collector.ts or program.ts`);
   }
 
   // 5.5 no other way out of the PC (every file)
@@ -1295,6 +1317,14 @@ test('A13. the places a post can start are pinned: one call of post, one of flus
     ['Promise.all in defaultPost', edit('collector.ts', "  const ra = res.headers.get('retry-after');", "  await Promise.all([]);\n  const ra = res.headers.get('retry-after');")],
     ['the guard of tick given a second condition', edit('collector.ts', '    if (running) return running;', '    if (running && !stale) return running;')],
     ['running cleared in stop()', edit('collector.ts', '      if (running) await running.catch(() => undefined);', '      running = undefined;\n      if (running) await running.catch(() => undefined);')],
+    ['Y4: start() makes a second program with createCollector', edit('collector.ts', '      if (handle !== undefined) return;\n      ensureLoaded();\n      emit();', '      if (handle !== undefined) return;\n      ensureLoaded();\n      if (outbox.pending > 2000) void createCollector({ ...options }).tick().catch(() => undefined);\n      emit();')],
+    ['Y6: outbox.ts imports the collector as a namespace and reaches defaultPost by a computed name', (() => {
+      const withImport = edit('outbox.ts', "import { createHash } from 'node:crypto';\n", "import { createHash } from 'node:crypto';\nimport * as core from './collector.js';\n");
+      return { ...withImport, 'outbox.ts': withImport['outbox.ts']!.replace('  markSent(n: number): void {\n', () => "  markSent(n: number): void {\n    if (n === 137) void (core as any)['default' + 'Post']('http://127.0.0.1:5077/v0/shots', '{}').catch(() => undefined);\n") };
+    })()],
+    ['an honest new import: one more name from node:path in program.ts', edit('program.ts', "import { dirname, join } from 'node:path';", "import { basename, dirname, join } from 'node:path';")],
+    ['outbox.ts imports a name from collector.ts', edit('outbox.ts', "import { createHash } from 'node:crypto';\n", "import { createHash } from 'node:crypto';\nimport { checkHubUrl } from './collector.js';\n")],
+    ['a second call of startProgram', edit('program.ts', 'export function startProgram(', 'startProgram({}, { log() {}, error() {}, exit() {} });\nexport function startProgram(')],
     ['an import of node:http', edit('program.ts', "import { homedir } from 'node:os';", "import { request } from 'node:http';\nimport { homedir } from 'node:os';")],
   ];
   for (const [name, edited] of mustFind) {
