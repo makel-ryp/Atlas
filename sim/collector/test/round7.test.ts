@@ -1,10 +1,15 @@
-// What the gate's tests hold, and what they do not (round 10).
-// They hold: a flag that is not set, or is released early or late; a gate that waits in line instead of refusing; a gate that
-// depends on the body or the address; a count of calls or of refusals (as far as the model's seeds in G6 reach); a timer of its
-// own; and the wall clock at any horizon (G9 moves a mocked clock on by 30 days; G8 and G5 run on real time inside the first 10 s).
-// They do not hold: a gate that reads a clock the test cannot turn (for example performance.now() past G8's last call), or
-// one that waits for a magic value. Those are held by the pin's word-for-word text of the gate (A13 in round3.test.ts), which is
-// what holds a twelve-line function in the end.
+// What the gate's tests hold, and what they do not (rounds 10 and 11).
+// They hold: a flag that is not set, or is released early or late; a gate that waits in line instead of refusing; and a rule that
+// depends on the body (its content or its size, up to the 7 MB of a bay's largest batch), on the address, on a count of calls or of
+// refusals, on a timer of the gate's own, on the wall clock at any horizon (the hour of the day, the day of the month, the weekday,
+// the first second of a minute, a clock set back), or on a count and a time together (for example "after 12 refusals and 2 s").
+// G9 shows the plain cases (a mocked clock stepped through every hour of 32 days, each second of a minute, back by an hour and by
+// a day, with hundreds of quick calls first and a 7 MB body); G10 is the seeded model with a clock, counts and sizes together
+// and asserts what it met while a call was out; G6 is the same model with no clock; G8 and G5 run on real time inside the first 10 s.
+// They do not hold, as far as the seeds reach: a count beyond the model's reach (for example the 10 000th call).
+// They do not hold: a gate that reads a clock the test cannot turn (for example performance.now() or process.uptime() past G8's
+// last call), or one that waits for a magic value (for example one particular body). Those are held by the pin's word-for-word
+// text of the gate (A13 in round3.test.ts), which is what holds a twelve-line function in the end.
 import { test, afterEach, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
@@ -300,9 +305,9 @@ test('G5. the give-up itself: a hub that never answers its first request; calls 
   assert.ok(requests[1]!.arrivedAt - t0 >= 9_900, 'the second request came after the give-up');
 });
 
-// ---- B.2b the clock, by a clock the test turns (round 10): a held thread stretches every real deadline, so no real-time test bounds a time-based gate ----
+// ---- B.2b the clock, by a clock the test turns (rounds 10 and 11): a held thread stretches every real deadline, so no real-time test bounds a time-based gate ----
 
-/** Lets the pending microtasks run; setImmediate is not mocked in G9, so it is a real turn of the loop. */
+/** Lets the pending microtasks run; setImmediate is not mocked in G9 and G10, so it is a real turn of the loop. */
 async function turn(): Promise<void> {
   await new Promise<void>((r) => setImmediate(r));
 }
@@ -318,8 +323,12 @@ async function refusalNoTimer(p: Promise<unknown>): Promise<string> {
 }
 
 const STEPS_MS = [1000, 5000, 9970, 10_300, 11_000, 60_000, 600_000, 3_600_000, 86_400_000, 30 * 86_400_000];
+const HOUR_MS = 3_600_000;
+const DAY_MS = 86_400_000;
+/** The body of a bay's largest batch (200 full records): about 7 MB. Built once; every call adds its own few characters in front, so no two bodies are the same. */
+const BIG_BODY = 'x'.repeat(7_000_000);
 
-test('G9. a clock the test turns: after quick calls, one call is held while the clock moves on by 30 days (1 s, 5 s, 9.97 s, 10.3 s, 11 s, 1 min, 10 min, 1 h, 24 h, 30 days); at every step a call with another body and address is refused with the gate\'s message and never reaches the stand-in; when the held call is answered, and again when it is rejected, the next call goes through', { timeout: 30_000 }, async () => {
+test('G9. a clock the test turns: a few hundred quick calls (one with a 7 MB body), then one call is held while the clock is stepped through ten steps up to 30 days, through every hour of 32 days, through each second of a whole minute, and back by an hour and by a day; at every step calls with another body and address (one with a 7 MB body) are refused with the gate\'s message and never reach the stand-in; when the held call is answered, and again when it is rejected, the next call goes through', { timeout: 30_000 }, async () => {
   mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: Date.now() }); // the mocked Date starts at the real wall clock, so a rule about a calendar date is reached by the steps too
   try {
     for (const ending of ['answered', 'rejected'] as const) {
@@ -337,29 +346,61 @@ test('G9. a clock the test turns: after quick calls, one call is held while the 
         });
       };
       const gate = oneAtATime(stub);
-      // several quick calls first, each answered 3 mocked ms after it was made, so a rule that measures earlier calls has something to measure
-      for (let i = 0; i < 5; i++) {
-        const quick = gate(`http://127.0.0.1:${100 + i}/v0/shots`, `quick-${i}`);
+      let refused = 0;
+      const mustRefuse = async (label: string, body: string): Promise<void> => {
+        const before = reached;
+        assert.equal(await refusalNoTimer(gate(`http://127.0.0.1:${2 + ((refused * 1237) % 65_000)}/v0/shots${'/x'.repeat(refused % 40)}`, body)), GATE_MESSAGE, `${ending}: ${label}: the call is refused`);
+        assert.equal(reached, before, `${ending}: ${label}: the call never reached the stand-in`);
+        refused++;
+      };
+      // a few hundred quick calls first (one of them with a 7 MB body), each answered 3 mocked ms after it was made, so a rule that measures or counts earlier calls has something to measure and count
+      const QUICK = 300;
+      for (let i = 0; i < QUICK; i++) {
+        const quick = gate(`http://127.0.0.1:${100 + (i % 9)}/v0/shots`, i === 7 ? `quick-${i}${BIG_BODY}` : `quick-${i}`);
         mock.timers.tick(3);
         assert.deepEqual(await quick, OK, `quick call ${i} was answered`);
         mock.timers.tick(7);
       }
-      assert.equal(reached, 5);
+      assert.equal(reached, QUICK);
       // then one call that is held
       holdNext = true;
       const first = gate('http://127.0.0.1:1/v0/shots', 'body-held').then(
         (r) => r,
         (e: unknown) => e,
       );
-      assert.equal(reached, 6, 'the held call reached the stand-in');
+      assert.equal(reached, QUICK + 1, 'the held call reached the stand-in');
+      // the ten steps up to 30 days
       let at = 0;
       for (const [i, ms] of STEPS_MS.entries()) {
         mock.timers.tick(ms - at);
         at = ms;
         await turn();
-        assert.equal(await refusalNoTimer(gate(`http://127.0.0.1:${2 + i}/v0/shots`, `body-${i}`)), GATE_MESSAGE, `${ending}: the call after ${ms / 1000} s of the mocked clock is refused`);
-        assert.equal(reached, 6, `${ending}: the call after ${ms / 1000} s never reached the stand-in`);
+        await mustRefuse(`after ${ms / 1000} s of the mocked clock`, `body-${i}`);
       }
+      // the 7 MB body, refused
+      await mustRefuse('a 7 MB body', `big-${BIG_BODY}`);
+      // every hour of 32 days, at least three refused calls at each step
+      for (let h = 0; h < 32 * 24; h++) {
+        mock.timers.tick(HOUR_MS);
+        await turn();
+        for (let k = 0; k < 3; k++) await mustRefuse(`hour step ${h}, call ${k}`, `hour-${h}-${k}`);
+      }
+      // each second of one whole minute: first to the start of a minute, then 61 steps of one second (the first second of a minute among them)
+      mock.timers.tick(60_000 - (Date.now() % 60_000));
+      await turn();
+      assert.equal(Date.now() % 60_000, 0, 'the clock is at the start of a minute');
+      for (let sec = 0; sec <= 60; sec++) {
+        for (let k = 0; k < 3; k++) await mustRefuse(`second ${sec} of a minute, call ${k}`, `second-${sec}-${k}`);
+        mock.timers.tick(1000);
+        await turn();
+      }
+      // the clock set back, once by an hour and once by a day (a clock correction)
+      mock.timers.setTime(Date.now() - HOUR_MS);
+      for (let k = 0; k < 3; k++) await mustRefuse(`after the clock was set back by an hour, call ${k}`, `back-hour-${k}`);
+      mock.timers.setTime(Date.now() - DAY_MS);
+      for (let k = 0; k < 3; k++) await mustRefuse(`after the clock was set back by a day, call ${k}`, `back-day-${k}`);
+      mock.timers.tick(HOUR_MS);
+      await mustRefuse('and forward again', 'back-forward');
       holdNext = false;
       if (ending === 'answered') {
         heldCall!.resolve(OK);
@@ -370,7 +411,7 @@ test('G9. a clock the test turns: after quick calls, one call is held while the 
         assert.equal((e as Error).message, 'ZZTEST-A held call failed', 'the held call ended with its rejection');
       }
       const next = gate('http://127.0.0.1:99/v0/shots', 'body-after');
-      assert.equal(reached, 7, `${ending}: the next call goes through`);
+      assert.equal(reached, QUICK + 2, `${ending}: the next call goes through`);
       mock.timers.tick(3);
       assert.deepEqual(await next, OK, `${ending}: the next call was answered`);
     }
@@ -482,6 +523,240 @@ async function modelRun(seed: number, steps: number): Promise<void> {
 test('G6. the gate against a model with made-up time: 6 seeds of 4 000 steps (a call, an answer, a rejection or a throw, with another body and address each time): a call is let through if and only if no call is out, a refused call never reaches the wrapped post, never two out', { timeout: 60_000 }, async () => {
   for (const seed of [1, 2, 3, 4, 5, 6]) await modelRun(seed, 4000);
 });
+
+// ---- B.3b the model with a clock, counts and body sizes together (round 11) ----
+
+/**
+ * The gate against its model, under the mocked clock: the same checks as modelRun (a call goes through if and only if none is out; a refused
+ * call has the gate's message and never reaches the stand-in; never two out), with time, counts and body sizes together, because a wrong rule a
+ * person would write ("after N refusals and T seconds assume the flag is stuck") lives where they meet.
+ *
+ * The steps: a call (a body of a random size: mostly a few bytes to 200, some of about 1 kB, 100 kB, 1 MB and 7 MB; an address of a random host, port and length);
+ * an answer; a rejection; a throw (the stand-in's mode when a call is made with none out); a move of the clock forward by an amount drawn evenly
+ * across the scales from 1 ms to 40 days; and now and then a move of the clock backward (set back by up to two days). A call that goes out is held
+ * for a number of steps drawn evenly across the scales from 1 to 1 500, so many holds see hundreds of calls and dozens of clock moves before the call
+ * that is out is settled. `cover` counts what was met while a call was out, and G10 asserts the counts afterwards.
+ */
+interface Coverage {
+  refusals: number;
+  hourLocal: number[];
+  hourUtc: number[];
+  dayOfMonth: number[];
+  weekday: number[];
+  firstSecondOfMinute: number;
+  oddMinute: number;
+  sizeClass: number[];
+  refusedAfter12CallsAnd2s: number;
+  refusedAfter40CallsAnd60s: number;
+  refusedAfter300CallsAnd1h: number;
+  backwardMovesWhileOut: number;
+  forwardMovesWhileOut: number;
+  maxRefusalsInOneHold: number;
+  maxMovesInOneHold: number;
+  longestHoldMs: number;
+  settledAfterDays: number;
+}
+
+const SIZE_NAMES = ['a few bytes', 'about 1 kB', 'about 100 kB', 'about 1 MB', 'about 7 MB'];
+const SIZE_BASES = [0, 1000, 100_000, 1_000_000, 7_000_000].map((n) => (n === 7_000_000 ? BIG_BODY : n === 0 ? '' : 'y'.repeat(n)));
+
+function newCoverage(): Coverage {
+  return {
+    refusals: 0,
+    hourLocal: new Array<number>(24).fill(0),
+    hourUtc: new Array<number>(24).fill(0),
+    dayOfMonth: new Array<number>(32).fill(0),
+    weekday: new Array<number>(7).fill(0),
+    firstSecondOfMinute: 0,
+    oddMinute: 0,
+    sizeClass: new Array<number>(5).fill(0),
+    refusedAfter12CallsAnd2s: 0,
+    refusedAfter40CallsAnd60s: 0,
+    refusedAfter300CallsAnd1h: 0,
+    backwardMovesWhileOut: 0,
+    forwardMovesWhileOut: 0,
+    maxRefusalsInOneHold: 0,
+    maxMovesInOneHold: 0,
+    longestHoldMs: 0,
+    settledAfterDays: 0,
+  };
+}
+
+async function timeModelRun(seed: number, steps: number, cover: Coverage): Promise<void> {
+  const rand = seededGenerator(seed);
+  const pick = (n: number): number => Math.floor(rand() * n);
+  const scale = (lo: number, hi: number): number => Math.floor(Math.exp(Math.log(lo) + rand() * (Math.log(hi) - Math.log(lo)))); // evenly across the scales
+  mock.timers.setTime(Date.UTC(2026, 0, 1) + pick(2 * 365) * DAY_MS + pick(DAY_MS));
+  let mode: 'hold' | 'now' | 'reject' | 'throw' = 'hold';
+  let heldCall: { resolve(r: PostResult): void; reject(e: Error): void } | undefined;
+  let standOut = 0;
+  let maxStandOut = 0;
+  let standCalls = 0;
+  const stub = ((_url: string, _body: string) => {
+    standCalls++;
+    standOut++;
+    maxStandOut = Math.max(maxStandOut, standOut);
+    if (mode === 'throw') {
+      standOut--;
+      throw new Error('thrown (made up)');
+    }
+    if (mode === 'reject') {
+      standOut--;
+      return Promise.reject(new Error('rejected (made up)'));
+    }
+    if (mode === 'now') {
+      standOut--;
+      return Promise.resolve(OK);
+    }
+    return new Promise<PostResult>((resolve, reject) => {
+      heldCall = {
+        resolve: (r) => {
+          standOut--;
+          resolve(r);
+        },
+        reject: (e) => {
+          standOut--;
+          reject(e);
+        },
+      };
+    });
+  }) as PostFn;
+  const gate = oneAtATime(stub);
+  let out = false; // the model: a call is out
+  let step = 0;
+  const where = (): string => `seed ${seed}, step ${step}`;
+  let outcome: { state: 'pending' | 'ok' | 'refused' | 'failed'; message?: string } = { state: 'ok' };
+  // the hold that is out now
+  let holdSteps = 0;
+  let stepsOut = 0;
+  let callsInHold = 0;
+  let movesInHold = 0;
+  let outSince = 0;
+  let callsInAll = 0;
+  const settle = async (how: 'answer' | 'reject'): Promise<void> => {
+    if (how === 'answer') {
+      heldCall!.resolve({ status: [200, 400, 413, 500, 503, 302][pick(6)]!, body: undefined });
+      await settleMicrotasks();
+      assert.equal(outcome.state, 'ok', `${where()}: an answer ends the call`);
+    } else {
+      heldCall!.reject(new Error('connection failed (made up)'));
+      await settleMicrotasks();
+      assert.equal(outcome.state, 'failed', `${where()}: a rejection ends the call`);
+    }
+    cover.maxRefusalsInOneHold = Math.max(cover.maxRefusalsInOneHold, callsInHold);
+    cover.maxMovesInOneHold = Math.max(cover.maxMovesInOneHold, movesInHold);
+    cover.longestHoldMs = Math.max(cover.longestHoldMs, Date.now() - outSince);
+    if (Date.now() - outSince > DAY_MS) cover.settledAfterDays++;
+    out = false;
+  };
+  for (step = 1; step <= steps; step++) {
+    const r = rand();
+    if (out) stepsOut++;
+    if (out && stepsOut >= holdSteps) {
+      await settle(rand() < 0.7 ? 'answer' : 'reject');
+    } else if (r < (out ? 0.66 : 0.6)) {
+      mode = (['hold', 'hold', 'hold', 'hold', 'hold', 'now', 'now', 'now', 'reject', 'reject', 'throw'] as const)[pick(11)]!;
+      const sizeClass = rand() < 0.75 ? 0 : 1 + pick(4);
+      const body = `body-${seed}-${step}-${pick(1000)}` + (sizeClass === 0 ? 'z'.repeat(pick(200)) : SIZE_BASES[sizeClass]!);
+      const before = standCalls;
+      const mine: { state: 'pending' | 'ok' | 'refused' | 'failed'; message?: string } = { state: 'pending' };
+      gate(`http://${['127.0.0.1', 'localhost', '[::1]'][pick(3)]}:${1 + pick(65_535)}/v0/${['shots', 'shots', 'rounds'][pick(3)]}${'/x'.repeat(pick(30))}`, body).then(
+        () => void (mine.state = 'ok'),
+        (e: Error) => {
+          mine.state = e.message === GATE_MESSAGE ? 'refused' : 'failed';
+          mine.message = e.message;
+        },
+      );
+      await settleMicrotasks();
+      callsInAll++;
+      if (out) {
+        assert.equal(mine.state, 'refused', `${where()}: a call made while one is out must be refused with the gate's message (got ${mine.state}: ${mine.message}; body ${SIZE_NAMES[sizeClass]}, ${callsInHold} calls and ${Date.now() - outSince} ms into the hold, ${callsInAll} calls in all, the clock at ${new Date(Date.now()).toISOString()})`);
+        assert.equal(standCalls, before, `${where()}: a refused call must not reach the wrapped post`);
+        // what was met while a call was out
+        callsInHold++;
+        cover.refusals++;
+        const d = new Date(Date.now());
+        cover.hourLocal[d.getHours()]!++;
+        cover.hourUtc[d.getUTCHours()]!++;
+        cover.dayOfMonth[d.getDate()]!++;
+        cover.weekday[d.getDay()]!++;
+        if (d.getSeconds() === 0) cover.firstSecondOfMinute++;
+        if (d.getMinutes() % 2 === 1) cover.oddMinute++;
+        cover.sizeClass[sizeClass]!++;
+        const outFor = Date.now() - outSince;
+        if (callsInHold >= 12 && outFor >= 2000) cover.refusedAfter12CallsAnd2s++;
+        if (callsInAll >= 40 && outFor >= 60_000) cover.refusedAfter40CallsAnd60s++;
+        if (callsInHold >= 300 && outFor >= HOUR_MS) cover.refusedAfter300CallsAnd1h++;
+      } else {
+        assert.equal(standCalls, before + 1, `${where()}: a call made while none is out must go through (body ${SIZE_NAMES[sizeClass]}, ${callsInAll} calls in all, the clock at ${new Date(Date.now()).toISOString()})`);
+        if (mode === 'hold') {
+          assert.equal(mine.state, 'pending', `${where()}: a held call is pending`);
+          out = true;
+          outcome = mine;
+          holdSteps = scale(1, 1500);
+          stepsOut = 0;
+          callsInHold = 0;
+          movesInHold = 0;
+          outSince = Date.now();
+        } else if (mode === 'now') {
+          assert.equal(mine.state, 'ok', `${where()}: a call answered at once ends with the answer`);
+        } else {
+          assert.equal(mine.state, 'failed', `${where()}: a rejection or a throw ends the call`);
+        }
+      }
+    } else if (r < (out ? 0.92 : 0.9)) {
+      mock.timers.tick(scale(1, 40 * DAY_MS)); // a move of the clock forward, evenly across the scales from 1 ms to 40 days
+      if (out) {
+        movesInHold++;
+        cover.forwardMovesWhileOut++;
+      }
+    } else if (r < (out ? 0.96 : 0.95)) {
+      mock.timers.setTime(Date.now() - 1 - pick(2 * DAY_MS)); // the clock set back by up to two days
+      if (out) {
+        movesInHold++;
+        cover.backwardMovesWhileOut++;
+      }
+    } else if (out) {
+      await settleMicrotasks(); // nothing happens
+    }
+    assert.ok(maxStandOut <= 1, `${where()}: the wrapped post had two calls out at once`);
+  }
+  if (out) await settle('answer'); // a hold still out at the end ends with an answer, so no promise is left
+}
+
+const G10_SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
+const G10_STEPS = 6000;
+const COVER_MIN = 100;
+
+test('G10. the gate against a model with a clock, counts and body sizes together: 8 seeds of 6 000 steps (a call with a body of a few bytes up to 7 MB, an address of any length, an answer, a rejection, a throw, a move of the clock from 1 ms to 40 days, sometimes backward), holds of up to 1 500 steps with hundreds of calls and dozens of clock moves; every hour of the day, every day of the month, every weekday, the first second of a minute and each size of body are each met many times while a call is out (counted and asserted)', { timeout: 60_000 }, async () => {
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: Date.now() });
+  const cover = newCoverage();
+  try {
+    for (const seed of G10_SEEDS) await timeModelRun(seed, G10_STEPS, cover);
+  } finally {
+    mock.timers.reset(); // the real clock comes back whatever the test did
+  }
+  console.log(`G10 coverage: ${JSON.stringify(cover)}`);
+  const need = (what: string, have: number, least: number): void => assert.ok(have >= least, `coverage shrank: ${what} was met ${have} times while a call was out, at least ${least} are asked for (${JSON.stringify(cover)})`);
+  for (let h = 0; h < 24; h++) {
+    need(`the hour ${h} (local)`, cover.hourLocal[h]!, COVER_MIN);
+    need(`the hour ${h} (UTC)`, cover.hourUtc[h]!, COVER_MIN);
+  }
+  for (let d = 1; d <= 31; d++) need(`the ${d}th day of the month`, cover.dayOfMonth[d]!, COVER_MIN);
+  for (let d = 0; d < 7; d++) need(`weekday ${d}`, cover.weekday[d]!, COVER_MIN);
+  need('the first second of a minute', cover.firstSecondOfMinute, COVER_MIN);
+  need('an odd minute', cover.oddMinute, COVER_MIN);
+  for (let s = 0; s < 5; s++) need(`a body of ${SIZE_NAMES[s]}`, cover.sizeClass[s]!, COVER_MIN);
+  need('a refusal after 12 refusals and 2 s', cover.refusedAfter12CallsAnd2s, 100);
+  need('a refusal after 40 calls and 60 s', cover.refusedAfter40CallsAnd60s, 100);
+  need('a refusal after 300 refusals and an hour', cover.refusedAfter300CallsAnd1h, COVER_MIN);
+  need('a clock set back while a call was out', cover.backwardMovesWhileOut, COVER_MIN);
+  need('a clock moved forward while a call was out', cover.forwardMovesWhileOut, 100);
+  need('refusals in one hold', cover.maxRefusalsInOneHold, 300);
+  need('clock moves in one hold', cover.maxMovesInOneHold, 24);
+  need('holds settled after more than a day', cover.settledAfterDays, 5);
+});
+
 
 // ---- B.4 the statement, by a run: a callback that calls tick() before tick has stored its running pass (gate-1) ----
 

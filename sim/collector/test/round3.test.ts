@@ -1382,7 +1382,7 @@ const ARGUMENT = [
 ].join('\n');
 
 const WHAT_TO_DO =
-  'WHAT TO DO: if you changed the gate or a link on purpose, re-read the rule and the seven links, show that "one post in flight" still holds, and update this pin in the same commit. An honest new import (one more name from `node:path`, say) only needs this pin\'s list of imports updated in the same commit. If a made-up edit of this pin reports that it no longer applies because its anchor line changed, update the anchor in the pin\'s table of edits, not the rule. If you did not mean to change a link, undo the change.';
+  'WHAT TO DO: if you changed the gate or a link on purpose, re-read the rule and the seven links, show that "one post in flight" still holds, and update this pin in the same commit. An honest new import (one more name from `node:path`, say) only needs this pin\'s list of imports updated in the same commit. If a made-up edit of this pin reports that it no longer applies because its anchor line changed, update the anchor in the pin\'s table of edits, not the rule. A new source file (a lock file for the data folder, say) is added by name to `EXPECTED_FILES` and its imports to `EXPECTED_IMPORTS` (or `EXPECTED_CORE_IMPORTS` in the core library), in the same commit, once it is shown that it cannot send. If you did not mean to change a link, undo the change.';
 
 /** What the watched words and timers count to at the head this pin was written against. Only files with a non-zero count are listed. */
 const EXPECTED_COUNTS: Record<string, Record<string, number>> = {
