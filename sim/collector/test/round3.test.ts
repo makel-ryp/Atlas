@@ -1006,9 +1006,13 @@ function scanSource(src: string, keepText: boolean): string {
         if (parent !== undefined && ts.isElementAccessExpression(parent) && parent.argumentExpression === leaf && /^[A-Za-z_$][\w$]*$/.test(value)) out += ` ${value} `;
         break;
       }
-      case ts.SyntaxKind.NoSubstitutionTemplateLiteral:
+      case ts.SyntaxKind.NoSubstitutionTemplateLiteral: {
         out += keepText ? text : '`` ';
+        const parent = leaf.parent;
+        const value = (leaf as ts.NoSubstitutionTemplateLiteral).text;
+        if (!keepText && parent !== undefined && ts.isElementAccessExpression(parent) && parent.argumentExpression === leaf && /^[A-Za-z_$][\w$]*$/.test(value)) out += ` ${value} `;
         break;
+      }
       case ts.SyntaxKind.TemplateHead:
         out += keepText ? text : '``  ';
         break;
@@ -1102,6 +1106,98 @@ function importFacts(src: string): ImportFacts {
   return facts;
 }
 
+// ---- what the bay program's side uses: modules, global names, process members (A13) ----
+
+interface SideFacts {
+  /** Names used as values that are declared nowhere in the program's own source (not a local, a parameter, an import or a declaration), sorted. */
+  globals: string[];
+  /** The member names read on `process`, and how many uses of `process` were something else (passed whole, brackets, destructured). */
+  processMembers: string[];
+  processOther: number;
+  /** The same for `import.meta`. */
+  metaMembers: string[];
+  metaOther: number;
+}
+
+/**
+ * The names each file uses, resolved by the compiler's own binder: a program is built from the files with no library
+ * files (`noLib`) and no module resolution (`noResolve`), so every local, parameter, import and declaration has a
+ * symbol and every global name (`fetch`, `JSON`, `process`, `globalThis`, `WebSocket`, ...) has none. That is exact for
+ * scope: a local called `fetch` in one function does not make the global `fetch` in another function a local. It is quick,
+ * because nothing is loaded but these files. Type positions do not count (a type named in an annotation is not a use).
+ * `files` maps a path (with its folder, so the two folders stay apart) to its text.
+ */
+function sideFacts(files: Record<string, string>): Record<string, SideFacts> {
+  const root = '/side/';
+  const sources = new Map<string, ts.SourceFile>();
+  for (const [name, text] of Object.entries(files)) sources.set(root + name, ts.createSourceFile(root + name, text, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS));
+  const host: ts.CompilerHost = {
+    getSourceFile: (f) => sources.get(f),
+    getDefaultLibFileName: () => '/lib.d.ts',
+    writeFile: () => undefined,
+    getCurrentDirectory: () => '/',
+    getCanonicalFileName: (f) => f,
+    useCaseSensitiveFileNames: () => true,
+    getNewLine: () => '\n',
+    fileExists: (f) => sources.has(f),
+    readFile: (f) => sources.get(f)?.text,
+  };
+  const program = ts.createProgram({
+    rootNames: [...sources.keys()],
+    options: { noLib: true, noResolve: true, types: [], target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, noEmit: true },
+    host,
+  });
+  const checker = program.getTypeChecker();
+
+  const inTypePosition = (n: ts.Node): boolean => {
+    for (let p: ts.Node | undefined = n.parent; p !== undefined && !ts.isSourceFile(p); p = p.parent) {
+      if (ts.isExpressionWithTypeArguments(p) && ts.isHeritageClause(p.parent) && p.parent.token === ts.SyntaxKind.ExtendsKeyword && ts.isClassLike(p.parent.parent)) return false; // `class X extends Error`: a value
+      if (ts.isTypeNode(p) || ts.isInterfaceDeclaration(p) || ts.isTypeAliasDeclaration(p)) return true;
+    }
+    return false;
+  };
+
+  const out: Record<string, SideFacts> = {};
+  for (const [path, sf] of sources) {
+    const globals = new Set<string>();
+    const processMembers = new Set<string>();
+    const metaMembers = new Set<string>();
+    let processOther = 0;
+    let metaOther = 0;
+    const visit = (n: ts.Node): void => {
+      if (ts.isMetaProperty(n) && n.keywordToken === ts.SyntaxKind.ImportKeyword) {
+        const p = n.parent;
+        if (ts.isPropertyAccessExpression(p) && p.expression === n) metaMembers.add(p.name.text);
+        else metaOther++;
+      } else if (ts.isIdentifier(n)) {
+        const p = n.parent;
+        const isName =
+          (ts.isPropertyAccessExpression(p) && p.name === n) ||
+          (ts.isQualifiedName(p) && p.right === n) ||
+          (ts.isPropertyAssignment(p) && p.name === n) ||
+          (ts.isBindingElement(p) && p.propertyName === n) ||
+          (ts.isMetaProperty(p) && p.name === n) ||
+          ((ts.isLabeledStatement(p) || ts.isBreakOrContinueStatement(p)) && p.label === n);
+        if (!isName && !inTypePosition(n)) {
+          const symbol = ts.isShorthandPropertyAssignment(p) && p.name === n ? checker.getShorthandAssignmentValueSymbol(p) : checker.getSymbolAtLocation(n);
+          const declared = symbol !== undefined && (symbol.declarations?.length ?? 0) > 0;
+          if (!declared) {
+            globals.add(n.text);
+            if (n.text === 'process') {
+              if (ts.isPropertyAccessExpression(p) && p.expression === n) processMembers.add(p.name.text);
+              else processOther++;
+            }
+          }
+        }
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    out[path.slice(root.length)] = { globals: [...globals].sort(), processMembers: [...processMembers].sort(), processOther, metaMembers: [...metaMembers].sort(), metaOther };
+  }
+  return out;
+}
+
 const PIN_PURPOSE =
   'A second place that starts a post is how two posts end up in flight, and the hub keeps the one that finished last. Whoever adds such a place on purpose must also show that the rule "one post in flight" still holds (and change this pin with that proof).';
 
@@ -1166,6 +1262,7 @@ const ARGUMENT = [
   '  5. Nothing else in the source can run any of these later or by another name: no reference to `post`, `flushStage`, `pass` or `defaultPost` beyond the ones above; no timer but the one the program is handed and uses once, to call `tick`.',
   '  6. There is one program, and it hands in no post of its own: `createCollector` is called in one place (`startProgram`, in `program.ts`, whose whole body is pinned) and `startProgram` in one place (`main.ts`, which is pinned whole).',
   '  7. Only `collector.ts` knows about the post: every source file imports exactly the modules it imports now, no file imports a whole module as a namespace, and `outbox.ts` and `files.ts` never import `collector.ts` or `program.ts`.',
+  'THE BAY PROGRAM\'S SIDE (every .ts file under sim/collector/src and under sim/core/src) may use only the modules, the global names and the process and import.meta members listed in this test. A new one is not wrong in itself: if it cannot send anything and cannot load or run other code, add it to the list in the same commit and say so in the commit message; if it can, the post it makes must go through `oneAtATime`, and must not be handed in through `options.post`. `globalThis`, `global`, `self` and `window` are in no list, so any use of them is found.',
   'THE KNOWN LIMIT of any test that reads text: a name built at run time (`options[\'po\' + \'st\']`, `Reflect.get`, `Object.values`) is code written so that a reader does not see the name; no test here holds against it, and the person reading the change is the check for it.',
 ].join('\n');
 
@@ -1197,6 +1294,91 @@ const EXPECTED_COUNTS: Record<string, Record<string, number>> = {
 };
 
 /** The exact import and re-export statements of each source file (white space made one space). */
+const EXPECTED_CORE_IMPORTS: Record<string, string[]> = {
+  "book.ts": [
+    "import { isDeepStrictEqual } from 'node:util';",
+    "import { UnknownLayoutError, checkRecordFields, newValueBudget, plainCopy, readList } from './parse.js';",
+    "import { normalisedName } from './text.js';",
+    "import type { ShotRecord } from './parse.js';"
+  ],
+  "command.ts": [
+    "import { basename } from 'node:path';",
+    "import { RoundBook, type BookIssue } from './book.js';",
+    "import { formatScorecard } from './format.js';",
+    "import { parseRoundFile } from './parse.js';",
+    "import { loadRecording } from './recording.js';",
+    "import { cleanText } from './text.js';"
+  ],
+  "format.ts": [
+    "import type { HoleScore, RoundBook, RoundScore } from './book.js';",
+    "import { safeText } from './text.js';"
+  ],
+  "index.ts": [
+    "export { parseRoundFile, validateRecord, UnknownLayoutError, MAX_TEXT_CHARS, MAX_RECORDS, MAX_DEPTH, type ShotRecord } from './parse.js';",
+    "export { RoundBook, type IngestCounts, type BookIssue, type HoleScore, type PlayerScore, type RoundScore } from './book.js';",
+    "export { formatScorecard } from './format.js';",
+    "export { normalisedName } from './text.js';",
+    "export { runScorecard, issuesLine, type FileAccess, type OpenFile, type CommandResult } from './command.js';",
+    "export { loadRecording, type Copy } from './recording.js';"
+  ],
+  "parse.ts": [
+    "import { types } from 'node:util';"
+  ],
+  "recording.ts": [
+    "import { readFileSync } from 'node:fs';",
+    "import { join } from 'node:path';",
+    "import { parseRoundFile, UnknownLayoutError, type ShotRecord } from './parse.js';"
+  ],
+  "text.ts": []
+};
+
+/** The names the bay program's side uses today: global names (declared nowhere in the program's own source) for each folder, and the members read on process and import.meta. */
+const EXPECTED_SIDE = {
+  "collectorGlobals": [
+    "AbortSignal",
+    "Array",
+    "Buffer",
+    "Date",
+    "Error",
+    "JSON",
+    "Map",
+    "Math",
+    "Number",
+    "Set",
+    "URL",
+    "clearInterval",
+    "console",
+    "fetch",
+    "process",
+    "setInterval",
+    "undefined"
+  ],
+  "coreGlobals": [
+    "Array",
+    "ArrayBuffer",
+    "Buffer",
+    "Error",
+    "JSON",
+    "Map",
+    "Math",
+    "Number",
+    "Object",
+    "Reflect",
+    "Set",
+    "String",
+    "structuredClone",
+    "undefined"
+  ],
+  "processMembers": [
+    "env",
+    "exit",
+    "on"
+  ],
+  "metaMembers": [
+    "url"
+  ]
+};
+
 const EXPECTED_IMPORTS: Record<string, string[]> = {
   "collector.ts": [
     "import { parseRoundFile, UnknownLayoutError, type ShotRecord } from '../../core/src/index.js';",
@@ -1237,7 +1419,7 @@ const EXPECTED_LINKS = {
 };
 
 /** What is wrong with the rule and the links in the program's source files (path under src to text), and in the core library (path under sim/core/src to text). Each entry says which one moved. */
-function argumentViolations(files: Record<string, string>, core: Record<string, string> = {}): string[] {
+function argumentViolations(files: Record<string, string>, core: Record<string, string> = {}, deep = false): string[] {
   const bad: string[] = [];
   const link = (what: string, text: string): void => void bad.push(`${what}: ${text}`);
   const linkOfWord = (w: string): string => (w === 'oneAtATime' ? 'the gate' : w === 'createCollector' || w === 'startProgram' ? 'link 6' : w === 'running' ? 'link 4' : 'link 5');
@@ -1302,12 +1484,40 @@ function argumentViolations(files: Record<string, string>, core: Record<string, 
       const c = scanSource(src, false);
       const facts = importFacts(src);
       if (facts.specifiers.some((x) => /^(node:)?(http|https|http2|net|tls|dgram|child_process|worker_threads)$/.test(x))) link('link 1', `${label}${name} imports a module that can send (http, https, http2, net, tls, dgram, child_process or worker_threads)`);
-      if (/\b(XMLHttpRequest|WebSocket|EventSource|sendBeacon|eval)\b/.test(c) || /\bnew\s+Function\b/.test(c) || /\bimport\s*\(/.test(c)) link('link 1', `${label}${name} uses a way to send or to run text: XMLHttpRequest, WebSocket, EventSource, sendBeacon, eval, new Function or import(`);
+      if (/\beval\b/.test(c) || /\bnew\s+Function\b/.test(c) || /\bimport\s*\(/.test(c)) link('link 1', `${label}${name} uses a way to send or to run text: XMLHttpRequest, WebSocket, EventSource, sendBeacon, eval, new Function or import(`);
       if (label !== '' && wordCount(c, 'fetch') > 0) link('link 1', `${label}${name} holds fetch: the core library sends nothing`);
     }
   };
   sending('', files);
   sending('sim/core/src/', core);
+
+  // the core library's modules, held the way the program's are (an import, a re-export, require( and import( anywhere in a file)
+  if (Object.keys(core).length > 0) {
+    for (const name of new Set([...Object.keys(core), ...Object.keys(EXPECTED_CORE_IMPORTS)])) {
+      const src = core[name];
+      const facts = src === undefined ? { statements: [], specifiers: [], wholeModule: false } : importFacts(src);
+      const want = EXPECTED_CORE_IMPORTS[name] ?? [];
+      if (JSON.stringify(facts.statements) !== JSON.stringify(want)) link("the bay program's side (modules)", `sim/core/src/${name} has other imports than it had: ${facts.statements.join(' | ') || 'none'}`);
+      if (facts.wholeModule) link("the bay program's side (modules)", `sim/core/src/${name} takes a whole module (import * as, export *, require)`);
+    }
+  }
+
+  // the names every file uses, resolved by the compiler: modules are held above, here the global names and the members of process and import.meta
+  if (deep) {
+    const combined: Record<string, string> = {};
+    for (const [n, t] of Object.entries(files)) combined[`collector/${n}`] = t;
+    for (const [n, t] of Object.entries(core)) combined[`core/${n}`] = t;
+    const known: Record<string, readonly string[]> = { collector: EXPECTED_SIDE.collectorGlobals, core: EXPECTED_SIDE.coreGlobals };
+    for (const [path, f] of Object.entries(sideFacts(combined))) {
+      const folder = path.slice(0, path.indexOf('/'));
+      const where = `sim/${folder}/src/${path.slice(folder.length + 1)}`;
+      for (const g of f.globals) if (!known[folder]!.includes(g)) link("the bay program's side (global names)", `${where} uses the global name \`${g}\`, which is not in the list for sim/${folder}/src`);
+      for (const m of f.processMembers) if (!EXPECTED_SIDE.processMembers.includes(m)) link("the bay program's side (process)", `${where} reads process.${m}, which is not in the list (${EXPECTED_SIDE.processMembers.join(', ')})`);
+      if (f.processOther > 0) link("the bay program's side (process)", `${where} uses process other than as process.<member> (${f.processOther} time${f.processOther === 1 ? '' : 's'}): passed whole, read with brackets or destructured`);
+      for (const m of f.metaMembers) if (!EXPECTED_SIDE.metaMembers.includes(m)) link("the bay program's side (import.meta)", `${where} reads import.meta.${m}, which is not in the list (${EXPECTED_SIDE.metaMembers.join(', ')})`);
+      if (f.metaOther > 0) link("the bay program's side (import.meta)", `${where} uses import.meta other than as import.meta.<member>`);
+    }
+  }
   return bad;
 }
 
@@ -1347,7 +1557,9 @@ test('A13. the places a post can start are pinned: one call of post, one of flus
   assert.ok(Object.keys(all).length >= 5 && 'collector.ts' in all, 'the source tree was collected');
   const coreTree = readTree(join(SRC, '..', '..', 'core', 'src'));
   assert.ok(Object.keys(coreTree).length >= 3 && 'parse.ts' in coreTree, 'the core library was collected');
-  const moved = argumentViolations(all, coreTree);
+  const t0 = Date.now();
+  const moved = argumentViolations(all, coreTree, true);
+  console.log(`A13 reads the whole of the bay program's side in ${Date.now() - t0} ms`);
   assert.deepEqual(moved, [], `\n${ARGUMENT}\n\nWhat moved:\n  ${moved.join('\n  ')}\n\n${WHAT_TO_DO}`);
 
   // The guard bites: made-up edits. `edit` fails when its text is not in the file, so an edit can never silently do nothing.
@@ -1422,6 +1634,57 @@ test('A13. the places a post can start are pinned: one call of post, one of flus
   assert.ok(parse.includes(zAnchor), 'a made-up edit of this pin no longer applies because its anchor line changed (parse.ts): update the anchor in the pin\'s table of edits, not the rule');
   const z1 = argumentViolations(all, { ...coreTree, 'parse.ts': parse.replace(zAnchor, () => zAnchor + "\n  if (text.length > 5_000_000) void fetch('http://127.0.0.1:5077/v0/shots', { method: 'POST', body: '{}' }).catch(() => undefined);") });
   assert.notDeepEqual(z1, [], 'the pin does not see: Z1, a fetch in the core library');
+
+  // ---- what the bay program's side uses: each of these is ordinary code, and each must be found (the compiler resolves the names) ----
+  const stop = (name: string, from: string, tree: Record<string, string>): void => {
+    assert.ok(tree[name]!.includes(from), `a made-up edit of this pin no longer applies because its anchor line changed (${name}: ${from.slice(0, 60)}): update the anchor in the pin's table of edits, not the rule`);
+  };
+  const inCore = (name: string, from: string, to: string, tree: Record<string, string> = coreTree): Record<string, string> => {
+    stop(name, from, tree);
+    return { ...tree, [name]: tree[name]!.replace(from, () => to) };
+  };
+  const TOP = "import { types } from 'node:util';";
+  const addTo = (tree: Record<string, string>, name: string, text: string): Record<string, string> => ({ ...tree, [name]: tree[name]! + text });
+  const BATCH = '      const batch = outbox.batch(BATCH_RECORDS);\n';
+  const PARSE_ANCHOR = "  if (typeof text !== 'string') throw new UnknownLayoutError('round file text must be a string');";
+  const TRIGGER = ' if (text.length > 5_000_000)';
+  type Case = [string, Record<string, string>, Record<string, string>];
+  const side = (name: string, files: Record<string, string>, coreFiles: Record<string, string> = coreTree): Case => [name, files, coreFiles];
+  const mustFindSide: Case[] = [
+    side('V1: core imports undici and posts a big round file', all, inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void request('http://127.0.0.1:5077/v0/shots', { method: 'POST' });`, inCore('parse.ts', TOP, `${TOP}\nimport { request } from 'undici';`))),
+    side("V2: collector.ts, after four hours of the program's clock, process.getBuiltinModule('node:http')", edit('collector.ts', BATCH, `${BATCH}      if (now() - 14_400_000 > 0 && outbox.pending > 0) void (process as any).getBuiltinModule('node:http').request('http://127.0.0.1:5077/v0/shots', { method: 'POST' }).end();\n`)),
+    side("V3: core parseRoundFile, process.getBuiltinModule('node:http')", all, inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void (process as any).getBuiltinModule('node:http').request('http://127.0.0.1:5077/v0/shots', { method: 'POST' }).end();`)),
+    side("V4: core imports createRequire and loads node:http", all, inCore('parse.ts', PARSE_ANCHOR, `${PARSE_ANCHOR}\n ${TRIGGER} void createRequire(import.meta.url)('node:http');`, inCore('parse.ts', TOP, `${TOP}\nimport { createRequire } from 'node:module';`))),
+    side("require('node:http') in collector.ts", addTo(all, 'collector.ts', "\nfunction viaRequire(): void {\n  void require('node:http');\n}\n")),
+    side('a new import of node:module in outbox.ts', edit('outbox.ts', "import { createHash } from 'node:crypto';\n", "import { createHash } from 'node:crypto';\nimport { createRequire } from 'node:module';\n")),
+    side('the global WebSocket used in collector.ts', addTo(all, 'collector.ts', "\nfunction viaSocket(): void {\n  void new WebSocket('ws://127.0.0.1:5077');\n}\n")),
+    side('navigator.sendBeacon in the core library', all, addTo(coreTree, 'text.ts', "\nexport function beacon(): boolean {\n  return navigator.sendBeacon('http://127.0.0.1:5077', 'x');\n}\n")),
+    side('new Worker(...) with Worker not imported, in collector.ts', addTo(all, 'collector.ts', "\nfunction viaWorker(): void {\n  void new Worker('x.js');\n}\n")),
+    side('eval in the core library', all, addTo(coreTree, 'text.ts', "\nexport function evaluate(): unknown {\n  return eval('1');\n}\n")),
+    side('Reflect.get(...) in collector.ts', addTo(all, 'collector.ts', "\nfunction viaReflect(o: object): unknown {\n  return Reflect.get(o, 'x');\n}\n")),
+    side('globalThis.fetch(...) in the core library', all, addTo(coreTree, 'text.ts', "\nexport function viaGlobal(): void {\n  void globalThis.fetch('http://127.0.0.1:5077');\n}\n")),
+    side('globalThis[`fetch`] in the core library', all, addTo(coreTree, 'text.ts', '\nexport function viaTemplate(): void {\n  void (globalThis as any)[`fetch`](\'http://127.0.0.1:5077\');\n}\n')),
+    side("process.binding('tcp_wrap') in collector.ts", addTo(all, 'collector.ts', "\nfunction viaBinding(): void {\n  void (process as any).binding('tcp_wrap');\n}\n")),
+    side('const p = process; (process passed whole) in collector.ts', addTo(all, 'collector.ts', '\nfunction viaWhole(): void {\n  const p = process;\n  void p;\n}\n')),
+    side("process['getBuiltinModule']('node:http') in collector.ts", addTo(all, 'collector.ts', "\nfunction viaBrackets(): void {\n  void (process as any)['getBuiltinModule']('node:http');\n}\n")),
+    side('a second function with a parameter named fetch, and the global fetch used in another function (found as a second fetch by the existing count; item 2 finds nothing new, because the global fetch is already in the list)', addTo(all, 'collector.ts', "\nfunction shadow(fetch: number): number {\n  return fetch;\n}\nfunction useReal(): void {\n  void fetch('http://127.0.0.1:5077');\n}\n")),
+    side('options[`post`] called in collector.ts (a template with no holes in brackets)', addTo(all, 'collector.ts', '\nfunction viaOptions(options: any): void {\n  void options[`post`](\'u\', \'b\');\n}\n')),
+    side('structuredClone used in outbox.ts (a global the program does not use there, and not in its folder\'s list)', addTo(all, 'outbox.ts', '\nfunction copyIt(x: object): object {\n  return structuredClone(x);\n}\n')),
+    side('a new import of node:crypto in the core library', all, edit('text.ts', 'export ', "import { createHash } from 'node:crypto';\nexport ", coreTree)),
+  ];
+  const mustNotFindSide: Case[] = [
+    side('a new local variable named require, declared and used in one function (a local is not a global)', addTo(all, 'collector.ts', '\nfunction localRequire(): number {\n  const require = 1;\n  return require;\n}\n')),
+    side('a new local variable named WebSocket, declared and used in one function', addTo(all, 'collector.ts', '\nfunction localSocket(): number {\n  const WebSocket = 1;\n  return WebSocket;\n}\n')),
+    side('a global already in the list used in a new place (JSON.stringify in outbox.ts)', addTo(all, 'outbox.ts', '\nfunction asText(x: object): string {\n  return JSON.stringify(x);\n}\n')),
+    side('a type named in a type position only (WebSocket in a type annotation)', addTo(all, 'outbox.ts', '\ntype OnlyAType = Record<string, WebSocket>;\n')),
+  ];
+  const t1 = Date.now();
+  for (const [name, f, c] of mustFindSide) {
+    const found = argumentViolations(f, c, true);
+    assert.notDeepEqual(found, [], `the pin does not see: ${name}`);
+  }
+  for (const [name, f, c] of mustNotFindSide) assert.deepEqual(argumentViolations(f, c, true), [], `the pin sees something it should not: ${name}`);
+  console.log(`A13 side edits: ${mustFindSide.length} found, ${mustNotFindSide.length} not found, ${Date.now() - t1} ms`);
 });
 
 // ---- B: the six wrong versions the reviews left alive ----

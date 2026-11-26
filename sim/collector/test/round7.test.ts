@@ -1,10 +1,10 @@
 import { test, afterEach, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { createCollector, defaultPost, oneAtATime, type PostFn, type PostResult } from '../src/collector.js';
-import { standIns, tempDir, removeTemps, closeAll, synth, sleep, until } from './helpers.js';
+import { createCollector, defaultPost, oneAtATime, type Collector, type PostFn, type PostResult } from '../src/collector.js';
+import { standIns, tempDir, removeTemps, closeAll, synth, sleep, until, manualTimer } from './helpers.js';
 
 afterEach(closeAll);
 after(removeTemps);
@@ -53,8 +53,8 @@ async function refusal(p: Promise<unknown>): Promise<string> {
 test('G1. 50 calls made while the first is unanswered: the wrapped post is called once, the other 49 reject at once with the gate\'s message, and after the answer the next call goes through', async () => {
   const h = held();
   const gate = oneAtATime(h.post);
-  const first = gate('u', 'b');
-  const others = Array.from({ length: 49 }, () => refusal(gate('u', 'b')));
+  const first = gate('http://127.0.0.1:1/v0/shots', 'body-first');
+  const others = Array.from({ length: 49 }, (_, i) => refusal(gate(`http://127.0.0.1:${2 + i}/v0/shots`, `body-${i}`))); // another body and another address each time
   const results = await Promise.all(others); // they settle without the first being answered
   assert.deepEqual(new Set(results), new Set([GATE_MESSAGE]), 'each refused, with the gate\'s message');
   assert.equal(results.length, 49);
@@ -213,5 +213,255 @@ test('G3. a collector built with no post option, against a loopback hub that hol
     assert.equal(c.status().pending, 0);
   } finally {
     await c.stop();
+  }
+});
+
+// ---- B.2 the clock: a gate that opens by itself is a second request (g10) ----
+
+/** Waits until `ms` after `t0` on the real clock; the timer is its own and ends when it fires. */
+function waitUntil(t0: number, ms: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, Math.max(0, t0 + ms - Date.now()));
+  });
+}
+
+test('G4. a hub that holds its first answer for 9 seconds (inside the 10 second give-up): calls at about 1, 3, 5.5, 7 and 8.5 seconds, each with another body, are each refused; the hub never has two requests open; after the answer the next call goes through', { timeout: 30_000 }, async () => {
+  const hub = await holdingHub();
+  const gate = oneAtATime(defaultPost);
+  const url = `${hub.url}/v0/shots`;
+  const t0 = Date.now();
+  const first = gate(url, '{"records":[],"n":0}').then(
+    (r) => r,
+    (e: unknown) => e,
+  );
+  await until(() => hub.requests.length === 1, 'the hub saw the first request');
+  const at = [1000, 3000, 5500, 7000, 8500];
+  for (const [i, ms] of at.entries()) {
+    await waitUntil(t0, ms);
+    assert.equal(await refusal(gate(`${hub.url}/v0/shots?call=${i}`, `{"records":[],"n":${i + 1}}`)), GATE_MESSAGE, `the call at about ${ms / 1000} s is refused`);
+    assert.equal(hub.requests.length, 1, `the hub still has seen one request after the call at about ${ms / 1000} s`);
+    assert.equal(hub.open(), 1);
+  }
+  await waitUntil(t0, 9000);
+  answerWith(hub.requests[0]!);
+  assert.equal(((await first) as { status: number }).status, 200, 'the first call ended with the hub\'s answer, 9 seconds in');
+  const next = gate(url, '{"records":[],"n":99}');
+  await until(() => hub.requests.length === 2, 'after the answer the next call goes through');
+  answerWith(hub.requests[1]!);
+  assert.equal((await next).status, 200);
+  assert.equal(hub.open(), 0);
+});
+
+test('G5. the give-up itself: a hub that never answers its first request; calls at about 9.5 and 9.93 seconds are refused; the first call ends at the 10 second give-up; a call made after that goes through to the hub', { timeout: 30_000 }, async () => {
+  const requests: Array<{ arrivedAt: number }> = [];
+  const server: Server = createServer((req, res) => {
+    const index = requests.push({ arrivedAt: Date.now() }) - 1;
+    req.resume();
+    if (index === 0) return; // never answered
+    req.on('end', () => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ added: 0, revised: 0, unchanged: 0, conflicts: 0 }));
+    });
+  });
+  standIns.push(server);
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/v0/shots`;
+  const gate = oneAtATime(defaultPost);
+  const t0 = Date.now();
+  const first = gate(url, '{"records":[]}').then(
+    () => 'answered',
+    (e: unknown) => ({ name: (e as Error).name, at: Date.now() - t0 }),
+  );
+  await until(() => requests.length === 1, 'the hub saw the first request');
+  await waitUntil(t0, 9500);
+  assert.equal(await refusal(gate(url, '{"records":[],"n":1}')), GATE_MESSAGE, 'a call at about 9.5 seconds is refused');
+  assert.equal(requests.length, 1, 'the hub saw one request');
+  await waitUntil(t0, 9930);
+  assert.equal(await refusal(gate(url, '{"records":[],"n":3}')), GATE_MESSAGE, 'a call at about 9.93 seconds, just before the give-up, is refused (a gate that opens again at 9.9 seconds would send it)');
+  assert.equal(requests.length, 1, 'the hub still saw one request');
+  const ended = (await first) as { name: string; at: number };
+  assert.equal(ended.name, 'TimeoutError', 'the first call ends at the give-up');
+  assert.ok(ended.at >= 9_500 && ended.at < 12_000, `it gave up after ${ended.at} ms`);
+  assert.equal((await gate(url, '{"records":[],"n":2}')).status, 200, 'a call made after the give-up goes through');
+  assert.equal(requests.length, 2);
+  assert.ok(requests[1]!.arrivedAt - t0 >= 9_900, 'the second request came after the give-up');
+});
+
+// ---- B.3 by a model, with made-up time: every other rule ----
+
+function seededGenerator(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+async function settleMicrotasks(): Promise<void> {
+  for (let i = 0; i < 3; i++) await new Promise<void>((r) => setImmediate(r));
+}
+
+/** The gate against its model: a call is let through if and only if no call is out. */
+async function modelRun(seed: number, steps: number): Promise<void> {
+  const rand = seededGenerator(seed);
+  const pick = (n: number): number => Math.floor(rand() * n);
+  let mode: 'hold' | 'reject' | 'throw' = 'hold';
+  let heldCall: { resolve(r: PostResult): void; reject(e: Error): void } | undefined;
+  let standOut = 0;
+  let maxStandOut = 0;
+  let standCalls = 0;
+  const stub = ((_url: string, _body: string) => {
+    standCalls++;
+    standOut++;
+    maxStandOut = Math.max(maxStandOut, standOut);
+    if (mode === 'throw') {
+      standOut--;
+      throw new Error('thrown (made up)');
+    }
+    if (mode === 'reject') {
+      standOut--;
+      return Promise.reject(new Error('rejected (made up)'));
+    }
+    return new Promise<PostResult>((resolve, reject) => {
+      heldCall = {
+        resolve: (r) => {
+          standOut--;
+          resolve(r);
+        },
+        reject: (e) => {
+          standOut--;
+          reject(e);
+        },
+      };
+    });
+  }) as PostFn;
+  const gate = oneAtATime(stub);
+  let out = false; // the model: a call is out
+  let step = 0;
+  const where = (): string => `seed ${seed}, step ${step}`;
+  let outcome: { state: 'pending' | 'ok' | 'refused' | 'failed'; message?: string } = { state: 'ok' };
+  for (step = 1; step <= steps; step++) {
+    const r = pick(100);
+    if (r < 60) {
+      mode = (['hold', 'hold', 'reject', 'throw'] as const)[pick(4)]!;
+      const before = standCalls;
+      const mine: { state: 'pending' | 'ok' | 'refused' | 'failed'; message?: string } = { state: 'pending' };
+      gate(`http://127.0.0.1:${1 + pick(9)}/v0/shots`, `body-${seed}-${step}-${pick(1000)}`).then(
+        () => void (mine.state = 'ok'),
+        (e: Error) => {
+          mine.state = e.message === GATE_MESSAGE ? 'refused' : 'failed';
+          mine.message = e.message;
+        },
+      );
+      await settleMicrotasks();
+      if (out) {
+        assert.equal(mine.state, 'refused', `${where()}: a call made while one is out must be refused with the gate's message (got ${mine.state}: ${mine.message})`);
+        assert.equal(standCalls, before, `${where()}: a refused call must not reach the wrapped post`);
+      } else {
+        assert.equal(standCalls, before + 1, `${where()}: a call made while none is out must go through`);
+        if (mode === 'hold') {
+          assert.equal(mine.state, 'pending', `${where()}: a held call is pending`);
+          out = true;
+          outcome = mine;
+        } else {
+          assert.equal(mine.state, 'failed', `${where()}: a rejection or a throw ends the call`);
+        }
+      }
+    } else if (r < 85) {
+      if (out) {
+        heldCall!.resolve({ status: [200, 400, 413, 500, 503, 302][pick(6)]!, body: undefined });
+        await settleMicrotasks();
+        assert.equal(outcome.state, 'ok', `${where()}: an answer ends the call`);
+        out = false;
+      }
+    } else if (out) {
+      heldCall!.reject(new Error('connection failed (made up)'));
+      await settleMicrotasks();
+      assert.equal(outcome.state, 'failed', `${where()}: a rejection ends the call`);
+      out = false;
+    }
+    assert.ok(maxStandOut <= 1, `${where()}: the wrapped post had two calls out at once`);
+  }
+}
+
+test('G6. the gate against a model with made-up time: 6 seeds of 4 000 steps (a call, an answer, a rejection or a throw, with another body and address each time): a call is let through if and only if no call is out, a refused call never reaches the wrapped post, never two out', { timeout: 60_000 }, async () => {
+  for (const seed of [1, 2, 3, 4, 5, 6]) await modelRun(seed, 4000);
+});
+
+// ---- B.4 the statement, by a run: a callback that calls tick() before tick has stored its running pass (gate-1) ----
+
+test('G7. a collector built with no post option, whose onEvent calls tick() again while the pass that raised it is still starting (round 6\'s Z4 through the public interface): the hub never has two requests open and every record arrives once', async () => {
+  const dir = tempDir();
+  const gspro = join(dir, 'currentRound.dat');
+  mkdirSync(dir, { recursive: true });
+  const records = synth(10).map((x) => {
+    const y = { ...x, PlayerName: 'ZZTEST-A' };
+    delete y.GhostData;
+    delete y.activeShot;
+    return y;
+  });
+  writeFileSync(gspro, JSON.stringify(records));
+  let open = 0;
+  let maxOpen = 0;
+  let requests = 0;
+  const arrived: string[] = [];
+  const server: Server = createServer((req, res) => {
+    open++;
+    maxOpen = Math.max(maxOpen, open);
+    const index = requests++;
+    const chunks: Buffer[] = [];
+    req.on('data', (d: Buffer) => chunks.push(d));
+    req.on('end', () => {
+      const recs = (JSON.parse(Buffer.concat(chunks).toString('utf8')) as { records: Array<{ ShotID: string }> }).records;
+      setTimeout(
+        () => {
+          if (index === 0) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end('{}');
+          } else {
+            arrived.push(...recs.map((x) => x.ShotID));
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ added: recs.length, revised: 0, unchanged: 0, conflicts: 0 }));
+          }
+          open--;
+        },
+        index === 0 ? 5 : 150,
+      );
+    });
+  });
+  standIns.push(server);
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const hubUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  let clock = 1_000_000;
+  const timer = manualTimer();
+  let collector: Collector | undefined;
+  collector = createCollector({
+    gsproFile: gspro,
+    dataDir: join(dir, 'data'),
+    hubUrl,
+    now: () => clock,
+    timer,
+    onEvent: (e) => {
+      if (e === 'not-found') void collector!.tick(); // before the pass that raised this has stored its running pass
+    },
+  }); // no post option: the statement that picks the sender, as the program runs it
+  try {
+    collector.start();
+    timer.fire();
+    await until(() => requests === 1, 'the first request (answered 500)');
+    await until(() => collector!.status().retryDelayMs > 0, 'the wait after the 500');
+    assert.equal(collector.status().pending, 10);
+    rmSync(gspro); // the round file is gone
+    clock += 31_000; // for more than 30 seconds of the program's clock, with records waiting
+    timer.fire();
+    await until(() => collector!.status().sent === 10, 'all ten sent', 15_000);
+    assert.equal(maxOpen, 1, 'the hub never had two requests open');
+    assert.equal(requests, 2, 'one failed request and one that went through');
+    assert.deepEqual([...arrived].sort(), records.map((x) => x.ShotID).sort(), 'every record arrived once');
+  } finally {
+    await collector.stop();
   }
 });
