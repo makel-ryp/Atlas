@@ -1,4 +1,4 @@
-import { appendFileSync, closeSync, existsSync, fstatSync, fsyncSync, ftruncateSync, mkdirSync, openSync, readSync, statSync, truncateSync, writeSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, fsyncSync, ftruncateSync, mkdirSync, openSync, readSync, statSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 
 export const JOURNAL_NAME = 'journal.jsonl';
@@ -7,6 +7,11 @@ export const JOURNAL_NAME = 'journal.jsonl';
 export const DEFAULT_PIECE_BYTES = 1024 * 1024;
 /** A line longer than this is treated as a bad line (the hub's own limit on a body is 32 MB). */
 export const MAX_LINE_BYTES = 64 * 1024 * 1024;
+
+/** The only form in which an error code reaches the console: 1 to 32 capital letters, digits and underscores; anything else is "error". */
+export function plainCode(code: unknown): string {
+  return typeof code === 'string' && /^[A-Z0-9_]{1,32}$/.test(code) ? code : 'error';
+}
 
 /** Thrown when the journal cannot be trusted. The message never carries file content. */
 export class JournalError extends Error {
@@ -26,10 +31,14 @@ export interface JournalIO {
   size(fd: number): number;
   /** The device and file number of the file at a path (as big integers). */
   statPath(path: string): { dev: bigint; ino: bigint };
+  /** The same, for the one look the start makes after its replay (a separate seam, so a test of the write's look does not reach the start). */
+  statPathAtStart(path: string): { dev: bigint; ino: bigint };
   /** Closes the descriptor. */
   close(fd: number): void;
   /** Opens the journal for reading (the start's replay and every rebuild). */
   openRead(path: string): number;
+  /** Opens the journal once, for reading and writing, creating it when it is absent (the start's one open). */
+  openReadWrite(path: string): number;
 }
 
 /** The look before a write: ok, gone (lost for good), or could not tell (another program may be holding a file for a moment). */
@@ -64,8 +73,10 @@ const REAL_IO: JournalIO = {
   truncate: (fd, length) => ftruncateSync(fd, length),
   size: (fd) => fstatSync(fd).size,
   statPath: (path) => statSync(path, { bigint: true }),
+  statPathAtStart: (path) => statSync(path, { bigint: true }),
   close: (fd) => closeSync(fd),
   openRead: (path) => openSync(path, 'r'),
+  openReadWrite: (path) => openSync(path, constants.O_RDWR | constants.O_CREAT),
 };
 
 export interface ReplayResult {
@@ -85,10 +96,19 @@ export interface ReplayResult {
  */
 function* replaySteps(file: string, onBatch: (records: unknown[]) => void, warn: (line: string) => void, options: JournalOptions): Generator<void, ReplayResult> {
   if (!existsSync(file)) return { cutAt: undefined, missingNewline: false, size: 0 };
-  const pieceBytes = Math.max(1, Math.floor(options.pieceBytes ?? DEFAULT_PIECE_BYTES));
-  const maxLine = options.maxLineBytes ?? MAX_LINE_BYTES;
   const fd = (options.io?.openRead ?? REAL_IO.openRead)(file);
   try {
+    return yield* replayHeld(fd, onBatch, warn, options);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** The replay of a file that is already open: reads from the descriptor only, and never closes it. */
+function* replayHeld(fd: number, onBatch: (records: unknown[]) => void, warn: (line: string) => void, options: JournalOptions): Generator<void, ReplayResult> {
+  const pieceBytes = Math.max(1, Math.floor(options.pieceBytes ?? DEFAULT_PIECE_BYTES));
+  const maxLine = options.maxLineBytes ?? MAX_LINE_BYTES;
+  {
     const piece = Buffer.allocUnsafe(pieceBytes);
     let chunks: Buffer[] = [];
     let lineLen = 0;
@@ -166,8 +186,6 @@ function* replaySteps(file: string, onBatch: (records: unknown[]) => void, warn:
       return { cutAt: undefined, missingNewline: true, size: pos };
     }
     return { cutAt: undefined, missingNewline: false, size: pos };
-  } finally {
-    closeSync(fd);
   }
 }
 
@@ -207,21 +225,77 @@ export class Journal {
     this.io = { ...REAL_IO, ...io };
   }
 
-  /** Replays the file through onBatch in order, repairs a cut-short last line, and opens the file for appending. */
+  /**
+   * Opens the file ONCE, for reading and writing (creating it when absent), and keeps that descriptor: the replay reads from it, a
+   * repair is made on it, and every later append goes through it. After the open nothing here names the journal by path again except
+   * the look. When the last piece has been read, and with no turn of the event loop before the repair, the journal looks at itself:
+   * the held file must still be the file at the path and its size must be the bytes the replay read. If not, the descriptor is closed,
+   * nothing is changed in any file, and the start is refused.
+   */
   static async open(dir: string, onBatch: (records: unknown[]) => void, warn: (line: string) => void, options: JournalOptions = {}): Promise<Journal> {
     mkdirSync(dir, { recursive: true });
     const file = join(dir, JOURNAL_NAME);
-    const r = await replayFileAsync(file, onBatch, warn, options);
-    let good = r.size;
-    if (r.cutAt !== undefined) {
-      truncateSync(file, r.cutAt); // so the next append starts on a clean line
-      good = r.cutAt;
-    } else if (r.missingNewline) {
-      appendFileSync(file, '\n'); // a complete last line that only lacks its newline
-      good = r.size + 1;
+    const io: JournalIO = { ...REAL_IO, ...options.io };
+    const fd = io.openReadWrite(file);
+    let r: ReplayResult;
+    try {
+      const steps = replayHeld(fd, onBatch, warn, options);
+      for (;;) {
+        const step = steps.next();
+        if (step.done) {
+          r = step.value;
+          break;
+        }
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    } catch (e) {
+      try {
+        io.close(fd);
+      } catch {
+        // the refusal that is already on its way is the one to report
+      }
+      throw e;
     }
-    if (!existsSync(file)) closeSync(openSync(file, 'a'));
-    return new Journal(file, openSync(file, 'r+'), good, options.io);
+    // From here to the end of the repair there is no await: nothing else can run between the look and the repair.
+    const j = new Journal(file, fd, r.size, options.io);
+    const refuse = (message: string): never => {
+      try {
+        io.close(fd);
+      } catch {
+        // see above
+      }
+      j.fd = undefined;
+      throw new JournalError(message);
+    };
+    const seen = j.look((p) => io.statPathAtStart(p));
+    if (seen.state === 'gone') refuse(`the journal ${JOURNAL_NAME} was removed, replaced or changed while the hub was starting; nothing was changed; start the hub again`);
+    if (seen.state === 'cannot') refuse(`the journal ${JOURNAL_NAME} could not be looked at while the hub was starting (${plainCode(seen.code)}); nothing was changed; try again in a moment`);
+    let heldSize: number;
+    try {
+      heldSize = io.size(fd);
+    } catch (e) {
+      return refuse(`the journal ${JOURNAL_NAME} could not be looked at while the hub was starting (${plainCode((e as NodeJS.ErrnoException | undefined)?.code)}); nothing was changed; try again in a moment`);
+    }
+    if (heldSize !== r.size) refuse(`the journal ${JOURNAL_NAME} was removed, replaced or changed while the hub was starting; nothing was changed; start the hub again`);
+    try {
+      if (r.cutAt !== undefined) {
+        io.truncate(fd, r.cutAt); // so the next append starts on a clean line
+        j.goodLength = r.cutAt;
+      } else if (r.missingNewline) {
+        io.write(fd, Buffer.from('\n'), 0, 1, r.size); // a complete last line that only lacks its newline
+        j.goodLength = r.size + 1;
+      }
+      if (r.cutAt !== undefined || r.missingNewline) io.sync(fd);
+    } catch (e) {
+      try {
+        io.close(fd);
+      } catch {
+        // see above
+      }
+      j.fd = undefined;
+      throw e;
+    }
+    return j;
   }
 
   /**
@@ -229,7 +303,7 @@ export class Journal {
    * (read as big integers). A path that is gone, or now names another file, fails. Nothing is ever written to a file that
    * has lost its name.
    */
-  look(): JournalLook {
+  look(statPath: (path: string) => { dev: bigint; ino: bigint } = (p) => this.io.statPath(p)): JournalLook {
     if (this.fd === undefined) return { state: 'gone' };
     const codeOf = (e: unknown): string => {
       const c = (e as NodeJS.ErrnoException | undefined)?.code;
@@ -243,7 +317,7 @@ export class Journal {
     }
     let named: { dev: bigint; ino: bigint };
     try {
-      named = this.io.statPath(this.file);
+      named = statPath(this.file);
     } catch (e) {
       const code = codeOf(e);
       return code === 'ENOENT' || code === 'ENOTDIR' ? { state: 'gone' } : { state: 'cannot', code };

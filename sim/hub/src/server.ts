@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { RoundBook, UnknownLayoutError, validateRecord, MAX_RECORDS, type IngestCounts, type ShotRecord } from '../../core/src/index.js';
-import { Journal, JournalError, JournalNotWritten, replayFile, type WriteLook, JOURNAL_NAME, MAX_LINE_BYTES, type JournalOptions } from './journal.js';
+import { Journal, JournalError, plainCode, JournalNotWritten, replayFile, type WriteLook, JOURNAL_NAME, MAX_LINE_BYTES, type JournalOptions } from './journal.js';
 import { takeLock, type HeldLock } from './lock.js';
 
 export const HOST = '127.0.0.1';
@@ -60,11 +60,6 @@ class BodyTooLarge extends Error {}
 class BodyTimeout extends Error {}
 /** The client dropped the connection before its body ended. */
 class ClientAborted extends Error {}
-
-/** The only form in which an error code reaches the console: 1 to 32 capital letters, digits and underscores; anything else is "error". */
-function plainCode(code: unknown): string {
-  return typeof code === 'string' && /^[A-Z0-9_]{1,32}$/.test(code) ? code : 'error';
-}
 
 function fingerprint(record: ShotRecord): string {
   return createHash('sha256').update(JSON.stringify(record)).digest('hex');
@@ -124,7 +119,7 @@ export function createHub(options: HubOptions): Hub {
   let starting = false;
   const maxLine = options.journal?.maxLineBytes ?? MAX_LINE_BYTES;
   let activePosts = 0;
-  // Everything that changes the book runs one at a time, in arrival order.
+  // Everything that changes the book runs one at a time, in the order the bodies finish arriving (a post queues once its whole body is in).
   let chain: Promise<unknown> = Promise.resolve();
 
   function send(res: ServerResponse, status: number, body: unknown, extra: Record<string, string> = {}): void {
@@ -283,16 +278,18 @@ export function createHub(options: HubOptions): Hub {
   }
 
   /** Rebuilds the book and the table from the file; if that cannot be done the hub has no book it can stand behind. */
-  function tryRebuild(): void {
+  function tryRebuild(): boolean {
     try {
       rebuild();
+      return true;
     } catch (e) {
       unavailable = true;
       rebuildFailed = true;
       // a failed rebuild needs a restart, and the console must say so (unless the lost line, which also says so, was printed)
       if (!lostNoticeGiven) {
-        warn(`this hub could not read its journal ${JOURNAL_NAME} back (${plainCode((e as NodeJS.ErrnoException | undefined)?.code)}): it takes no more shots until it is restarted; this hub has removed nothing it answered 200 for; stop this hub and start it again`);
+        warn(`this hub could not read its journal ${JOURNAL_NAME} back (${plainCode((e as NodeJS.ErrnoException | undefined)?.code)}): it takes no more shots until it is restarted; this hub has removed nothing it answered 200 for; stop this hub and start it again, and read what the start prints`);
       }
+      return false;
     }
   }
 
@@ -368,8 +365,13 @@ export function createHub(options: HubOptions): Hub {
           // 503 means this post wrote nothing; 500 means a line was written and then found lost or failed
           return { status: 503, body: { error: 'journal_unavailable' } };
         }
-        if ((journal as Journal).unavailable) unavailable = true;
-        tryRebuild();
+        const undoFailed = (journal as Journal).unavailable;
+        if (undoFailed) unavailable = true;
+        const rebuilt = tryRebuild();
+        // a write that failed and could not be cut back: the console says so, once, unless a line that says the same or more was printed
+        if (undoFailed && rebuilt && !lostNoticeGiven) {
+          warn(`this hub could not undo a failed write to its journal ${JOURNAL_NAME} (${plainCode((e as NodeJS.ErrnoException | undefined)?.code)}): it takes no more shots until it is restarted; this hub has removed nothing it answered 200 for; stop this hub and start it again, and read what the start prints`);
+        }
         throw e;
       }
       noteOk();
