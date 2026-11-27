@@ -87,7 +87,7 @@ test('A1. 450 records, three batches, the timer\'s handler fired 60 times while 
     assert.equal(held.maxInflight, 1);
     assert.equal(c.status().sent, 450);
     assert.equal(c.status().pending, 0);
-    assert.deepEqual(JSON.parse(readFileSync(join(r.data, 'sent.json'), 'utf8')), { cursor: 450, sent: 450, refused: 0 });
+    assert.deepEqual(JSON.parse(readFileSync(join(r.data, 'sent.json'), 'utf8')), { cursor: 450, sent: 450, refused: 0, gen: 1 });
   } finally {
     held.openUp();
     await c.stop();
@@ -415,7 +415,7 @@ test('A7. a new copy arrives while a post is held: the handler fired 45 times af
     assert.equal(new Set(held.calls.map((x) => x.ids.join(','))).size, held.calls.length, 'no batch was posted twice');
     assert.deepEqual(held.calls.flatMap((x) => x.ids), synth(70).map((x) => x.ShotID), 'in outbox order');
     assert.equal(c.status().sent, 70);
-    assert.deepEqual(JSON.parse(readFileSync(join(r.data, 'sent.json'), 'utf8')), { cursor: 70, sent: 70, refused: 0 });
+    assert.deepEqual(JSON.parse(readFileSync(join(r.data, 'sent.json'), 'utf8')), { cursor: 70, sent: 70, refused: 0, gen: 2 });
   } finally {
     held.openUp();
     await c.stop();
@@ -2073,7 +2073,7 @@ test('B6 (O2). the tidy-up writes one short line for each distinct ShotID, even 
   await c.tick();
   assert.equal(c.status().pending, 0);
   assert.equal(c.status().sent, 3, 'all three records were sent (two versions of one shot, in two posts)');
-  const lines = readFileSync(join(r.data, 'outbox.jsonl'), 'utf8').split('\n').filter((l) => l !== '');
+  const lines = readFileSync(join(r.data, 'outbox.jsonl'), 'utf8').split('\n').filter((l) => l !== '' && JSON.parse(l).gen === undefined); // the header line is not a shot
   assert.equal(lines.length, 2, 'two distinct ShotIDs, two short lines');
   assert.ok(lines.every((l) => (JSON.parse(l) as any).short !== undefined));
   assert.equal(JSON.parse(readFileSync(join(r.data, 'sent.json'), 'utf8')).cursor, 2);

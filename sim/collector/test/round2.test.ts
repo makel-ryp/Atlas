@@ -192,7 +192,7 @@ test('R6a. two rounds with the tidy-up size small: the outbox ends as one round\
   const c = r.make({ tidyOverBytes: 500 });
   await runCopies(r, c, 1, 38);
   assertKnownAnswer(await rounds(url));
-  const lines = outboxLines(r);
+  const lines = outboxLines(r).filter((l) => JSON.parse(l).gen === undefined); // the header line of a cleaned outbox is not a shot
   assert.ok(lines.length <= 39, `lines ${lines.length}`);
   assert.ok(lines.every((l) => JSON.parse(l).short !== undefined), 'only short lines');
   assert.ok(statSync(join(r.data, 'outbox.jsonl')).size < 39 * 200);
@@ -208,7 +208,7 @@ test('R6b. a restart mid-round after a tidy-up queues nothing twice', async () =
   const r = rig(url);
   const a = r.make({ tidyOverBytes: 500 });
   await runCopies(r, a, 1, 20);
-  assert.ok(outboxLines(r).every((l) => JSON.parse(l).short !== undefined));
+  assert.ok(outboxLines(r).filter((l) => JSON.parse(l).gen === undefined).every((l) => JSON.parse(l).short !== undefined)); // the header line is not a shot
   await a.stop();
   const b = r.make({ tidyOverBytes: 500 });
   await runCopies(r, b, 21, 38);
@@ -256,7 +256,7 @@ test('R6c2. a crash on the position write that follows an outbox rewrite loses n
   await crashDuringTidy('sent-write-after-outbox');
 });
 
-test('R6d. every tidy-up writes the record of what was sent first, with the position equal to the new number of lines, then the outbox', async () => {
+test('R6d. every tidy-up writes the outbox first (its header with the next generation, then the short lines), then the record of what was sent, with the position equal to the number of short lines and the same generation', async () => {
   const { url } = await startHub(tempDir());
   const r = rig(url);
   const spy = spyFiles(createFiles(r.data, r.gspro));
@@ -266,9 +266,11 @@ test('R6d. every tidy-up writes the record of what was sent first, with the posi
   const outboxWrites = writes.map((w, i) => [w, i] as const).filter(([w]) => w[1] === 'outbox.jsonl');
   assert.ok(outboxWrites.length >= 3, 'several tidy-ups happened');
   for (const [w, i] of outboxWrites) {
-    const prev = writes[i - 1]!;
-    assert.equal(prev[1], 'sent.json');
-    assert.equal(JSON.parse(prev[2]).cursor, w[2].split('\n').length - 1);
+    const next = writes[i + 1]!;
+    const header = JSON.parse(w[2].split('\n')[0]!);
+    assert.equal(next[1], 'sent.json');
+    assert.equal(JSON.parse(next[2]).cursor, w[2].split('\n').length - 2); // the short lines, not the header
+    assert.equal(JSON.parse(next[2]).gen, header.gen);
   }
 });
 
