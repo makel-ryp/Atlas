@@ -278,7 +278,7 @@ test('R6e. the tidy-up never runs while a record is waiting: a hub outage with a
   await first.hub.close();
   const r = rig(first.url);
   const c = r.make({ tidyOverBytes: 1 });
-  await runCopies(r, c, 1, 12, 31_000);
+  await runCopies(r, c, 1, 12, 31_000, false);
   const waiting = c.status().pending;
   assert.ok(waiting > 0);
   assert.ok(outboxLines(r).some((l) => JSON.parse(l).record !== undefined));

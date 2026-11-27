@@ -1,15 +1,21 @@
-// What the gate's tests hold, and what they do not (rounds 10 and 11).
+// What the gate's tests hold, and what they do not (rounds 10 to 12).
 // They hold: a flag that is not set, or is released early or late; a gate that waits in line instead of refusing; and a rule that
 // depends on the body (its content or its size, up to the 7 MB of a bay's largest batch), on the address, on a count of calls or of
 // refusals, on a timer of the gate's own, on the wall clock at any horizon (the hour of the day, the day of the month, the weekday,
-// the first second of a minute, a clock set back), or on a count and a time together (for example "after 12 refusals and 2 s").
-// G9 shows the plain cases (a mocked clock stepped through every hour of 32 days, each second of a minute, back by an hour and by
-// a day, with hundreds of quick calls first and a 7 MB body); G10 is the seeded model with a clock, counts and sizes together
-// and asserts what it met while a call was out; G6 is the same model with no clock; G8 and G5 run on real time inside the first 10 s.
-// They do not hold, as far as the seeds reach: a count beyond the model's reach (for example the 10 000th call).
+// the first second of a minute, a clock set back, the offset of the time zone and a change of the clocks), or on a count and a time
+// together (for example "after 12 refusals and 2 s").
+// The time zone is the test's own: G9 and G10 set process.env.TZ themselves (New York, Lord Howe, Kolkata, UTC, Berlin, Chatham) and
+// put it back, so the result and the printed coverage do not depend on the PC that runs them.
+// G9 shows the plain cases (a mocked clock stepped through every hour of 32 days, from the real date and from two fixed instants
+// whose 32 days cross a change of the clocks and the 29th to 31st of a month, each second of a minute, back by an hour and by a day,
+// with 300 quick calls first and a 7 MB body); G10 is the seeded model with a clock, counts and sizes together and asserts what it
+// met while a call was out; G6 is the same model with no clock; G8 and G5 run on real time inside the first 10 s.
+// The reach of a count, in numbers: one gate of G10 meets up to about 19 000 calls and about 19 000 refusals in its life (the long seed
+// is asserted to meet its 10 000th refusal and its 16 384th call), and a hold sees up to about 950 refusals in G10 and about 2 500 in
+// G9. A rule on a count beyond that (the 20 000th call, more than about 2 500 refusals in one hold) is not met.
 // They do not hold: a gate that reads a clock the test cannot turn (for example performance.now() or process.uptime() past G8's
-// last call), or one that waits for a magic value (for example one particular body). Those are held by the pin's word-for-word
-// text of the gate (A13 in round3.test.ts), which is what holds a twelve-line function in the end.
+// last call), or one that waits for a magic value (for example one particular body), or a count beyond the reach above. Those are
+// held by the pin's word-for-word text of the gate (A13 in round3.test.ts), which is what holds a twelve-line function in the end.
 import { test, afterEach, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
@@ -328,10 +334,35 @@ const DAY_MS = 86_400_000;
 /** The body of a bay's largest batch (200 full records): about 7 MB. Built once; every call adds its own few characters in front, so no two bodies are the same. */
 const BIG_BODY = 'x'.repeat(7_000_000);
 
-test('G9. a clock the test turns: a few hundred quick calls (one with a 7 MB body), then one call is held while the clock is stepped through ten steps up to 30 days, through every hour of 32 days, through each second of a whole minute, and back by an hour and by a day; at every step calls with another body and address (one with a 7 MB body) are refused with the gate\'s message and never reach the stand-in; when the held call is answered, and again when it is rejected, the next call goes through', { timeout: 30_000 }, async () => {
-  mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: Date.now() }); // the mocked Date starts at the real wall clock, so a rule about a calendar date is reached by the steps too
+/** The time zone a test sets for itself, and puts back (or removes, when there was none) in its `finally`. A running Node process honours a change of `process.env.TZ`; the runner gives each test file its own process and the tests of a file run one after another, so no other test or file sees it. */
+function setZone(zone: string): () => void {
+  const was = process.env.TZ;
+  process.env.TZ = zone;
+  return () => {
+    if (was === undefined) delete process.env.TZ;
+    else process.env.TZ = was;
+  };
+}
+const offsetNow = (): number => new Date(Date.now()).getTimezoneOffset();
+
+/** G9's plain cases are run from the real date (as in round 10) and from fixed instants, in zones that change their clocks. Each fixed instant is chosen so that its 32 days cross a change of the clocks and contain the 29th, 30th and 31st of a month: 28 October 2026 (the 29th to 31st of October; the clocks of New York go back on 1 November) and 28 March 2026 (the 29th to 31st of March; the clocks of Lord Howe, which change by half an hour, go back on 5 April). */
+const G9_SCENARIOS: Array<{ zone: string; start: number | undefined; crossesChange: boolean }> = [
+  { zone: 'America/New_York', start: undefined, crossesChange: false },
+  { zone: 'America/New_York', start: Date.UTC(2026, 9, 28), crossesChange: true },
+  { zone: 'Australia/Lord_Howe', start: Date.UTC(2026, 2, 28), crossesChange: true },
+];
+
+test('G9. a clock the test turns, in a zone the test sets (New York and Lord Howe, which change their clocks; from the real date and from two fixed instants whose 32 days cross a change of the clocks and the 29th to 31st of a month): a few hundred quick calls (one with a 7 MB body), then one call is held while the clock is stepped through ten steps up to 30 days, through every hour of 32 days, through each second of a whole minute, and back by an hour and by a day; at every step calls with another body and address (one with a 7 MB body) are refused with the gate\'s message and never reach the stand-in; when the held call is answered, and again when it is rejected, the next call goes through', { timeout: 30_000 }, async () => {
+  const realNow = Date.now();
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: realNow }); // the mocked Date starts at the real wall clock, so a rule about a calendar date is reached by the steps too
+  let putZoneBack: (() => void) | undefined;
   try {
+    for (const sc of G9_SCENARIOS) {
+      putZoneBack?.();
+      putZoneBack = setZone(sc.zone);
+      const offsetsSeen = new Set<number>();
     for (const ending of ['answered', 'rejected'] as const) {
+      mock.timers.setTime(sc.start ?? realNow); // both endings start from the same instant
       let reached = 0;
       let heldCall: { resolve: (r: PostResult) => void; reject: (e: Error) => void } | undefined;
       let holdNext = false;
@@ -379,10 +410,13 @@ test('G9. a clock the test turns: a few hundred quick calls (one with a 7 MB bod
       }
       // the 7 MB body, refused
       await mustRefuse('a 7 MB body', `big-${BIG_BODY}`);
-      // every hour of 32 days, at least three refused calls at each step
+      // the clock is set back 30 days to where it started (a clock correction), then every hour of 32 days from there, at least three refused calls at each step
+      mock.timers.setTime(sc.start ?? realNow);
+      await mustRefuse('after the clock was set back to its start', 'back-start');
       for (let h = 0; h < 32 * 24; h++) {
         mock.timers.tick(HOUR_MS);
         await turn();
+        offsetsSeen.add(offsetNow());
         for (let k = 0; k < 3; k++) await mustRefuse(`hour step ${h}, call ${k}`, `hour-${h}-${k}`);
       }
       // each second of one whole minute: first to the start of a minute, then 61 steps of one second (the first second of a minute among them)
@@ -415,7 +449,10 @@ test('G9. a clock the test turns: a few hundred quick calls (one with a 7 MB bod
       mock.timers.tick(3);
       assert.deepEqual(await next, OK, `${ending}: the next call was answered`);
     }
+      if (sc.crossesChange) assert.ok(offsetsSeen.size >= 2, `${sc.zone} from ${new Date(sc.start!).toISOString()}: the 32 days cross a change of the clocks (offsets seen: ${[...offsetsSeen].join(', ')})`);
+    }
   } finally {
+    putZoneBack?.();
     mock.timers.reset(); // the real clock comes back whatever the test did
   }
 });
@@ -555,6 +592,13 @@ interface Coverage {
   maxMovesInOneHold: number;
   longestHoldMs: number;
   settledAfterDays: number;
+  offsetChangesWhileOut: number;
+  hourChangesWhileOut: number;
+  halfHourChangesWhileOut: number;
+  repeatedLocalHourRefusals: number;
+  skippedLocalHourRefusals: number;
+  mostCallsInOneGate: number;
+  mostRefusalsInOneGate: number;
 }
 
 const SIZE_NAMES = ['a few bytes', 'about 1 kB', 'about 100 kB', 'about 1 MB', 'about 7 MB'];
@@ -579,14 +623,42 @@ function newCoverage(): Coverage {
     maxMovesInOneHold: 0,
     longestHoldMs: 0,
     settledAfterDays: 0,
+    offsetChangesWhileOut: 0,
+    hourChangesWhileOut: 0,
+    halfHourChangesWhileOut: 0,
+    repeatedLocalHourRefusals: 0,
+    skippedLocalHourRefusals: 0,
+    mostCallsInOneGate: 0,
+    mostRefusalsInOneGate: 0,
   };
 }
 
-async function timeModelRun(seed: number, steps: number, cover: Coverage): Promise<void> {
+/** The next instant after `from` at which the zone's offset changes (within 400 days), to the second; undefined in a zone that never changes. */
+function nextOffsetChange(from: number): number | undefined {
+  const o = new Date(from).getTimezoneOffset();
+  for (let d = 1; d <= 400; d++) {
+    const t = from + d * DAY_MS;
+    if (new Date(t).getTimezoneOffset() !== o) {
+      let a = t - DAY_MS;
+      let b = t;
+      while (b - a > 1000) {
+        const m = Math.floor((a + b) / 2);
+        if (new Date(m).getTimezoneOffset() === o) a = m;
+        else b = m;
+      }
+      return b;
+    }
+  }
+  return undefined;
+}
+
+async function timeModelRun(seed: number, steps: number, cover: Coverage): Promise<{ calls: number; refusals: number }> {
   const rand = seededGenerator(seed);
   const pick = (n: number): number => Math.floor(rand() * n);
   const scale = (lo: number, hi: number): number => Math.floor(Math.exp(Math.log(lo) + rand() * (Math.log(hi) - Math.log(lo)))); // evenly across the scales
   mock.timers.setTime(Date.UTC(2026, 0, 1) + pick(2 * 365) * DAY_MS + pick(DAY_MS));
+  let lastOffset = offsetNow();
+  let refusedInLife = 0;
   let mode: 'hold' | 'now' | 'reject' | 'throw' = 'hold';
   let heldCall: { resolve(r: PostResult): void; reject(e: Error): void } | undefined;
   let standOut = 0;
@@ -683,6 +755,10 @@ async function timeModelRun(seed: number, steps: number, cover: Coverage): Promi
         if (d.getSeconds() === 0) cover.firstSecondOfMinute++;
         if (d.getMinutes() % 2 === 1) cover.oddMinute++;
         cover.sizeClass[sizeClass]!++;
+        refusedInLife++;
+        const hourBefore = new Date(Date.now() - HOUR_MS).getHours();
+        if (hourBefore === d.getHours()) cover.repeatedLocalHourRefusals++; // a local hour that exists twice (the clocks went back)
+        else if ((d.getHours() - hourBefore + 24) % 24 === 2) cover.skippedLocalHourRefusals++; // a local hour that does not exist (the clocks went forward)
         const outFor = Date.now() - outSince;
         if (callsInHold >= 12 && outFor >= 2000) cover.refusedAfter12CallsAnd2s++;
         if (callsInAll >= 40 && outFor >= 60_000) cover.refusedAfter40CallsAnd60s++;
@@ -710,30 +786,61 @@ async function timeModelRun(seed: number, steps: number, cover: Coverage): Promi
         movesInHold++;
         cover.forwardMovesWhileOut++;
       }
-    } else if (r < (out ? 0.96 : 0.95)) {
+    } else if (r < (out ? 0.94 : 0.93)) {
       mock.timers.setTime(Date.now() - 1 - pick(2 * DAY_MS)); // the clock set back by up to two days
       if (out) {
         movesInHold++;
         cover.backwardMovesWhileOut++;
       }
+    } else if (r < (out ? 0.96 : 0.95)) {
+      // the clock moved to within an hour and a half of the zone's next change of the clocks (nothing happens in a zone that has none)
+      const change = nextOffsetChange(Date.now());
+      if (change !== undefined) {
+        const target = change + Math.floor((rand() - 0.5) * 3 * HOUR_MS);
+        if (target > Date.now()) mock.timers.tick(target - Date.now());
+        else mock.timers.setTime(target);
+        if (out) movesInHold++;
+      }
     } else if (out) {
       await settleMicrotasks(); // nothing happens
     }
     assert.ok(maxStandOut <= 1, `${where()}: the wrapped post had two calls out at once`);
+    const offset = offsetNow();
+    if (offset !== lastOffset) {
+      if (out) {
+        cover.offsetChangesWhileOut++;
+        if (Math.abs(offset - lastOffset) === 60) cover.hourChangesWhileOut++;
+        else if (Math.abs(offset - lastOffset) === 30) cover.halfHourChangesWhileOut++;
+      }
+      lastOffset = offset;
+    }
   }
   if (out) await settle('answer'); // a hold still out at the end ends with an answer, so no promise is left
+  cover.mostCallsInOneGate = Math.max(cover.mostCallsInOneGate, callsInAll);
+  cover.mostRefusalsInOneGate = Math.max(cover.mostRefusalsInOneGate, refusedInLife);
+  return { calls: callsInAll, refusals: refusedInLife };
 }
 
-const G10_SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
-const G10_STEPS = 6000;
+/** The zone of each seed is drawn from the seed: New York (an hour at each change of the clocks), Lord Howe (half an hour at each change), Kolkata (a half-hour offset, no change), UTC, Berlin (an hour) and Chatham (a 45-minute offset, an hour at each change). */
+const G10_ZONES = ['America/New_York', 'Australia/Lord_Howe', 'Asia/Kolkata', 'UTC', 'Europe/Berlin', 'Pacific/Chatham'];
+/** Eight seeds of 6 000 steps, and one long seed of 30 000 steps, long enough that one gate meets its 10 000th call, its 10 000th refusal and its 16 384th call. */
+const G10_RUNS = [...[1, 2, 3, 4, 5, 6, 7, 8].map((seed) => ({ seed, steps: 6000, zone: G10_ZONES[(seed - 1) % G10_ZONES.length]! })), { seed: 9, steps: 30_000, zone: 'America/New_York' }];
 const COVER_MIN = 100;
 
 test('G10. the gate against a model with a clock, counts and body sizes together: 8 seeds of 6 000 steps (a call with a body of a few bytes up to 7 MB, an address of any length, an answer, a rejection, a throw, a move of the clock from 1 ms to 40 days, sometimes backward), holds of up to 1 500 steps with hundreds of calls and dozens of clock moves; every hour of the day, every day of the month, every weekday, the first second of a minute and each size of body are each met many times while a call is out (counted and asserted)', { timeout: 60_000 }, async () => {
   mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: Date.now() });
   const cover = newCoverage();
+  let putZoneBack: (() => void) | undefined;
+  let long = { calls: 0, refusals: 0 };
   try {
-    for (const seed of G10_SEEDS) await timeModelRun(seed, G10_STEPS, cover);
+    for (const run of G10_RUNS) {
+      putZoneBack?.();
+      putZoneBack = setZone(run.zone);
+      const got = await timeModelRun(run.seed, run.steps, cover);
+      if (run.seed === 9) long = got;
+    }
   } finally {
+    putZoneBack?.();
     mock.timers.reset(); // the real clock comes back whatever the test did
   }
   console.log(`G10 coverage: ${JSON.stringify(cover)}`);
@@ -755,6 +862,12 @@ test('G10. the gate against a model with a clock, counts and body sizes together
   need('refusals in one hold', cover.maxRefusalsInOneHold, 300);
   need('clock moves in one hold', cover.maxMovesInOneHold, 24);
   need('holds settled after more than a day', cover.settledAfterDays, 5);
+  need('a change of the offset of the zone', cover.offsetChangesWhileOut, 100);
+  need('a change of the clocks by an hour', cover.hourChangesWhileOut, 50);
+  need('a change of the clocks by half an hour', cover.halfHourChangesWhileOut, 20);
+  need('a refusal in a local hour that exists twice', cover.repeatedLocalHourRefusals, 20);
+  need('a refusal in a local hour that does not exist', cover.skippedLocalHourRefusals, 20);
+  assert.ok(long.calls >= 16_384 && long.refusals >= 10_000, `the long seed's gate met ${long.calls} calls and ${long.refusals} refusals in its life; 16 384 calls and 10 000 refusals are asked for`);
 });
 
 

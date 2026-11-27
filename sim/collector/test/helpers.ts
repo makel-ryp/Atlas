@@ -208,11 +208,18 @@ export function rig(hubUrl: string, strict = true): Rig {
   return r;
 }
 
-export async function runCopies(r: Rig, c: Collector, from: number, to: number, advanceMs = 0): Promise<void> {
+export async function runCopies(r: Rig, c: Collector, from: number, to: number, advanceMs = 0, drain = true): Promise<void> {
   for (let n = from; n <= to; n++) {
     r.writeCopy(n);
     r.advance(advanceMs);
     await c.tick();
+  }
+  if (drain) {
+    // After the last copy: if a post failed (a held thread, a dropped connection), the program waits by the rig's clock, which this loop does not move by itself. Move it past the longest retry delay (30 s) and tick until nothing is pending, a bounded loop of a few turns. A caller that needs the program NOT to try again (the server is down on purpose) passes `drain = false`.
+    for (let turn = 0; turn < 4 && c.status().pending > 0; turn++) {
+      r.advance(31_000);
+      await c.tick();
+    }
   }
 }
 

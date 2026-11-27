@@ -118,11 +118,18 @@ function rig(hubUrl: string): Rig {
 }
 
 /** Writes copies from..to (1-based, inclusive) and ticks after each. */
-async function runCopies(r: Rig, c: Collector, from: number, to: number, advanceMs = 0): Promise<void> {
+async function runCopies(r: Rig, c: Collector, from: number, to: number, advanceMs = 0, drain = true): Promise<void> {
   for (let n = from; n <= to; n++) {
     r.writeCopy(n);
     r.advance(advanceMs);
     await c.tick();
+  }
+  if (drain) {
+    // After the last copy: if a post failed (a held thread, a dropped connection), the program waits by the rig's clock, which this loop does not move by itself. Move it past the longest retry delay (30 s) and tick until nothing is pending, a bounded loop of a few turns. A caller that needs the program NOT to try again (the server is down on purpose) passes `drain = false`.
+    for (let turn = 0; turn < 4 && c.status().pending > 0; turn++) {
+      r.advance(31_000);
+      await c.tick();
+    }
   }
 }
 
@@ -211,7 +218,7 @@ test('3. server stopped after copy 15, restarted on the same data folder: nothin
   const c = r.make();
   await runCopies(r, c, 1, 15, 31_000);
   await first.hub.close();
-  await runCopies(r, c, 16, 30, 31_000);
+  await runCopies(r, c, 16, 30, 31_000, false);
   assert.ok(c.status().pending > 0);
   assert.equal(c.status().server, 'down');
   const second = await startHub(hubData, first.port);
@@ -245,12 +252,12 @@ test('5. server down for the whole of round 18, file emptied, round 19 written, 
   await first.hub.close();
   const r = rig(first.url);
   const c = r.make();
-  await runCopies(r, c, 1, 2, 31_000);
+  await runCopies(r, c, 1, 2, 31_000, false);
   r.write('[]');
   r.advance(31_000);
   await c.tick();
   assert.equal(c.status().file, 'ok');
-  await runCopies(r, c, 3, 10, 31_000);
+  await runCopies(r, c, 3, 10, 31_000, false);
   assert.equal(c.status().sent, 0);
   const second = await startHub(hubData, first.port);
   r.advance(31_000);
@@ -326,7 +333,7 @@ test('8. a record missing HoleResult: nothing from it sent, layout not known, ea
   await first.hub.close();
   const r = rig(first.url);
   const c = r.make();
-  await runCopies(r, c, 1, 5, 31_000);
+  await runCopies(r, c, 1, 5, 31_000, false);
   const queued = c.status().queued;
   assert.ok(queued > 0);
   const broken = JSON.parse(JSON.stringify(copies[19]!.records));
