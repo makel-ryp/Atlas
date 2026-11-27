@@ -107,6 +107,12 @@ file was emptied, are never sent.
 - The outbox is tidied: when nothing is waiting and the file is over 1 MB it is rewritten to one
   short line per shot of the current round. Each append is forced onto the disk before it counts.
   A cut-short last line (a crash mid-write) is dropped at start, and one line says so.
+  The tidy-up replaces the outbox first (it begins with a header line that numbers the tidy-up) and
+  then writes the record of what was sent with the same number. If the program is stopped or crashes
+  between the two, the next start sees that the outbox is one tidy-up ahead, finishes the job and sends
+  nothing: shots already acknowledged are never sent again. Files that do not belong together (any
+  other pair of numbers) stop the start with a message to move the data folder aside. An empty read of
+  GSPro's file never starts a tidy-up.
 - `refused.jsonl` is never cleared by the program.
 
 Tests: `npm run test:sim`.

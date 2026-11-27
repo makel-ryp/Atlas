@@ -19,10 +19,19 @@ export class CollectorError extends Error {
 const ASIDE = 'Stop the program and move the data folder aside (it may hold shots not yet sent), then start again.';
 
 interface SentRecord {
-  /** How many outbox lines are done with (sent or refused). */
+  /** How many outbox lines are done with (sent or refused). The header line of a cleaned outbox is not a line of this count. */
   cursor: number;
   sent: number;
   refused: number;
+  /** Which cleanup of the outbox this record goes with: 0 for a folder never cleaned (and for a record written without the field). */
+  gen: number;
+}
+
+const BELONG = `The outbox file and the record of what was sent do not belong together. ${ASIDE}`;
+
+/** The text of `sent.json`. The generation is written only from generation 1 on: a folder never cleaned has the file it always had. */
+function sentJson(s: SentRecord): string {
+  return JSON.stringify(s.gen === 0 ? { cursor: s.cursor, sent: s.sent, refused: s.refused } : { cursor: s.cursor, sent: s.sent, refused: s.refused, gen: s.gen });
 }
 
 function fingerprint(record: ShotRecord): string {
@@ -33,29 +42,40 @@ function fingerprint(record: ShotRecord): string {
  * Three files in the data folder:
  * - `outbox.jsonl`: one line per shot dealt with. A line is either `{"record": ...}` (a full record, waiting or
  *   done) or `{"short": {"id", "fp"}}` (only remembers a shot that is already dealt with). It is appended to, and
- *   rewritten to short lines only by `tidy`.
- * - `sent.json`: how far into the outbox the work has got, written to a temporary file and renamed.
+ *   rewritten to short lines only by `tidy`. An outbox written by `tidy` begins with one header line, `{"gen":n}`,
+ *   the number of that cleanup; an outbox with no header is generation 0. The header is not a shot and is not counted.
+ * - `sent.json`: how far into the outbox the work has got (`cursor`, the counts) and the generation (`gen`) of the
+ *   outbox that position belongs to, written to a temporary file and renamed.
  * - `refused.jsonl`: batches the server refused for good. The program never clears it.
  * A record is in the outbox once. It is marked done only after the server has answered for it.
+ *
+ * The two files must belong together: the position means something only for the outbox of its own generation. A
+ * cleanup changes both, so it is one step in two writes that a start can always finish (see `tidy` and `load`).
  */
 export class Outbox {
   private seen = new Map<string, string>();
   private waiting: ShotRecord[] = [];
   private bytes = 0;
-  private state: SentRecord = { cursor: 0, sent: 0, refused: 0 };
+  private state: SentRecord = { cursor: 0, sent: 0, refused: 0, gen: 0 };
 
   constructor(
     private readonly files: Files,
     private readonly pieceBytes: number = DEFAULT_PIECE_BYTES,
   ) {}
 
-  /** Reads the files. Returns true when a cut-short last line was found and dropped. */
+  /**
+   * Reads the files and compares their generations. Equal: as always. The outbox one ahead of `sent.json`: a cleanup was
+   * cut off after the outbox was replaced and before `sent.json` was written; the outbox then holds only short lines (a shot
+   * already dealt with), so the position is set to the number of its lines, the counts are kept, `sent.json` is written with
+   * the outbox's generation, and nothing waits and nothing is sent. Any other pair is a damaged folder.
+   * Returns true when a cut-short last line was found and dropped.
+   */
   load(): { droppedLine: boolean } {
     this.files.ensureDataDir();
     this.seen = new Map();
     this.waiting = [];
     this.bytes = 0;
-    this.state = { cursor: 0, sent: 0, refused: 0 };
+    this.state = { cursor: 0, sent: 0, refused: 0, gen: 0 };
 
     const sentText = this.files.readData(SENT_NAME);
     if (sentText !== undefined) {
@@ -70,15 +90,25 @@ export class Outbox {
       }
       const p = parsed as Partial<SentRecord> | null;
       if (!p || !Number.isSafeInteger(p.cursor) || !Number.isSafeInteger(p.sent) || !Number.isSafeInteger(p.refused) || p.cursor! < 0) return damaged();
-      this.state = { cursor: p.cursor!, sent: p.sent!, refused: p.refused! };
+      const gen = p.gen === undefined ? 0 : p.gen; // a record written without the field is generation 0
+      if (!Number.isSafeInteger(gen) || gen < 0) return damaged();
+      this.state = { cursor: p.cursor!, sent: p.sent!, refused: p.refused!, gen };
     }
 
-    let index = 0;
+    let index = 0; // the lines that count: every line but the header
+    let lineNo = 0;
+    let outboxGen = 0;
+    let sawRecord = false;
     const res = this.files.readLines(OUTBOX_NAME, this.pieceBytes, (line) => {
-      let parsed: { record?: ShotRecord; short?: { id: string; fp: string } };
+      lineNo++;
+      let parsed: { record?: ShotRecord; short?: { id: string; fp: string }; gen?: unknown };
       try {
         parsed = JSON.parse(line) as typeof parsed;
-        if (parsed.record !== undefined) {
+        if (parsed === null || typeof parsed !== 'object') throw new Error('shape');
+        if (parsed.gen !== undefined) {
+          // the header: only on the first line, and a whole number of 0 or more
+          if (lineNo !== 1 || parsed.record !== undefined || parsed.short !== undefined || typeof parsed.gen !== 'number' || !Number.isSafeInteger(parsed.gen) || parsed.gen < 0) throw new Error('shape');
+        } else if (parsed.record !== undefined) {
           if (parsed.record === null || typeof parsed.record !== 'object' || typeof parsed.record.ShotID !== 'string') throw new Error('shape');
         } else if (parsed.short === undefined || typeof parsed.short.id !== 'string' || typeof parsed.short.fp !== 'string') {
           throw new Error('shape');
@@ -86,7 +116,12 @@ export class Outbox {
       } catch {
         throw new CollectorError(`The outbox file is damaged. ${ASIDE}`);
       }
+      if (parsed.gen !== undefined) {
+        outboxGen = parsed.gen as number;
+        return;
+      }
       if (parsed.record !== undefined) {
+        sawRecord = true;
         this.seen.set(parsed.record.ShotID, fingerprint(parsed.record));
         if (index >= this.state.cursor) this.waiting.push(parsed.record);
       } else {
@@ -101,6 +136,16 @@ export class Outbox {
       dropped = true;
     }
     this.bytes = res.validBytes;
+    if (outboxGen === this.state.gen + 1) {
+      // A cleanup was cut off after the outbox was replaced and before `sent.json` was written. The outbox must hold short lines only:
+      // everything in it was dealt with before the cleanup, so the position is all of it. Finish the cleanup; nothing waits, nothing is sent.
+      if (sawRecord) throw new CollectorError(`The outbox file is damaged. ${ASIDE}`);
+      this.state = { cursor: index, sent: this.state.sent, refused: this.state.refused, gen: outboxGen };
+      this.waiting = [];
+      this.files.writeData(SENT_NAME, sentJson(this.state));
+    } else if (outboxGen !== this.state.gen) {
+      throw new CollectorError(BELONG);
+    }
     if (this.state.cursor > index) {
       throw new CollectorError(`The outbox file is shorter than the record of what was sent. ${ASIDE}`);
     }
@@ -147,8 +192,9 @@ export class Outbox {
 
   /** The server accepted the first `n` waiting records. */
   markSent(n: number): void {
-    this.files.writeData(SENT_NAME, JSON.stringify({ cursor: this.state.cursor + n, sent: this.state.sent + n, refused: this.state.refused }));
-    this.state = { cursor: this.state.cursor + n, sent: this.state.sent + n, refused: this.state.refused };
+    const next = { ...this.state, cursor: this.state.cursor + n, sent: this.state.sent + n };
+    this.files.writeData(SENT_NAME, sentJson(next));
+    this.state = next;
     this.waiting.splice(0, n);
   }
 
@@ -156,8 +202,9 @@ export class Outbox {
   markRefused(n: number, status: number, at: number): void {
     const batch = this.waiting.slice(0, n);
     this.files.appendData(REFUSED_NAME, JSON.stringify({ at, status, records: batch }) + '\n');
-    this.files.writeData(SENT_NAME, JSON.stringify({ cursor: this.state.cursor + n, sent: this.state.sent, refused: this.state.refused + n }));
-    this.state = { cursor: this.state.cursor + n, sent: this.state.sent, refused: this.state.refused + n };
+    const next = { ...this.state, cursor: this.state.cursor + n, refused: this.state.refused + n };
+    this.files.writeData(SENT_NAME, sentJson(next));
+    this.state = next;
     this.waiting.splice(0, n);
   }
 
@@ -167,23 +214,36 @@ export class Outbox {
   }
 
   /**
-   * Rewrites the outbox to one short line for each shot of `records` (the last complete copy), nothing else.
-   * Only when nothing is waiting. Two writes, in this order so that a crash between them loses nothing: first the
-   * record of what was sent (position set to the new number of lines, counts kept), then the outbox. If the crash
-   * comes between them, the old outbox is read with the new position: at worst some records are sent again, and
-   * the hub answers `unchanged` for them.
+   * Rewrites the outbox to one short line for each shot of `records` (the last complete copy), nothing else, and begins it
+   * with a header line `{"gen":n}`, the number of this cleanup. Only when nothing is waiting, and never for no records: an
+   * empty copy (GSPro's file read as empty at that moment) would forget every shot and have the whole round sent again.
+   *
+   * Two writes, **the outbox first, then `sent.json`** (position set to the number of short lines, the counts kept, the new
+   * generation). The position of `sent.json` means something only for the outbox of its own generation, so the order is what
+   * makes a cut harmless at every point:
+   * - before the outbox is replaced (or inside its write: a leftover temporary file is ignored): nothing changed; the old
+   *   outbox and the old `sent.json` still belong together;
+   * - after the outbox is replaced and before `sent.json`: the outbox is one generation ahead and holds short lines only;
+   *   the next `load` sees that, finishes the cleanup (writes `sent.json`) and sends nothing;
+   * - inside the write of `sent.json`: the old `sent.json` is still whole (temporary file and rename), the same as the case before;
+   * - after both: done.
+   * (The other order, `sent.json` first, left the new small position beside the old long outbox, and every record past that
+   * position, all of them already acknowledged, waited to be sent again, older revisions of a shot among them.)
+   * A resend after a cut is only ever of the one batch whose acknowledgement was being written, the same content the hub already holds.
    */
   tidy(records: ShotRecord[]): void {
-    if (this.waiting.length > 0) return;
+    if (this.waiting.length > 0 || records.length === 0) return;
     const latest = new Map<string, string>();
     for (const rec of records) latest.set(rec.ShotID, fingerprint(rec));
     const lines = [...latest].map(([id, fp]) => JSON.stringify({ short: { id, fp } }) + '\n');
-    const text = lines.join('');
-    this.files.writeData(SENT_NAME, JSON.stringify({ cursor: lines.length, sent: this.state.sent, refused: this.state.refused }));
+    const gen = this.state.gen + 1;
+    const text = JSON.stringify({ gen }) + '\n' + lines.join('');
     this.files.writeData(OUTBOX_NAME, text);
-    this.state = { cursor: lines.length, sent: this.state.sent, refused: this.state.refused };
+    // The outbox is replaced: what this object holds follows it, so that a failed write of `sent.json` below cannot leave the two out of step in memory.
     this.seen = latest;
     this.bytes = Buffer.byteLength(text);
+    this.state = { cursor: lines.length, sent: this.state.sent, refused: this.state.refused, gen };
+    this.files.writeData(SENT_NAME, sentJson(this.state));
   }
 
   /** Records ever queued (sent, refused and waiting), counted across runs. */
