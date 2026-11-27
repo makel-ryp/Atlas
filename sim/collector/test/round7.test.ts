@@ -288,6 +288,11 @@ test('G5. the give-up itself: a hub that never answers its first request; calls 
     });
   });
   standIns.push(server);
+  let openSockets = 0;
+  server.on('connection', (sock) => {
+    openSockets++;
+    sock.on('close', () => void openSockets--);
+  });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/v0/shots`;
   const gate = oneAtATime(defaultPost);
@@ -309,6 +314,11 @@ test('G5. the give-up itself: a hub that never answers its first request; calls 
   assert.equal((await gate(url, '{"records":[],"n":2}')).status, 200, 'a call made after the give-up goes through');
   assert.equal(requests.length, 2);
   assert.ok(requests[1]!.arrivedAt - t0 >= 9_900, 'the second request came after the give-up');
+  // Leave nothing behind (round 13): the given-up request has settled (awaited above); now close the hub's open connections, wait for them to be closed,
+  // and let the client side see it, so that nothing of the aborted request or of the kept-alive connection runs after the test has ended.
+  server.closeAllConnections();
+  await until(() => openSockets === 0, 'the connections of the stand-in hub are closed', 2000);
+  await sleep(50);
 });
 
 // ---- B.2b the clock, by a clock the test turns (rounds 10 and 11): a held thread stretches every real deadline, so no real-time test bounds a time-based gate ----
@@ -337,12 +347,20 @@ const BIG_BODY = 'x'.repeat(7_000_000);
 /** The time zone a test sets for itself, and puts back (or removes, when there was none) in its `finally`. A running Node process honours a change of `process.env.TZ`; the runner gives each test file its own process and the tests of a file run one after another, so no other test or file sees it. */
 function setZone(zone: string): () => void {
   const was = process.env.TZ;
+  const resolved = Intl.DateTimeFormat().resolvedOptions().timeZone; // the zone's name as it is now, kept so that it can be put back
   process.env.TZ = zone;
   return () => {
-    if (was === undefined) delete process.env.TZ;
-    else process.env.TZ = was;
+    if (was === undefined) {
+      // Node does not go back to the PC's zone when the variable is only deleted: set it to the name kept above, then delete it (checked: the offsets are the PC's again)
+      process.env.TZ = resolved;
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = was;
+    }
   };
 }
+/** What the zone was before any test of this file ran: the variable, and the offsets of a January and a July instant (the last test of the file checks them again). */
+const ZONE_AT_LOAD = { tz: process.env.TZ, offsets: [Date.UTC(2026, 0, 15), Date.UTC(2026, 6, 15)].map((t) => new Date(t).getTimezoneOffset()) };
 const offsetNow = (): number => new Date(Date.now()).getTimezoneOffset();
 
 /** G9's plain cases are run from the real date (as in round 10) and from fixed instants, in zones that change their clocks. Each fixed instant is chosen so that its 32 days cross a change of the clocks and contain the 29th, 30th and 31st of a month: 28 October 2026 (the 29th to 31st of October; the clocks of New York go back on 1 November) and 28 March 2026 (the 29th to 31st of March; the clocks of Lord Howe, which change by half an hour, go back on 5 April). */
@@ -944,4 +962,9 @@ test('G7. a collector built with no post option, whose onEvent calls tick() agai
   } finally {
     await collector.stop();
   }
+});
+
+test('G11. the time zone is what it was before G9 ran (the variable, and the offsets of a January and a July instant), whether TZ was set from outside or not', () => {
+  assert.equal(process.env.TZ, ZONE_AT_LOAD.tz, 'process.env.TZ is as it was');
+  assert.deepEqual([Date.UTC(2026, 0, 15), Date.UTC(2026, 6, 15)].map((t) => new Date(t).getTimezoneOffset()), ZONE_AT_LOAD.offsets, 'the offsets are those of the zone before the file ran');
 });

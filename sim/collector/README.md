@@ -9,6 +9,10 @@ npm run sim:hub         # in one window: the server
 npm run sim:collector   # in another: this program
 ```
 
+Run one copy of this program for a GSPro file, and close a second window if you started one by
+mistake: two copies each post every shot, and the program's own checks do not cover them. See
+[One post at a time, and one copy of the program](#one-post-at-a-time-and-one-copy-of-the-program).
+
 At start it prints one line naming the round file it watches. Then it prints one line of counts and
 states whenever one changes, for example
 `copies=12 queued=9 sent=9 refused=0 pending=0 server=up file=ok`. It never prints a player name,

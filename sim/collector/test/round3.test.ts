@@ -355,6 +355,14 @@ test('A6. two copies of the program on one round file, each with its own data fo
         await ca.tick();
       }
     }
+    // The same bounded drain as runCopies: if a post failed (a held thread, a dropped connection) each program waits by its own rig's clock, which this loop never moves.
+    // Move both clocks past the retry delay and tick both, a few turns, while anything is pending.
+    for (let turn = 0; turn < 4 && (ca.status().pending > 0 || cb.status().pending > 0); turn++) {
+      a.advance(31_000);
+      b.advance(31_000);
+      await ca.tick();
+      await cb.tick();
+    }
     assert.equal(ca.status().pending, 0);
     assert.equal(cb.status().pending, 0);
     assert.equal(sumAnswers(a, 'conflicts') + sumAnswers(b, 'conflicts'), 0, 'no conflict at the hub');
@@ -1334,7 +1342,8 @@ function pinViolations(files: Record<string, string>): string[] {
     if (!tick.startsWith('if (running) return running;')) bad.push('the first statement of tick is not the guard that returns the running pass');
   }
   const handed = countOf(/\bdefaultPost\b/g, col);
-  if (handed !== 2 || !/post = options\.post \?\? oneAtATime\(defaultPost\);/.test(col)) bad.push('defaultPost is used in collector.ts other than as the default handed to the program, behind the gate');
+  if (handed !== 2) bad.push(`defaultPost is used ${handed} times in collector.ts, not 2 (its definition and the one statement that picks the post)`);
+  if (!/post = options\.post \?\? oneAtATime\(defaultPost\);/.test(col)) bad.push(`the statement that picks the program's post in collector.ts is not the pinned one (the pinned text is EXPECTED_LINKS.pickPost in this test: ${EXPECTED_LINKS.pickPost}). The program's own sender must stay behind oneAtATime; if it does, update EXPECTED_LINKS.pickPost and this check in the same commit; if it does not, put it back behind oneAtATime`);
   for (const [name, text] of Object.entries(files)) {
     if (name === 'collector.ts') continue;
     const code = scanSource(text, true);
@@ -1367,8 +1376,10 @@ function watchedCounts(files: Record<string, string>): Record<string, Record<str
   return out;
 }
 
-const ARGUMENT = [
-  'THE RULE rests first on one small function: `oneAtATime`, around the program\'s own sender (`const post = options.post ?? oneAtATime(defaultPost);`). It lets one post through at a time and refuses a second while the first is unanswered, so whatever else goes wrong around it, a second request does not leave the PC. A card that builds its own post (card 13 adds a key) must put it behind `oneAtATime`, and must not hand it in through `options.post`.',
+/** The explanation printed with a failure. It is a function, not a constant, because it quotes the pinned gate statement (EXPECTED_LINKS.pickPost, defined further down): the quotation is built from the pinned text itself, so it cannot go stale. */
+function argumentText(): string {
+  return [
+  'THE RULE rests first on one small function: `oneAtATime`, around the program\'s own sender (`' + EXPECTED_LINKS.pickPost + '`, the pinned statement that picks the post). It lets one post through at a time and refuses a second while the first is unanswered, so whatever else goes wrong around it, a second request does not leave the PC. A card that builds its own post (card 13 adds a key) must put it behind `oneAtATime`, and must not hand it in through `options.post`.',
   'SECOND LINE, the seven links that say why the program also has one post in flight without the gate. They are held as far as statements and counts go:',
   '  1. The only thing in the source that sends anything is one `fetch`, in `defaultPost`, called once per call of `defaultPost` and awaited (and nothing under sim/core/src sends).',
   '  2. The only place the program calls its post is one statement in `flushStage`, and it awaits the answer before anything else in that function runs.',
@@ -1380,6 +1391,7 @@ const ARGUMENT = [
   'THE BAY PROGRAM\'S SIDE (every .ts file under sim/collector/src and under sim/core/src) may use only the modules, the global names and the process and import.meta members listed in this test. A new one is not wrong in itself: if it cannot send anything and cannot load or run other code, add it to the list in the same commit and say so in the commit message; if it can, the post it makes must go through `oneAtATime`, and must not be handed in through `options.post`. `globalThis`, `global`, `self` and `window` are in no list, so any use of them is found. Nothing there reads `.constructor` (as a property, in brackets, as a destructuring key or as a string that is exactly that word), because that is a road to running text as code; a class\'s own constructor declaration is not a read. Nothing there is declared with `declare` (no declare modifier, no .d.ts file, no /// <reference line), because that makes a global look like a local.',
   'THE KNOWN LIMIT of any test that reads text: a name built at run time (`options[\'po\' + \'st\']`, `Reflect.get`, `Object.values`) is code written so that a reader does not see the name; no test here holds against it, and the person reading the change is the check for it.',
 ].join('\n');
+}
 
 const WHAT_TO_DO =
   'WHAT TO DO: if you changed the gate or a link on purpose, re-read the rule and the seven links, show that "one post in flight" still holds, and update this pin in the same commit. An honest new import (one more name from `node:path`, say) only needs this pin\'s list of imports updated in the same commit. If a made-up edit of this pin reports that it no longer applies because its anchor line changed, update the anchor in the pin\'s table of edits, not the rule. A new source file (a lock file for the data folder, say) is added by name to `EXPECTED_FILES` and its imports to `EXPECTED_IMPORTS` (or `EXPECTED_CORE_IMPORTS` in the core library), in the same commit, once it is shown that it cannot send. If you did not mean to change a link, undo the change.';
@@ -1659,20 +1671,49 @@ function argumentViolations(files: Record<string, string>, core: Record<string, 
 }
 
 
+/**
+ * Every file the pin reads as text is read through this: CRLF (what a Git for Windows checkout gives) is turned into LF, so the pin gives the
+ * same answer whatever the checkout's line endings. `readAsCrlf` is set only by A13c, which hands the pin the same files with CRLF endings, in memory.
+ */
+let readAsCrlf = false;
+function readText(path: string): string {
+  const raw = readFileSync(path, 'utf8');
+  const seen = readAsCrlf ? raw.replace(/\r?\n/g, '\r\n') : raw;
+  return seen.replace(/\r\n/g, '\n');
+}
+
 /** Every file under a folder, folders inside it included: path under it (with `/`) to text. */
 function readTree(dir: string, rel = ''): Record<string, string> {
   const out: Record<string, string> = {};
   for (const e of readdirSync(join(dir, rel), { withFileTypes: true })) {
     if (e.isDirectory()) Object.assign(out, readTree(dir, `${rel}${e.name}/`));
-    else out[`${rel}${e.name}`] = readFileSync(join(dir, rel, e.name), 'utf8');
+    else out[`${rel}${e.name}`] = readText(join(dir, rel, e.name));
   }
   return out;
 }
 
+const A13_TITLE = 'A13. the places a post can start are pinned: one call of post, one of flushStage, one of pass (inside tick, after the guard), and no other source file starts one';
+test(A13_TITLE, () => {
+  pinChecks();
+});
 
-test('A13. the places a post can start are pinned: one call of post, one of flushStage, one of pass (inside tick, after the guard), and no other source file starts one', () => {
+test('A13c. the pin gives the same answer on CRLF sources: every source and package.json handed to it with CRLF line endings (in memory), no finding on the code as it stands and every made-up edit found or not found as before', () => {
+  // control: the files really do differ when read raw as CRLF, and an anchor written with \n would not apply to them
+  const raw = readFileSync(join(SRC, 'collector.ts'), 'utf8').replace(/\r?\n/g, '\r\n');
+  assert.ok(raw.includes('\r\n') && !raw.includes('if (running) return running;\n'), 'control: a CRLF copy holds \\r\\n and no bare \\n');
+  readAsCrlf = true;
+  try {
+    assert.equal(readText(join(SRC, 'collector.ts')).includes('\r'), false, 'the pin reads CRLF text as LF');
+    assert.equal(readText(join(SRC, 'collector.ts')), readFileSync(join(SRC, 'collector.ts'), 'utf8').replace(/\r\n/g, '\n'), 'the same text as the LF read');
+    pinChecks();
+  } finally {
+    readAsCrlf = false;
+  }
+});
+
+function pinChecks(): void {
   const files: Record<string, string> = {};
-  for (const name of readdirSync(SRC)) if (name.endsWith('.ts')) files[name] = readFileSync(join(SRC, name), 'utf8');
+  for (const name of readdirSync(SRC)) if (name.endsWith('.ts')) files[name] = readText(join(SRC, name));
   assert.ok(Object.keys(files).length >= 5 && 'collector.ts' in files, 'the source files were collected');
   const bad = pinViolations(files);
   assert.deepEqual(bad, [], `${PIN_PURPOSE} Found: ${bad.join('; ')}`);
@@ -1694,26 +1735,26 @@ test('A13. the places a post can start are pinned: one call of post, one of flus
   assert.ok(Object.keys(all).length >= 5 && 'collector.ts' in all, 'the source tree was collected');
   const coreTree = readTree(join(SRC, '..', '..', 'core', 'src'));
   assert.ok(Object.keys(coreTree).length >= 3 && 'parse.ts' in coreTree, 'the core library was collected');
-  const startScript = (JSON.parse(readFileSync(join(SRC, '..', '..', '..', 'package.json'), 'utf8')) as { scripts?: Record<string, string> }).scripts?.['sim:collector'];
+  const startScript = (JSON.parse(readText(join(SRC, '..', '..', '..', 'package.json'))) as { scripts?: Record<string, string> }).scripts?.['sim:collector'];
   assert.deepEqual(startScriptViolations(startScript), [], START_WHY);
   assert.notDeepEqual(startScriptViolations(`${startScript} --import ./x.mjs`), [], 'the pin does not see a preload added to the start script');
   assert.deepEqual(startScriptViolations(undefined).length, 1, 'a missing start script is found');
   // what npm runs around the start script: one assertion each, on the files as they are
   const repoRoot = join(SRC, '..', '..', '..');
-  const packageScripts = (JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')) as { scripts?: Record<string, string> }).scripts ?? {};
+  const packageScripts = (JSON.parse(readText(join(repoRoot, 'package.json'))) as { scripts?: Record<string, string> }).scripts ?? {};
   assert.ok(!('presim:collector' in packageScripts) && !('postsim:collector' in packageScripts), 'package.json has a presim:collector or postsim:collector script: npm runs it around the start script (sim:collector), outside everything else this pin reads');
   const npmrcPath = join(repoRoot, '.npmrc');
-  const npmrcText = existsSync(npmrcPath) ? readFileSync(npmrcPath, 'utf8') : undefined;
+  const npmrcText = existsSync(npmrcPath) ? readText(npmrcPath) : undefined;
   assert.ok(npmrcText === undefined || !/^\s*node[-_]options\s*=/im.test(npmrcText), 'the repo root has an .npmrc with a node-options line: it applies to every npm script and can preload code before the start script (sim:collector), outside everything else this pin reads');
   assert.deepEqual(npmRunsViolations(packageScripts, npmrcText), [], 'what npm runs around the start script');
   const t0 = Date.now();
   const moved = argumentViolations(all, coreTree, true);
   console.log(`A13 reads the whole of the bay program's side in ${Date.now() - t0} ms`);
-  assert.deepEqual(moved, [], `\n${ARGUMENT}\n\nWhat moved:\n  ${moved.join('\n  ')}\n\n${WHAT_TO_DO}`);
+  assert.deepEqual(moved, [], `\n${argumentText()}\n\nWhat moved:\n  ${moved.join('\n  ')}\n\n${WHAT_TO_DO}`);
 
   // The guard bites: made-up edits. `edit` fails when its text is not in the file, so an edit can never silently do nothing.
   const edit = (name: string, from: string, to: string, tree: Record<string, string> = all): Record<string, string> => {
-    assert.ok(tree[name]!.includes(from), `a made-up edit of this pin no longer applies because its anchor line changed (${name}: ${from.slice(0, 60)}): update the anchor in the pin's table of edits, not the rule`);
+    assert.ok(tree[name]!.includes(from), `a made-up edit of this pin no longer applies because its anchor line changed (${name}: ${from.slice(0, 60)}): update the anchor in the pin's table of edits, not the rule. If nothing in the named line changed, look for a difference the eye does not see (line endings, a tab) and do not edit the anchor to match it`);
     return { ...tree, [name]: tree[name]!.replace(from, () => to) };
   };
   const POSTLINE = 'res = await post(`${base}/v0/shots`, JSON.stringify({ records: batch }));';
@@ -1780,13 +1821,13 @@ test('A13. the places a post can start are pinned: one call of post, one of flus
   // Z1 as the review wrote it: ordinary code in the core library, which runs on every copy, posts a big round file
   const parse = coreTree['parse.ts']!;
   const zAnchor = "  if (typeof text !== 'string') throw new UnknownLayoutError('round file text must be a string');";
-  assert.ok(parse.includes(zAnchor), 'a made-up edit of this pin no longer applies because its anchor line changed (parse.ts): update the anchor in the pin\'s table of edits, not the rule');
+  assert.ok(parse.includes(zAnchor), 'a made-up edit of this pin no longer applies because its anchor line changed (parse.ts): update the anchor in the pin\'s table of edits, not the rule. If nothing in the named line changed, look for a difference the eye does not see (line endings, a tab) and do not edit the anchor to match it');
   const z1 = argumentViolations(all, { ...coreTree, 'parse.ts': parse.replace(zAnchor, () => zAnchor + "\n  if (text.length > 5_000_000) void fetch('http://127.0.0.1:5077/v0/shots', { method: 'POST', body: '{}' }).catch(() => undefined);") });
   assert.notDeepEqual(z1, [], 'the pin does not see: Z1, a fetch in the core library');
 
   // ---- what the bay program's side uses: each of these is ordinary code, and each must be found (the compiler resolves the names) ----
   const stop = (name: string, from: string, tree: Record<string, string>): void => {
-    assert.ok(tree[name]!.includes(from), `a made-up edit of this pin no longer applies because its anchor line changed (${name}: ${from.slice(0, 60)}): update the anchor in the pin's table of edits, not the rule`);
+    assert.ok(tree[name]!.includes(from), `a made-up edit of this pin no longer applies because its anchor line changed (${name}: ${from.slice(0, 60)}): update the anchor in the pin's table of edits, not the rule. If nothing in the named line changed, look for a difference the eye does not see (line endings, a tab) and do not edit the anchor to match it`);
   };
   const inCore = (name: string, from: string, to: string, tree: Record<string, string> = coreTree): Record<string, string> => {
     stop(name, from, tree);
@@ -1891,7 +1932,7 @@ test('A13. the places a post can start are pinned: one call of post, one of flus
   }
   for (const [name, f, c] of mustNotFindSide) assert.deepEqual(argumentViolations(f, c, true), [], `the pin sees something it should not: ${name}`);
   console.log(`A13 side edits: ${mustFindSide.length} found, ${mustNotFindSide.length} not found, ${Date.now() - t1} ms`);
-});
+}
 
 // ---- B: the six wrong versions the reviews left alive ----
 
