@@ -112,7 +112,8 @@ file was emptied, are never sent.
   between the two, the next start sees that the outbox is one tidy-up ahead, finishes the job and sends
   nothing: shots already acknowledged are never sent again. Files that do not belong together (any
   other pair of numbers) stop the start with a message to move the data folder aside. An empty read of
-  GSPro's file never starts a tidy-up.
+  GSPro's file never starts a tidy-up. The header costs one short line, read once at start, in the
+  same pass over the file as every other line.
 - `refused.jsonl` is never cleared by the program.
 
 Tests: `npm run test:sim`.
