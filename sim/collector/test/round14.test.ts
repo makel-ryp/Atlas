@@ -885,3 +885,26 @@ test('H3. load clears the memory of a failed cut-back: after a cut-back has fail
   assert.equal(a.queue([rec('C', 'r1')]), 1, 'after a load the next queue appends at once, with keepPrefix still failing');
   assert.equal(occurrences(text(), 'C'), 1);
 });
+
+test('H4. the cut-back fails with ENOENT before anything has been acknowledged (the position is 0, bytes is more than 0): two shots queued and none acknowledged, then a third whose append lands and throws: the next queue appends nothing until a cut-back succeeds, and no record is in the file twice', () => {
+  const dir = tempDir();
+  const { real, cut, text } = landedFiles(dir);
+  const a = new Outbox(cut);
+  a.load();
+  assert.equal(a.queue([rec('S1', 'r1'), rec('S2', 'r1')]), 2);
+  const counted = text();
+  cut.arm({ file: OUTBOX_NAME, op: 'append', variant: 'landed' });
+  cut.failCutBack = true;
+  cut.cutBackCode = 'ENOENT';
+  assert.throws(() => a.queue([rec('S3', 'r1')]), /cut off here/);
+  const stuck = text();
+  assert.throws(() => a.queue([rec('S3', 'r1')]), /cut-back failed/, 'the next queue does not append while the cut-back fails');
+  assert.equal(text(), stuck, 'nothing was appended');
+  cut.failCutBack = false;
+  assert.equal(a.queue([rec('S3', 'r1')]), 1);
+  assert.equal(text(), counted + JSON.stringify({ record: rec('S3', 'r1') }) + String.fromCharCode(10), 'the file is what the object had counted plus the one new append');
+  for (const id of ['S1', 'S2', 'S3']) assert.equal(occurrences(text(), id), 1, `${id} is in the file once`);
+  const b = new Outbox(real);
+  b.load();
+  assert.deepEqual((b as unknown as { waiting: ShotRecord[] }).waiting.map(label), ['S1:r1', 'S2:r1', 'S3:r1']);
+});
