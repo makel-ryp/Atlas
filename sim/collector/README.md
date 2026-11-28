@@ -9,8 +9,9 @@ npm run sim:hub         # in one window: the server
 npm run sim:collector   # in another: this program
 ```
 
-Run one copy of this program for a GSPro file, and close a second window if you started one by
-mistake: two copies each post every shot, and the program's own checks do not cover them. See
+Run one copy of this program for a GSPro file. If a second one was started by mistake, close it and
+then do the step in the section below, at once: two copies each post every shot, and the program's own
+checks do not cover them. See
 [One post at a time, and one copy of the program](#one-post-at-a-time-and-one-copy-of-the-program).
 
 At start it prints one line naming the round file it watches. Then it prints one line of counts and
@@ -96,21 +97,31 @@ Run one copy of the program for a GSPro file. The program's own sender refuses a
 one is unanswered (the refused post sends nothing and marks nothing, and the program tries again
 after a wait); that gate is inside one copy of the program and does not cover two copies. Two copies,
 each with its own data folder, post every
-shot twice, and in the ordinary case the hub still ends on the right scores (a test of this program
-feeds the recorded round to two copies and the hub ends on the right scores); that does not show that
-two copies are safe in every case. Two copies started without `SIM_COLLECTOR_DATA` share one data
+shot twice, and in the ordinary case, with both copies left running to the end, the hub still ends on the right
+scores (a test of this program feeds the recorded round to two copies and the hub ends on the right
+scores); that does not show that two copies are safe in every case: if one of them is closed early,
+the hub can be left on an older version of a shot (see the step below). Two copies started without `SIM_COLLECTOR_DATA` share one data
 folder, which is the easiest way to run two by mistake. The hub still ends on the right scores, but
 both copies write every shot into the one outbox, and the record of what was sent is whichever copy wrote it last; so at the next start shots
 already sent can be sent again, up to every shot of the round, and older versions of a shot can be sent
 after newer ones: the hub can then show an older score for that shot until its newest version is sent again.
-While both run, each may show `disk=error` for a moment. While two copies run on one GSPro file and
-one data folder, the hub can also show an older version of a shot for a while (an older copy of a shot
-is posted after a newer one was acknowledged), and two posts can be out at once; the scores end right
-once the newer version is sent again. So run one copy per bay PC, and if a second window was started
-by mistake, close it at once. (A later card adds a lock on the data folder.) Closing it stops the harm
-while both run; it does not make the folder safe for the next start. Before that data folder is ever
-started again, stop the other copy too, move the whole data folder aside and start one copy with an
-empty data folder (what that sends is said above, under `SIM_COLLECTOR_DATA`). A data folder that was moved aside and still holds shots not
+While both run, each may show `disk=error` for a moment. While two copies run on one GSPro file,
+whether they share a data folder or not, the hub can also show an older version of a shot for a while
+(an older copy of a shot is posted after a newer one was acknowledged), and two posts can be out at
+once; the scores end right only while a copy that still has the newer version to send keeps running.
+Once a copy is closed, the hub can be left on an older version until the step below is done. So run one
+copy per bay PC. (A later card adds a lock on the data folder.)
+
+**If two copies of the program ran at the same time for one GSPro file, do all of this at once:**
+close the second window; stop the other copy too; move its data folder aside (both data folders, if
+each copy had its own); start one copy with an empty data folder. The reason: a copy never sends again
+a version of a shot it has already had acknowledged. So if the copy that was closed posted an older
+version of a shot last, the hub keeps showing that older score, and the copy left running will not put
+it right, however long it runs. One copy started on an empty data folder reads GSPro's file again and
+sends every shot in it at its latest version (what that sends is said above, under
+`SIM_COLLECTOR_DATA`), which puts it right.
+
+A data folder that was moved aside and still holds shots not
 yet sent must not be started again after the round it belongs to has been played on: its waiting shots
 are older copies and would be put over newer ones. Keep such a folder, and do not start the program on
 it again; the program cannot tell which round its waiting shots belong to, so there is no safe way yet
