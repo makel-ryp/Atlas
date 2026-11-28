@@ -183,7 +183,9 @@ export class Outbox {
    * line for every such failure, so that after a restart older revisions that were acknowledged would wait again.
    * If the cut-back fails too, the file may be longer than this object knows: nothing is appended until a cut-back has
    * succeeded (the next call that has something to append tries first, and throws, appending nothing, if it fails again).
-   * A file that does not exist yet is not an error of the cut-back.
+   * A file that is not there is not an error of the cut-back only when nothing was counted in it (`bytes` is 0: the first append
+   * failed before the file was made). When `bytes` is more than 0 the outbox is there, so a "not there" from the cut-back (its
+   * temporary file gone before the rename, the folder not reachable for a moment) is a cut-back that failed, like any other.
    */
   queue(records: ShotRecord[]): number {
     const fresh: Array<[ShotRecord, string]> = [];
@@ -216,12 +218,12 @@ export class Outbox {
     return fresh.length;
   }
 
-  /** Cuts the outbox on the disk back to `bytes`. Returns the error when that fails (and remembers it), undefined when it worked or the file is not there. */
+  /** Cuts the outbox on the disk back to `bytes`. Returns the error when that fails (and remembers it), undefined when it worked or when nothing was counted and the file is not there. */
   private cutBack(): unknown {
     try {
       this.files.keepPrefix(OUTBOX_NAME, this.bytes);
     } catch (e) {
-      if ((e as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') {
+      if (this.bytes === 0 && (e as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') {
         this.maybeLonger = false;
         return undefined;
       }

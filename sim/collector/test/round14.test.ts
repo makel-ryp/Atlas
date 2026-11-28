@@ -29,6 +29,8 @@ interface Cutting extends Files {
   readonly fired: Arm[];
   /** While true, `keepPrefix` (the cut-back of a failed append) fails. */
   failCutBack: boolean;
+  /** The `code` of the error a failing `keepPrefix` throws (for example 'ENOENT'); none by default. */
+  cutBackCode: string | undefined;
 }
 
 /**
@@ -52,8 +54,9 @@ function cutting(inner: Files): Cutting {
     arm: (a) => void (armed = a),
     fired,
     failCutBack: false,
+    cutBackCode: undefined,
     keepPrefix(name, bytes) {
-      if (self.failCutBack) throw new Error('cut-back failed');
+      if (self.failCutBack) throw Object.assign(new Error('cut-back failed'), self.cutBackCode === undefined ? {} : { code: self.cutBackCode });
       inner.keepPrefix(name, bytes);
     },
     writeData(name, text) {
@@ -825,4 +828,60 @@ test('G4. through the program and the real hub behind the counting proxy: an app
     assert.equal(second.status().pending, 0);
   }
   await second.stop();
+});
+
+// ---- round 16: a cut-back takes "the file is not there" only when nothing was counted ----
+
+for (const how of ['landed', 'torn'] as const) {
+  test(`H1. the append ${how === 'landed' ? 'lands (all of the text)' : 'lands in part (half of the first line)'} and throws, and the cut-back fails with ENOENT while the object has counted bytes: the next queue appends nothing until a cut-back succeeds; after it does the file is what the object counted plus the one new append, no record is in it twice, and a fresh Outbox loads it with nothing acknowledged waiting`, () => {
+    const dir = tempDir();
+    const { real, cut, text } = landedFiles(dir);
+    const a = new Outbox(cut);
+    a.load();
+    assert.equal(a.queue([rec('A', 'r1')]), 1);
+    a.markSent(1);
+    const counted = text();
+    cut.arm({ file: OUTBOX_NAME, op: 'append', variant: how });
+    cut.failCutBack = true;
+    cut.cutBackCode = 'ENOENT'; // the outbox is there, but the cut-back is told it is not (its temporary file gone before the rename, the folder not reachable for a moment)
+    assert.throws(() => a.queue([rec('B', 'r1')]), /cut off here/);
+    const stuck = text();
+    assert.throws(() => a.queue([rec('B', 'r1')]), /cut-back failed/, 'the next queue does not append while the cut-back fails');
+    assert.equal(text(), stuck, 'nothing was appended');
+    cut.failCutBack = false;
+    assert.equal(a.queue([rec('B', 'r1')]), 1);
+    assert.equal(text(), counted + JSON.stringify({ record: rec('B', 'r1') }) + String.fromCharCode(10), 'the file is what the object had counted plus the one new append');
+    assert.equal(occurrences(text(), 'B'), 1, 'no record is in the file twice');
+    const b = new Outbox(real);
+    assert.equal(b.load().droppedLine, false);
+    assert.deepEqual((b as unknown as { waiting: ShotRecord[] }).waiting.map(label), ['B:r1'], 'only what was never acknowledged waits');
+  });
+}
+
+test('H2. ENOENT with nothing counted (bytes 0) is still not an error: the first append ever fails before the file exists; the next queue appends as if nothing had happened', () => {
+  const dir = tempDir();
+  const { cut, text } = landedFiles(dir);
+  const a = new Outbox(cut);
+  a.load();
+  cut.arm({ file: OUTBOX_NAME, op: 'append', variant: 'before' }); // nothing is written: the file is not made
+  assert.throws(() => a.queue([rec('A', 'r1')]), /cut off here/);
+  assert.equal(a.pending, 0);
+  assert.equal(a.queue([rec('A', 'r1')]), 1, 'the next queue appends at once');
+  assert.equal(text(), JSON.stringify({ record: rec('A', 'r1') }) + String.fromCharCode(10));
+});
+
+test('H3. load clears the memory of a failed cut-back: after a cut-back has failed, load is called on the same object; with keepPrefix still failing, the next queue appends at once and does not try a cut-back first', () => {
+  const dir = tempDir();
+  const { text, cut } = landedFiles(dir);
+  const a = new Outbox(cut);
+  a.load();
+  assert.equal(a.queue([rec('A', 'r1')]), 1);
+  a.markSent(1);
+  cut.arm({ file: OUTBOX_NAME, op: 'append', variant: 'landed' });
+  cut.failCutBack = true;
+  assert.throws(() => a.queue([rec('B', 'r1')]), /cut off here/);
+  assert.throws(() => a.queue([rec('C', 'r1')]), /cut-back failed/, 'the flag is set: a cut-back is tried first and fails');
+  a.load(); // the file is read as it is (B landed and waits)
+  assert.equal(a.queue([rec('C', 'r1')]), 1, 'after a load the next queue appends at once, with keepPrefix still failing');
+  assert.equal(occurrences(text(), 'C'), 1);
 });
