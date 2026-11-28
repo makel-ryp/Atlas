@@ -7,7 +7,7 @@ import { createServer, request as httpRequest, type Server } from 'node:http';
 import { Outbox, OUTBOX_NAME, SENT_NAME, REFUSED_NAME, CollectorError } from '../src/outbox.js';
 import { createFiles, type Files } from '../src/files.js';
 import { createCollector, type PostFn } from '../src/collector.js';
-import type { ShotRecord } from '../../core/src/index.js';
+import { RoundBook, parseRoundFile, type ShotRecord } from '../../core/src/index.js';
 import { tempDir, removeTemps, startHub, closeAll, rounds, rig, runCopies, standIns } from './helpers.js';
 
 afterEach(closeAll);
@@ -134,24 +134,79 @@ for (const [where, arm] of CUTS) {
   });
 }
 
+// ---- E1 the write of sent.json fails inside a cleanup and the program goes on (the collector catches a failed cleanup and keeps running) ----
+
+test('E1. the write of sent.json fails once inside a cleanup, the same object goes on and queues a new shot and a new revision of a cleaned shot, then a fresh Outbox loads the folder: no error, exactly those two wait, in order, the counts are what they were, sent.json now carries the generation of the outbox, and a second load leaves both files byte for byte', () => {
+  const dir = tempDir();
+  const data = join(dir, 'data');
+  const real = createFiles(data, join(dir, 'round.dat'));
+  const cut = cutting(real);
+  const a = new Outbox(cut);
+  a.load();
+  assert.equal(a.queue([rec('S1', 'in play'), rec('S2', 'finished'), rec('S3', 'finished')]), 3);
+  a.markSent(3);
+  cut.arm({ file: SENT_NAME, op: 'write', variant: 'before' });
+  assert.throws(() => a.tidy([rec('S1', 'in play'), rec('S2', 'finished'), rec('S3', 'finished')]), /cut off here/);
+  // the same running program goes on: a new shot and a new revision of a cleaned shot are queued (on the disk, after the short lines); the hub is down
+  assert.equal(a.queue([rec('S4', 'finished'), rec('S1', 'finished')]), 2);
+  assert.equal(a.pending, 2);
+
+  const b = new Outbox(real);
+  assert.doesNotThrow(() => b.load(), 'the start is not refused');
+  assert.deepEqual(b.batch(200).map(label), ['S4:finished', 'S1:finished'], 'the next batch holds exactly those two');
+  assert.equal(b.pending, 2, 'exactly those two wait');
+  assert.deepEqual((b as unknown as { waiting: ShotRecord[] }).waiting.map(label), ['S4:finished', 'S1:finished'], 'in order');
+  assert.equal(b.sent, 3);
+  assert.equal(b.refused, 0);
+  const sentText = readFileSync(join(data, SENT_NAME), 'utf8');
+  assert.deepEqual(JSON.parse(sentText), { cursor: 3, sent: 3, refused: 0, gen: 1 }, 'sent.json carries the generation of the outbox, the position is the short lines');
+  const outText = readFileSync(join(data, OUTBOX_NAME), 'utf8');
+  const c = new Outbox(real);
+  c.load();
+  assert.equal(c.pending, 2);
+  assert.equal(readFileSync(join(data, SENT_NAME), 'utf8'), sentText, 'a second load leaves sent.json as it was');
+  assert.equal(readFileSync(join(data, OUTBOX_NAME), 'utf8'), outText, 'a second load leaves the outbox as it was');
+});
+
 // ---- C.2 the same through the program and the real hub: after the restart the hub receives no request at all ----
 
-/** A loopback proxy in front of the hub that counts every request that reaches it. */
-async function countingProxy(targetUrl: string): Promise<{ url: string; count(): number; reset(): void }> {
+/** A loopback proxy in front of the hub that counts every request that reaches it, keeps their bodies, and can be made unreachable. */
+async function countingProxy(targetUrl: string): Promise<{ url: string; count(): number; reset(): void; setDown(down: boolean): void; bodies(): string[] }> {
   const target = new URL(targetUrl);
   let n = 0;
+  let down = false;
+  let bodies: string[] = [];
   const server: Server = createServer((req, res) => {
-    n++;
-    const up = httpRequest({ host: target.hostname, port: Number(target.port), method: req.method, path: req.url, headers: { ...req.headers, host: target.host } }, (u) => {
-      res.writeHead(u.statusCode ?? 502, u.headers);
-      u.pipe(res);
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => chunks.push(c));
+    req.on('end', () => {
+      if (down) {
+        req.socket.destroy(); // the hub is unreachable: the connection is dropped
+        return;
+      }
+      n++;
+      const body = Buffer.concat(chunks);
+      bodies.push(body.toString('utf8'));
+      const up = httpRequest({ host: target.hostname, port: Number(target.port), method: req.method, path: req.url, headers: { ...req.headers, host: target.host } }, (u) => {
+        res.writeHead(u.statusCode ?? 502, u.headers);
+        u.pipe(res);
+      });
+      up.on('error', () => res.destroy());
+      up.end(body);
     });
-    up.on('error', () => res.destroy());
-    req.pipe(up);
   });
   standIns.push(server);
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-  return { url: `http://127.0.0.1:${(server.address() as { port: number }).port}`, count: () => n, reset: () => void (n = 0) };
+  return {
+    url: `http://127.0.0.1:${(server.address() as { port: number }).port}`,
+    count: () => n,
+    reset: () => {
+      n = 0;
+      bodies = [];
+    },
+    setDown: (d) => void (down = d),
+    bodies: () => bodies.slice(),
+  };
 }
 
 for (const [where, arm] of [CUTS[1]!, CUTS[0]!] as Array<[string, Arm]>) {
@@ -187,6 +242,52 @@ for (const [where, arm] of [CUTS[1]!, CUTS[0]!] as Array<[string, Arm]>) {
   });
 }
 
+// ---- E2 the same through the program and the real hub: the cleanup's write of sent.json fails once and the program goes on ----
+
+test('E2. through the program and the real hub: the write of sent.json in the cleanup fails once, the program goes on, the hub is made unreachable, a new shot is read and queued, the program is stopped; a new program on the same folder starts, sends exactly that one record and no acknowledged older revision, and the hub ends equal to what the round file says', async () => {
+  const { url } = await startHub(tempDir());
+  const proxy = await countingProxy(url);
+  const r = rig(proxy.url);
+  const first = r.make();
+  await runCopies(r, first, 1, 38);
+  await first.stop();
+  assert.ok(proxy.count() > 5, 'the first program posted');
+
+  const cut = cutting(createFiles(r.data, r.gspro));
+  const second = r.make({ files: cut, tidyOverBytes: 1 });
+  cut.arm({ file: SENT_NAME, op: 'write', variant: 'before' });
+  await second.tick(); // the cleanup replaces the outbox; the write of sent.json fails; the program goes on
+  assert.equal(cut.fired.length, 1, 'the write of sent.json failed');
+  assert.equal(second.status().store, 'error');
+
+  proxy.setDown(true);
+  const records = JSON.parse(r.lastWritten!) as Array<Record<string, unknown>>;
+  const fresh = { ...records[records.length - 1]!, ShotID: 'ZZTEST-NEW-SHOT' };
+  r.write(JSON.stringify([...records, fresh]));
+  await second.tick(); // the new shot is read and queued on the disk; the hub cannot be reached
+  assert.equal(second.status().pending, 1, 'the new shot waits');
+  await second.stop();
+
+  proxy.setDown(false);
+  proxy.reset();
+  const third = r.make();
+  third.start();
+  for (let i = 0; i < 4 && (i === 0 || third.status().pending > 0); i++) await third.tick();
+  assert.equal(third.status().pending, 0, 'nothing is pending');
+  const sent = proxy.bodies().map((b) => (JSON.parse(b) as { records: Array<{ ShotID: string }> }).records.map((x) => x.ShotID));
+  assert.deepEqual(sent, [['ZZTEST-NEW-SHOT']], 'exactly one request, carrying exactly that one record');
+  await third.stop();
+
+  // the hub ends equal to a book that was given the final round file at once (the hub also keeps the earlier round of the recording, which this file no longer holds)
+  const book = new RoundBook();
+  book.ingest(parseRoundFile(r.lastWritten!));
+  const hubRounds = ((await rounds(url)) as { rounds: Array<{ roundId: number }> }).rounds;
+  assert.ok(book.rounds().length > 0);
+  for (const want of book.rounds()) {
+    assert.deepEqual(hubRounds.find((x) => x.roundId === want.roundId), JSON.parse(JSON.stringify(want)), `round ${want.roundId} at the hub equals what the round file says`);
+  }
+});
+
 // ---- C.3 generations that do not belong together ----
 
 const SHORT = (id: string): string => JSON.stringify({ short: { id, fp: 'f'.repeat(64) } }) + '\n';
@@ -209,7 +310,7 @@ const MISMATCHES: Array<[string, string, object]> = [
   ['a header that is a string', '{"gen":"1"}\n' + SHORT('S1'), { cursor: 1, sent: 1, refused: 0, gen: 0 }],
   ['a header that is negative', '{"gen":-1}\n' + SHORT('S1'), { cursor: 1, sent: 1, refused: 0, gen: 0 }],
   ['a header that is not whole', '{"gen":1.5}\n' + SHORT('S1'), { cursor: 1, sent: 1, refused: 0, gen: 0 }],
-  ['a repair that would find a full record', '{"gen":1}\n' + JSON.stringify({ record: rec('S1', 'x') }) + '\n', { cursor: 1, sent: 1, refused: 0, gen: 0 }],
+  ['a short line after a full record in an outbox one ahead (E3)', '{"gen":1}\n' + SHORT('S1') + JSON.stringify({ record: rec('S2', 'x') }) + '\n' + SHORT('S3'), { cursor: 1, sent: 1, refused: 0, gen: 0 }],
   ['a sent.json whose gen is not a whole number', SHORT('S1'), { cursor: 1, sent: 1, refused: 0, gen: 'one' }],
 ];
 
@@ -334,7 +435,11 @@ function driveOne(seed: number, steps: number, tally: Tally): void {
 
   const restartAndCheck = (what: string): void => {
     const fresh = new Outbox(mem);
-    fresh.load();
+    try {
+      fresh.load();
+    } catch (e) {
+      throw new Error(`${where()} (${what}): a folder the program wrote is refused: ${(e as Error).message}`);
+    }
     const waiting = (fresh as unknown as { waiting: ShotRecord[] }).waiting.slice();
     // a second load gives the same
     const again = new Outbox(mem);
@@ -354,7 +459,7 @@ function driveOne(seed: number, steps: number, tally: Tally): void {
     // the counts: certainly done, plus the uncertain batch if its write took
     const total = fresh.sent + fresh.refused;
     const resent = waiting.filter((w) => uncertain.some((u) => same(u, w))).length;
-    assert.ok(total === doneCount || total === doneCount + uncertain.length, `${where()} (${what}): the counts of sent and refused are ${total}, expected ${doneCount} or ${doneCount + uncertain.length}`);
+    assert.ok(total >= doneCount && total <= doneCount + uncertain.length, `${where()} (${what}): the counts of sent and refused are ${total}, expected ${doneCount} to ${doneCount + uncertain.length}`);
     // sync the model with what the disk says
     for (const u of uncertain) {
       if (!waiting.some((w) => same(w, u))) {
@@ -386,6 +491,9 @@ function driveOne(seed: number, steps: number, tally: Tally): void {
       else arm = { file: rand() < 0.5 ? OUTBOX_NAME : SENT_NAME, op: 'write', variant: (['before', 'temp', 'after'] as const)[pick(3)]! };
       void variants;
     }
+    // a second way for a cut to end: the write fails (nothing reaches the disk) and the same object goes on, as the collector does after a failed write
+    const goOn = arm !== undefined && rand() < 0.4;
+    if (goOn && arm !== undefined) arm = { ...arm, variant: arm.variant === 'torn' ? 'before' : arm.variant === 'after' ? 'temp' : arm.variant };
     mem.arm(arm);
     const firedBefore = mem.fired.length;
     let batch: ShotRecord[] = [];
@@ -413,17 +521,17 @@ function driveOne(seed: number, steps: number, tally: Tally): void {
       } else if (op === 'ack') {
         batch = ob.batch(1 + pick(4));
         if (batch.length > 0) {
-          uncertain = batch;
+          uncertain = [...uncertain, ...batch.filter((b) => !uncertain.some((u) => same(u, b)))];
           ob.markSent(batch.length);
-          uncertain = [];
+          uncertain = uncertain.filter((u) => !batch.some((b) => same(b, u)));
           markDone(batch);
         }
       } else if (op === 'refuse') {
         batch = ob.batch(1 + pick(3));
         if (batch.length > 0) {
-          uncertain = batch;
+          uncertain = [...uncertain, ...batch.filter((b) => !uncertain.some((u) => same(u, b)))];
           ob.markRefused(batch.length, 400, step);
-          uncertain = [];
+          uncertain = uncertain.filter((u) => !batch.some((b) => same(b, u)));
           markDone(batch);
         }
       } else if (ob.needsTidy(1)) {
@@ -437,20 +545,19 @@ function driveOne(seed: number, steps: number, tally: Tally): void {
     if (threw) {
       const a = mem.fired[mem.fired.length - 1]!;
       assert.equal(mem.fired.length, firedBefore + 1);
-      const key = `${op}/${a.file}/${a.op}/${a.variant}`;
+      const key = `${op}/${a.file}/${a.op}/${a.variant}${goOn ? '/goes-on' : ''}`;
       tally[key] = (tally[key] ?? 0) + 1;
-      if (op !== 'ack' && op !== 'refuse') uncertain = [];
-      // a queue that was cut did not queue: nothing of it is in the model
-      restartAndCheck(`after a cut of ${key}`);
+      // a queue that was cut did not queue: nothing of it is in the model. A write that failed and went on leaves the batch (if any) uncertain until the next restart
+      if (!goOn) restartAndCheck(`after a cut of ${key}`);
     } else if (mem.fired.length === firedBefore && rand() < 0.1) {
       restartAndCheck('a plain restart');
     }
   }
 }
 
-test('C5. a seeded random drive of the outbox with a cut at a random write: after every restart no acknowledged older revision waits, nothing queued and not acknowledged is missing, the counts are right; every kind of write is cut many times (counted and asserted)', () => {
+test('C5. a seeded random drive of the outbox with a cut at a random write, ending in a restart or in a failed write that the same object goes on from: after every restart no acknowledged older revision waits, nothing queued and not acknowledged is missing, the counts are right; every kind of write is cut many times (counted and asserted)', () => {
   const tally: Tally = {};
-  const SEEDS = 40;
+  const SEEDS = 120;
   for (let seed = 1; seed <= SEEDS; seed++) driveOne(seed, 400, tally);
   const kinds = [
     'queue/outbox.jsonl/append/before',
@@ -469,6 +576,17 @@ test('C5. a seeded random drive of the outbox with a cut at a random write: afte
     'tidy/sent.json/write/before',
     'tidy/sent.json/write/temp',
     'tidy/sent.json/write/after',
+    // the write fails and the same object goes on
+    'queue/outbox.jsonl/append/before/goes-on',
+    'ack/sent.json/write/before/goes-on',
+    'ack/sent.json/write/temp/goes-on',
+    'refuse/refused.jsonl/append/before/goes-on',
+    'refuse/sent.json/write/before/goes-on',
+    'refuse/sent.json/write/temp/goes-on',
+    'tidy/outbox.jsonl/write/before/goes-on',
+    'tidy/outbox.jsonl/write/temp/goes-on',
+    'tidy/sent.json/write/before/goes-on',
+    'tidy/sent.json/write/temp/goes-on',
   ];
   console.log(`C5 cuts: ${JSON.stringify(tally)}`);
   for (const k of kinds) assert.ok((tally[k] ?? 0) >= 20, `coverage shrank: ${k} was cut ${tally[k] ?? 0} times, at least 20 are asked for (${JSON.stringify(tally)})`);

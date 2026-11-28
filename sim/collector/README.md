@@ -109,8 +109,10 @@ file was emptied, are never sent.
   A cut-short last line (a crash mid-write) is dropped at start, and one line says so.
   The tidy-up replaces the outbox first (it begins with a header line that numbers the tidy-up) and
   then writes the record of what was sent with the same number. If the program is stopped or crashes
-  between the two, the next start sees that the outbox is one tidy-up ahead, finishes the job and sends
-  nothing: shots already acknowledged are never sent again. Files that do not belong together (any
+  between the two, the next start sees that the outbox is one tidy-up ahead and finishes the job: shots
+  already acknowledged are never sent again. If the second write failed and the program went on, the
+  shots it queued after the tidy-up wait on the disk after the tidy-up's lines; the next start finds
+  them there and sends them. Files that do not belong together (any
   other pair of numbers) stop the start with a message to move the data folder aside. An empty read of
   GSPro's file never starts a tidy-up. The header costs one short line, read once at start, in the
   same pass over the file as every other line.
