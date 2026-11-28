@@ -8,7 +8,7 @@ import { Outbox, OUTBOX_NAME, SENT_NAME, REFUSED_NAME, CollectorError } from '..
 import { createFiles, type Files } from '../src/files.js';
 import { createCollector, type PostFn } from '../src/collector.js';
 import { RoundBook, parseRoundFile, type ShotRecord } from '../../core/src/index.js';
-import { tempDir, removeTemps, startHub, closeAll, rounds, rig, runCopies, standIns } from './helpers.js';
+import { tempDir, removeTemps, startHub, closeAll, rounds, rig, runCopies, standIns, assertKnownAnswer } from './helpers.js';
 
 afterEach(closeAll);
 after(removeTemps);
@@ -18,7 +18,7 @@ const label = (r: ShotRecord): string => `${r.ShotID}:${(r as unknown as { State
 
 // ---- a Files that can be cut at the next write of a file ----
 
-type Variant = 'before' | 'temp' | 'after' | 'torn';
+type Variant = 'before' | 'temp' | 'after' | 'torn' | 'landed';
 interface Arm {
   file: string;
   op: 'write' | 'append';
@@ -27,12 +27,15 @@ interface Arm {
 interface Cutting extends Files {
   arm(a: Arm | undefined): void;
   readonly fired: Arm[];
+  /** While true, `keepPrefix` (the cut-back of a failed append) fails. */
+  failCutBack: boolean;
 }
 
 /**
  * Wraps a Files. The next write that matches `arm` is cut: 'before' writes nothing; 'temp' writes the temporary file and
  * does not rename it (the leftover temporary file stays in the folder); 'after' completes the write and then fails (the
- * process died before it could go on); 'torn' appends half of the first line of the text, with no newline. Every cut throws.
+ * process died before it could go on); 'torn' appends half of the first line of the text, with no newline; 'landed' appends
+ * the whole text and then fails (the bytes are on the disk, the call throws). Every cut throws.
  */
 function cutting(inner: Files): Cutting {
   let armed: Arm | undefined;
@@ -44,10 +47,15 @@ function cutting(inner: Files): Cutting {
     fired.push(a);
     return a;
   };
-  return {
+  const self: Cutting = {
     ...inner,
     arm: (a) => void (armed = a),
     fired,
+    failCutBack: false,
+    keepPrefix(name, bytes) {
+      if (self.failCutBack) throw new Error('cut-back failed');
+      inner.keepPrefix(name, bytes);
+    },
     writeData(name, text) {
       const a = hit(name, 'write');
       if (a === undefined) return inner.writeData(name, text);
@@ -59,15 +67,18 @@ function cutting(inner: Files): Cutting {
       const a = hit(name, 'append');
       if (a === undefined) return inner.appendDurable(name, text);
       if (a.variant === 'torn') inner.appendData(name, text.slice(0, Math.max(1, Math.floor(text.indexOf(String.fromCharCode(10)) / 2))));
+      if (a.variant === 'landed') inner.appendDurable(name, text);
       throw new Error('cut off here');
     },
     appendData(name, text) {
       const a = hit(name, 'append');
       if (a === undefined) return inner.appendData(name, text);
       if (a.variant === 'torn') inner.appendData(name, text.slice(0, Math.max(1, Math.floor(text.indexOf(String.fromCharCode(10)) / 2))));
+      if (a.variant === 'landed') inner.appendData(name, text);
       throw new Error('cut off here');
     },
   };
+  return self;
 }
 
 // ---- C.1 the reviewer's regression, at the outbox ----
@@ -373,7 +384,10 @@ test('C4. a folder written by today\'s program (no gen, no header): it loads, se
 /** An in-memory data folder: the same operations as the real file module, with no disk, so thousands of steps are cheap. */
 function memFiles(): Files {
   const store = new Map<string, string>();
-  const cut = (name: string, bytes: number): void => void store.set(name, Buffer.from(store.get(name) ?? '', 'utf8').subarray(0, bytes).toString('utf8'));
+  const cut = (name: string, bytes: number): void => {
+    if (!store.has(name)) throw Object.assign(new Error('no such file'), { code: 'ENOENT' }); // as the real file module: a file that is not there cannot be cut
+    store.set(name, Buffer.from(store.get(name)!, 'utf8').subarray(0, bytes).toString('utf8'));
+  };
   return {
     statSource: () => undefined,
     copySource: () => undefined,
@@ -434,12 +448,23 @@ function driveOne(seed: number, steps: number, tally: Tally): void {
   const where = (): string => `seed ${seed}, step ${step}`;
 
   const restartAndCheck = (what: string): void => {
-    const fresh = new Outbox(mem);
+    let fresh = new Outbox(mem);
+    // sometimes the start's own repair write fails: that load throws, and the next load on the same folder repairs
+    if (rand() < 0.3) mem.arm({ file: SENT_NAME, op: 'write', variant: 'before' });
     try {
       fresh.load();
     } catch (e) {
-      throw new Error(`${where()} (${what}): a folder the program wrote is refused: ${(e as Error).message}`);
+      if ((e as Error).message !== 'cut off here') throw new Error(`${where()} (${what}): a folder the program wrote is refused: ${(e as Error).message}`);
+      tally['load/repair-write-failed'] = (tally['load/repair-write-failed'] ?? 0) + 1;
+      mem.arm(undefined);
+      fresh = new Outbox(mem);
+      try {
+        fresh.load();
+      } catch (e2) {
+        throw new Error(`${where()} (${what}): a folder the program wrote is refused after a failed repair: ${(e2 as Error).message}`);
+      }
     }
+    mem.arm(undefined);
     const waiting = (fresh as unknown as { waiting: ShotRecord[] }).waiting.slice();
     // a second load gives the same
     const again = new Outbox(mem);
@@ -485,7 +510,7 @@ function driveOne(seed: number, steps: number, tally: Tally): void {
     const variants = (): Variant => (['before', 'temp', 'after', 'torn'] as const)[pick(4)]!;
     let arm: Arm | undefined;
     if (cutHere) {
-      if (op === 'queue') arm = { file: OUTBOX_NAME, op: 'append', variant: rand() < 0.5 ? 'before' : 'torn' };
+      if (op === 'queue') arm = { file: OUTBOX_NAME, op: 'append', variant: (['before', 'torn', 'landed'] as const)[pick(3)]! };
       else if (op === 'ack') arm = { file: SENT_NAME, op: 'write', variant: (['before', 'temp', 'after'] as const)[pick(3)]! };
       else if (op === 'refuse') arm = rand() < 0.4 ? { file: REFUSED_NAME, op: 'append', variant: rand() < 0.5 ? 'before' : 'torn' } : { file: SENT_NAME, op: 'write', variant: (['before', 'temp', 'after'] as const)[pick(3)]! };
       else arm = { file: rand() < 0.5 ? OUTBOX_NAME : SENT_NAME, op: 'write', variant: (['before', 'temp', 'after'] as const)[pick(3)]! };
@@ -493,11 +518,16 @@ function driveOne(seed: number, steps: number, tally: Tally): void {
     }
     // a second way for a cut to end: the write fails (nothing reaches the disk) and the same object goes on, as the collector does after a failed write
     const goOn = arm !== undefined && rand() < 0.4;
-    if (goOn && arm !== undefined) arm = { ...arm, variant: arm.variant === 'torn' ? 'before' : arm.variant === 'after' ? 'temp' : arm.variant };
+    // a write that fails and goes on leaves nothing of itself in the file, except an append to the outbox (whole or in part), which `queue` cuts back
+    if (goOn && arm !== undefined) arm = { ...arm, variant: arm.file === REFUSED_NAME && arm.variant === 'torn' ? 'before' : arm.op === 'write' && arm.variant === 'after' ? 'temp' : arm.variant };
     mem.arm(arm);
+    // when the process ends at an append, nothing of its code runs after it: the cut-back of `queue` must not happen either
+    mem.failCutBack = arm !== undefined && arm.op === 'append' && !goOn;
     const firedBefore = mem.fired.length;
     let batch: ShotRecord[] = [];
     let threw = false;
+    let queuedRecords: ShotRecord[] = [];
+    let shrank = false;
     try {
       if (op === 'queue') {
         const records: ShotRecord[] = [];
@@ -512,6 +542,7 @@ function driveOne(seed: number, steps: number, tally: Tally): void {
             records.push(shot(`S${nextShot++}`, 1));
           }
         }
+        queuedRecords = records;
         const got = ob.queue(records);
         assert.equal(got, records.length, `${where()}: every new record is queued`);
         for (const r of records) {
@@ -535,18 +566,30 @@ function driveOne(seed: number, steps: number, tally: Tally): void {
           markDone(batch);
         }
       } else if (ob.needsTidy(1)) {
-        ob.tidy([...latest].map(([id, n]) => shot(id, n)));
+        const all = [...latest].map(([id, n]) => shot(id, n));
+        shrank = rand() < 0.3; // GSPro began a new round: the copy holds only a few shots, fewer than the position that sent.json held
+        ob.tidy(shrank ? all.slice(-(1 + pick(3))) : all);
       }
     } catch (e) {
       assert.equal((e as Error).message, 'cut off here', `${where()}: ${(e as Error).message}`);
       threw = true;
     }
     mem.arm(undefined);
+    mem.failCutBack = false;
+    if (shrank) tally['tidy/shrinking-copy'] = (tally['tidy/shrinking-copy'] ?? 0) + 1;
     if (threw) {
       const a = mem.fired[mem.fired.length - 1]!;
       assert.equal(mem.fired.length, firedBefore + 1);
       const key = `${op}/${a.file}/${a.op}/${a.variant}${goOn ? '/goes-on' : ''}`;
       tally[key] = (tally[key] ?? 0) + 1;
+      if (shrank && goOn && a.file === SENT_NAME) tally['tidy/shrinking-copy/sent-write-failed-and-goes-on'] = (tally['tidy/shrinking-copy/sent-write-failed-and-goes-on'] ?? 0) + 1;
+      // an append that landed and was then cut by the process ending: its records are on the disk, were never acknowledged, and wait
+      if (op === 'queue' && a.variant === 'landed' && !goOn) {
+        for (const r of queuedRecords) {
+          pending.push(r);
+          latest.set(r.ShotID, rev(r));
+        }
+      }
       // a queue that was cut did not queue: nothing of it is in the model. A write that failed and went on leaves the batch (if any) uncertain until the next restart
       if (!goOn) restartAndCheck(`after a cut of ${key}`);
     } else if (mem.fired.length === firedBefore && rand() < 0.1) {
@@ -587,6 +630,14 @@ test('C5. a seeded random drive of the outbox with a cut at a random write, endi
     'tidy/outbox.jsonl/write/temp/goes-on',
     'tidy/sent.json/write/before/goes-on',
     'tidy/sent.json/write/temp/goes-on',
+    // an append that reaches the disk (whole or in part) and then fails, with the same object going on and with the process ending there
+    'queue/outbox.jsonl/append/landed/goes-on',
+    'queue/outbox.jsonl/append/landed',
+    'queue/outbox.jsonl/append/torn/goes-on',
+    // a copy that shrinks (a new round), a cleanup of it whose write of sent.json fails and the object goes on, and a start whose own repair write fails
+    'tidy/shrinking-copy',
+    'tidy/shrinking-copy/sent-write-failed-and-goes-on',
+    'load/repair-write-failed',
   ];
   console.log(`C5 cuts: ${JSON.stringify(tally)}`);
   for (const k of kinds) assert.ok((tally[k] ?? 0) >= 20, `coverage shrank: ${k} was cut ${tally[k] ?? 0} times, at least 20 are asked for (${JSON.stringify(tally)})`);
@@ -622,4 +673,156 @@ test('C6. an empty copy when a cleanup is due changes nothing in the data folder
   ob.tidy([]);
   assert.equal(readFileSync(join(dir, 'data', OUTBOX_NAME), 'utf8'), o1);
   assert.equal(readFileSync(join(dir, 'data', SENT_NAME), 'utf8'), s1);
+});
+
+// ---- round 15: the saved generation is held by a test; a failed append is cut back before anything else is appended ----
+
+const X = (ids: string[]): ShotRecord[] => ids.map((id) => rec(id, 'finished'));
+const occurrences = (text: string, id: string): number => text.split(`"ShotID":"${id}"`).length - 1;
+
+for (const how of ['acknowledged', 'refused'] as const) {
+  test(`F1. the saved generation after a good write of sent.json (${how}): the cleanup's write of sent.json fails and the program goes on; two records are queued and ${how}; a second cleanup, for a copy with fewer shots (a new round), fails at the same write; five shots are queued; a fresh Outbox loads: all five wait, in order, nothing else, the counts are what they were`, () => {
+    const dir = tempDir();
+    const real = createFiles(join(dir, 'data'), join(dir, 'round.dat'));
+    const cut = cutting(real);
+    const a = new Outbox(cut);
+    a.load();
+    assert.equal(a.queue(X(['X1', 'X2', 'X3'])), 3);
+    a.markSent(3);
+    cut.arm({ file: SENT_NAME, op: 'write', variant: 'before' });
+    assert.throws(() => a.tidy(X(['X1', 'X2', 'X3'])), /cut off here/);
+    assert.equal(a.queue(X(['Y1', 'Y2'])), 2);
+    if (how === 'acknowledged') a.markSent(2);
+    else a.markRefused(2, 400, 1);
+    cut.arm({ file: SENT_NAME, op: 'write', variant: 'before' });
+    assert.throws(() => a.tidy(X(['N1'])), /cut off here/); // GSPro began a new round: the copy holds one shot
+    assert.equal(a.queue(X(['N2', 'N3', 'N4', 'N5', 'N6'])), 5);
+
+    const b = new Outbox(real);
+    b.load();
+    assert.deepEqual((b as unknown as { waiting: ShotRecord[] }).waiting.map(label), ['N2:finished', 'N3:finished', 'N4:finished', 'N5:finished', 'N6:finished'], 'all five wait, in order, and nothing else');
+    assert.equal(b.sent, how === 'acknowledged' ? 5 : 3);
+    assert.equal(b.refused, how === 'acknowledged' ? 0 : 2);
+  });
+}
+
+test('F2. a start whose own repair write fails: that load throws; the next load on the same folder repairs and nothing acknowledged waits', () => {
+  const dir = tempDir();
+  const data = join(dir, 'data');
+  const real = createFiles(data, join(dir, 'round.dat'));
+  history(real);
+  const cutTidy = cutting(real);
+  const b = new Outbox(cutTidy);
+  b.load();
+  cutTidy.arm({ file: SENT_NAME, op: 'write', variant: 'before' });
+  assert.throws(() => b.tidy(LATEST), /cut off here/); // the process ends here: the outbox is one generation ahead
+  const failing = cutting(real);
+  failing.arm({ file: SENT_NAME, op: 'write', variant: 'before' });
+  assert.throws(() => new Outbox(failing).load(), /cut off here/, 'the repair write of the first start fails: that load throws');
+  const c = new Outbox(real);
+  c.load();
+  assert.equal(c.pending, 0, 'the next load repairs and nothing acknowledged waits');
+  assert.equal(c.sent, 5);
+  assert.deepEqual(JSON.parse(readFileSync(join(data, SENT_NAME), 'utf8')), { cursor: 3, sent: 5, refused: 0, gen: 1 });
+});
+
+function landedFiles(dir: string): { real: Files; cut: Cutting; text: () => string } {
+  const real = createFiles(join(dir, 'data'), join(dir, 'round.dat'));
+  return { real, cut: cutting(real), text: () => readFileSync(join(dir, 'data', OUTBOX_NAME), 'utf8') };
+}
+
+test('G1. an append that reaches the disk and then fails, twice (shots A and B), then T and its revision T r2, all acknowledged, then a fresh Outbox: nothing waits, and the outbox holds every record once', () => {
+  const dir = tempDir();
+  const { real, cut, text } = landedFiles(dir);
+  const a = new Outbox(cut);
+  a.load();
+  for (const id of ['A', 'B']) {
+    cut.arm({ file: OUTBOX_NAME, op: 'append', variant: 'landed' });
+    assert.throws(() => a.queue([rec(id, 'r1')]), /cut off here/);
+    assert.equal(a.queue([rec(id, 'r1')]), 1, 'the collector reads the same copy again and queues the same record'); // the second append
+    a.markSent(1);
+  }
+  assert.equal(a.queue([rec('T', 'r1')]), 1);
+  a.markSent(1);
+  assert.equal(a.queue([rec('T', 'r2')]), 1);
+  a.markSent(1);
+  const b = new Outbox(real);
+  b.load();
+  const waiting = (b as unknown as { waiting: ShotRecord[] }).waiting.map(label);
+  assert.equal(b.pending, 0, `acknowledged records are waiting to be sent again after the restart: ${JSON.stringify(waiting)}`);
+  for (const id of ['A', 'B', 'T']) assert.ok(occurrences(text(), id) === (id === 'T' ? 2 : 1), `the outbox holds ${id} ${id === 'T' ? 'twice (two revisions)' : 'once'}`);
+});
+
+test('G2. part of the text lands (half of the first line, no newline) and the call throws: the file is byte for byte what it was; the next queue appends once; a fresh Outbox loads without dropping a line', () => {
+  const dir = tempDir();
+  const { real, cut, text } = landedFiles(dir);
+  const a = new Outbox(cut);
+  a.load();
+  assert.equal(a.queue([rec('A', 'r1')]), 1);
+  a.markSent(1);
+  const before = text();
+  cut.arm({ file: OUTBOX_NAME, op: 'append', variant: 'torn' });
+  assert.throws(() => a.queue([rec('B', 'r1')]), /cut off here/);
+  assert.equal(text(), before, 'byte for byte what it was before the append');
+  assert.equal(a.pending, 0, 'nothing is counted');
+  assert.equal(a.queue([rec('B', 'r1')]), 1);
+  const b = new Outbox(real);
+  assert.equal(b.load().droppedLine, false, 'no line is dropped');
+  assert.deepEqual((b as unknown as { waiting: ShotRecord[] }).waiting.map(label), ['B:r1']);
+  assert.equal(occurrences(text(), 'B'), 1);
+});
+
+test('G3. the cut-back fails too: the next queue appends nothing and throws; when the cut-back can succeed again, the one after appends once; at no point does the file hold a record twice', () => {
+  const dir = tempDir();
+  const { real, cut, text } = landedFiles(dir);
+  const a = new Outbox(cut);
+  a.load();
+  cut.arm({ file: OUTBOX_NAME, op: 'append', variant: 'landed' });
+  cut.failCutBack = true;
+  assert.throws(() => a.queue([rec('A', 'r1')]), /cut off here/);
+  assert.equal(occurrences(text(), 'A'), 1, 'the landed copy is still there, once');
+  const stuck = text();
+  assert.throws(() => a.queue([rec('A', 'r1')]), /cut-back failed/, 'the next queue throws');
+  assert.equal(text(), stuck, 'and appends nothing');
+  assert.equal(a.pending, 0);
+  cut.failCutBack = false;
+  assert.equal(a.queue([rec('A', 'r1')]), 1, 'the one after cuts back and appends once');
+  assert.equal(occurrences(text(), 'A'), 1, 'the file holds the record once');
+  const b = new Outbox(real);
+  b.load();
+  assert.deepEqual((b as unknown as { waiting: ShotRecord[] }).waiting.map(label), ['A:r1']);
+  // a load clears the memory of a failed cut-back: it reads the file as it is
+  cut.arm({ file: OUTBOX_NAME, op: 'append', variant: 'landed' });
+  cut.failCutBack = true;
+  assert.throws(() => a.queue([rec('C', 'r1')]), /cut off here/);
+  a.load();
+  cut.failCutBack = false;
+  assert.equal(a.queue([rec('D', 'r1')]), 1, 'after a load the object appends again');
+});
+
+test('G4. through the program and the real hub behind the counting proxy: an append lands and throws on two reads, the round goes on with revised shots, everything is acknowledged, the program is stopped and a new one started on the same folder: from the restart on the hub receives no request', async () => {
+  const { url } = await startHub(tempDir());
+  const proxy = await countingProxy(url);
+  const r = rig(proxy.url);
+  const cut = cutting(createFiles(r.data, r.gspro));
+  const first = r.make({ files: cut });
+  for (let n = 1; n <= 38; n++) {
+    if (n === 4 || n === 9) cut.arm({ file: OUTBOX_NAME, op: 'append', variant: 'landed' });
+    r.writeCopy(n);
+    await first.tick();
+  }
+  await runCopies(r, first, 38, 38); // the last copy again, and the drain
+  assert.equal(cut.fired.length, 2, 'the append landed and threw twice');
+  assert.equal(first.status().pending, 0);
+  assertKnownAnswer(await rounds(url));
+  await first.stop();
+  proxy.reset();
+  const second = r.make();
+  second.start();
+  for (let i = 0; i < 4; i++) {
+    await second.tick();
+    assert.equal(proxy.count(), 0, `the hub received a request after the restart (tick ${i + 1})`);
+    assert.equal(second.status().pending, 0);
+  }
+  await second.stop();
 });

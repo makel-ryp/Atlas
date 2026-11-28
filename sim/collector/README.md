@@ -110,12 +110,17 @@ file was emptied, are never sent.
   The tidy-up replaces the outbox first (it begins with a header line that numbers the tidy-up) and
   then writes the record of what was sent with the same number. If the program is stopped or crashes
   between the two, the next start sees that the outbox is one tidy-up ahead and finishes the job: shots
-  already acknowledged are never sent again. If the second write failed and the program went on, the
+  already acknowledged are not sent again, except the one batch whose acknowledgement could not be saved,
+  which is sent once more with the content the hub already holds. If the second write failed and the program went on, the
   shots it queued after the tidy-up wait on the disk after the tidy-up's lines; the next start finds
   them there and sends them. Files that do not belong together (any
   other pair of numbers) stop the start with a message to move the data folder aside. An empty read of
   GSPro's file never starts a tidy-up. The header costs one short line, read once at start, in the
-  same pass over the file as every other line.
+  same pass over the file as every other line. A program from before this change refuses a data folder
+  that this one has tidied ("The outbox file is damaged") and changes nothing in it, and this program
+  still reads that folder afterwards; so to go back to an older version, move the data folder aside.
+  When writing a shot to the outbox fails, the outbox is cut back to what the program had counted
+  before anything else is written, so a shot is never in it twice.
 - `refused.jsonl` is never cleared by the program.
 
 Tests: `npm run test:sim`.

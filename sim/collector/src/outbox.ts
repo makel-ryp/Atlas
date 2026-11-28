@@ -62,6 +62,8 @@ export class Outbox {
   private state: SentRecord = { cursor: 0, sent: 0, refused: 0, gen: 0 };
   /** The generation `sent.json` is known to hold on the disk (set by `load`, and by each write of `sent.json` that succeeds). */
   private savedGen = 0;
+  /** True when a failed append could not be cut back: the outbox on the disk may be longer than `bytes`. `queue` appends nothing until a cut-back has succeeded; `load` clears it. */
+  private maybeLonger = false;
 
   constructor(
     private readonly files: Files,
@@ -89,6 +91,7 @@ export class Outbox {
     this.waiting = [];
     this.bytes = 0;
     this.state = { cursor: 0, sent: 0, refused: 0, gen: 0 };
+    this.maybeLonger = false; // the file is read as it is
 
     const sentText = this.files.readData(SENT_NAME);
     if (sentText !== undefined) {
@@ -170,7 +173,18 @@ export class Outbox {
     return { droppedLine: dropped };
   }
 
-  /** Appends the records not already queued with this exact content, in the order given. Returns how many. */
+  /**
+   * Appends the records not already queued with this exact content, in the order given. Returns how many.
+   *
+   * If the append throws, the outbox on the disk is cut back to the length this object knows (`bytes`) before the error
+   * leaves, whatever of the text landed (all, part, or none). Why that loses nothing: the bytes of a failed append were never
+   * counted and never sent, and the same records are queued again from the next read of the copy; left in the file, they
+   * would be there twice while this object counts them once, and the position on the disk would fall behind the file by a
+   * line for every such failure, so that after a restart older revisions that were acknowledged would wait again.
+   * If the cut-back fails too, the file may be longer than this object knows: nothing is appended until a cut-back has
+   * succeeded (the next call that has something to append tries first, and throws, appending nothing, if it fails again).
+   * A file that does not exist yet is not an error of the cut-back.
+   */
   queue(records: ShotRecord[]): number {
     const fresh: Array<[ShotRecord, string]> = [];
     const local = new Map<string, string>();
@@ -182,15 +196,40 @@ export class Outbox {
       fresh.push([rec, fp]);
     }
     if (fresh.length === 0) return 0;
+    if (this.maybeLonger) {
+      const failed = this.cutBack();
+      if (failed !== undefined) throw failed;
+    }
     const text = fresh.map(([rec]) => JSON.stringify({ record: rec }) + '\n').join('');
     // On the disk before the records count as queued.
-    this.files.appendDurable(OUTBOX_NAME, text);
+    try {
+      this.files.appendDurable(OUTBOX_NAME, text);
+    } catch (e) {
+      this.cutBack();
+      throw e;
+    }
     for (const [rec, fp] of fresh) {
       this.seen.set(rec.ShotID, fp);
       this.waiting.push(rec);
     }
     this.bytes += Buffer.byteLength(text);
     return fresh.length;
+  }
+
+  /** Cuts the outbox on the disk back to `bytes`. Returns the error when that fails (and remembers it), undefined when it worked or the file is not there. */
+  private cutBack(): unknown {
+    try {
+      this.files.keepPrefix(OUTBOX_NAME, this.bytes);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') {
+        this.maybeLonger = false;
+        return undefined;
+      }
+      this.maybeLonger = true;
+      return e;
+    }
+    this.maybeLonger = false;
+    return undefined;
   }
 
   /**
